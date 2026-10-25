@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/yuzheng14/covro/compare/v0.4.0...v0.5.0) (2026-10-24)
+
+
+### Features
+
+* **codex:** support CLI 0.164.0 ([#254](https://github.com/yuzheng14/covro/issues/254)) ([cc64c0b](https://github.com/yuzheng14/covro/commit/cc64c0bb820b80a5b4ee7c54013f6ea0aa824656)), closes [#249](https://github.com/yuzheng14/covro/issues/249)
+* **notifications:** notify for pending answers and approvals ([#250](https://github.com/yuzheng14/covro/issues/250)) ([d324b6f](https://github.com/yuzheng14/covro/commit/d324b6ff4e7f12366ac2caaa5b6b066e83b598ee)), closes [#248](https://github.com/yuzheng14/covro/issues/248)
+* **sessions:** add a shortcut for new conversations ([#251](https://github.com/yuzheng14/covro/issues/251)) ([69f58a4](https://github.com/yuzheng14/covro/commit/69f58a4da6a4c30fc3c5ba16555f8075412efc41)), closes [#233](https://github.com/yuzheng14/covro/issues/233)
+
+
+### Bug Fixes
+
+* **ui:** unify dropdowns with shadcn Select ([#246](https://github.com/yuzheng14/covro/issues/246)) ([4556892](https://github.com/yuzheng14/covro/commit/455689264d049ec7d96e72649a869d36cc9363a3))
+
 ## [0.4.0](https://github.com/yuzheng14/covro/compare/v0.3.0...v0.4.0) (2026-10-22)
 
 
