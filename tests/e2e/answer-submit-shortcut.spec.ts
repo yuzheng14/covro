@@ -18,6 +18,8 @@ async function open(page: Page, platform = 'MacIntel', prompt = '[async-question
   }, platform);
   await page.goto('/');
   await confirmCompatibility(page);
+  const navigation = page.getByRole('button', { name: '打开项目与会话', exact: true });
+  if (await navigation.isVisible()) await navigation.click();
   await createThreadButton(page).click();
   await page.getByRole('textbox', { name: '任务内容', exact: true }).fill(prompt);
   await page.getByRole('button', { name: '发送任务', exact: true }).click();
