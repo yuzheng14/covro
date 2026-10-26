@@ -422,6 +422,20 @@ export function createApp({
     );
     return c.json(op, status(op));
   });
+  app.post('/api/threads/:threadId/retry', async (c) => {
+    const op = await service.retryTurn(
+      id(c.req.param('threadId')),
+      await parse(c, schemas.retryTurnSchema),
+    );
+    return c.json(op, status(op));
+  });
+  app.post('/api/threads/:threadId/retry/cancel', async (c) => {
+    const op = await service.cancelCapacityRetry(
+      id(c.req.param('threadId')),
+      await parse(c, schemas.interruptSchema),
+    );
+    return c.json(op, status(op));
+  });
   app.post('/api/threads/:threadId/review', async (c) => {
     const op = await service.startReview(
       id(c.req.param('threadId')),

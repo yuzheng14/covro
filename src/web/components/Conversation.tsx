@@ -1,5 +1,11 @@
+import { capacityTurnViews } from '../lib/capacity-turns';
+import { CapacityRetryNotice, type CapacityRetryControls } from './CapacityRetryNotice';
 import { ModelCapacityNotice } from './ModelCapacityNotice';
-import { isCapacityTurnError, upstreamRetryAttempt } from '../../shared/turn-errors';
+import {
+  isCapacityTurnError,
+  isModelCapacityError,
+  upstreamRetryAttempt,
+} from '../../shared/turn-errors';
 import { message, displayMessage } from '../i18n/messages';
 import { t, currentLocale } from '../i18n';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -272,6 +278,7 @@ function TurnErrorNotice({ turn, offline }: { turn: TurnView; offline: boolean }
 interface ConversationProps {
   thread?: ThreadView;
   offline: boolean;
+  retryControls?: CapacityRetryControls;
   history?: {
     cached?: boolean;
     cacheExhausted?: boolean;
@@ -305,6 +312,7 @@ export function Conversation(props: ConversationProps) {
 function ConversationContent({
   thread,
   offline,
+  retryControls,
   history,
   projectName,
   needsProject = false,
@@ -325,6 +333,7 @@ function ConversationContent({
   const lastScrollTop = useRef(0);
   const scrollingUp = useRef(false);
   const userScrolled = useRef(false);
+  const displayTurns = thread ? capacityTurnViews(thread) : [];
   const latestTurn = thread?.turns.at(-1);
   const questionReplies = new Map<string, AsyncQuestionReply[]>();
   for (const turn of thread?.turns ?? [])
@@ -485,7 +494,7 @@ function ConversationContent({
           )}
         </div>
       )}
-      {latestTurn?.reconnect && !isCapacityTurnError(latestTurn) && (
+      {latestTurn?.reconnect && !isCapacityTurnError(latestTurn) && !thread?.capacityRetry && (
         <div className="codex-reconnect-pinned">
           <CodexReconnectNotice turn={latestTurn} offline={offline} />
         </div>
@@ -623,7 +632,7 @@ function ConversationContent({
                 </div>
               </div>
             ) : (
-              thread.turns.map((turn, index) => (
+              displayTurns.map((turn, index) => (
                 <section
                   className="turn"
                   key={turn.id}
@@ -682,7 +691,20 @@ function ConversationContent({
                       <Icon name="chevron" size={16} />
                     </Button>
                   )}
-                  <TurnErrorNotice turn={turn} offline={offline} />
+                  {turn.id === latestTurn?.id &&
+                  thread &&
+                  (thread.capacityRetry ||
+                    (latestTurn.status === 'failed' &&
+                      isModelCapacityError(latestTurn.error ?? '', latestTurn.errorCode))) ? (
+                    <CapacityRetryNotice
+                      thread={thread}
+                      offline={offline}
+                      controls={retryControls}
+                    />
+                  ) : (
+                    <TurnErrorNotice turn={turn} offline={offline} />
+                  )}
+
                   <TurnCompletion turn={turn} />
                 </section>
               ))

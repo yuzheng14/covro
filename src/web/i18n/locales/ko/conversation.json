@@ -112,5 +112,18 @@
   "retry_progress": "재시도 {{attempt}}/{{limit}}",
   "retrying_short": "재시도 중",
   "retry_stopped_short": "재시도 중지됨",
-  "error_details": "오류 세부 정보"
+  "error_details": "오류 세부 정보",
+  "capacity_waiting": "모델 사용량이 많아 재시도 대기 중",
+  "capacity_cancelled": "자동 재시도가 취소되었습니다",
+  "capacity_in_seconds": "{{seconds}}초 후 재시도",
+  "capacity_dispatching": "재시도 시작 중…",
+  "capacity_stopped_progress": "이 턴에 출력 또는 도구 작업이 있습니다. 확인한 후 수동으로 계속하세요.",
+  "capacity_stopped_native": "Codex가 자체 재시도를 중지했습니다.",
+  "capacity_stopped_limit": "자동 재시도 한도에 도달했습니다.",
+  "capacity_stopped_error": "작업 또는 실행 환경이 변경되었습니다. 상태를 확인하세요.",
+  "cancel_retry": "재시도 취소",
+  "retry_with_selected_model": "선택한 모델로 재시도",
+  "capacity_in_seconds_short": "{{seconds}}초 후",
+  "capacity_cancelled_short": "취소됨",
+  "capacity_limit_short": "한도 도달"
 }

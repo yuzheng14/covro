@@ -159,6 +159,8 @@ export interface TurnErrorMetadata {
   errorDetails?: string;
 }
 export interface TurnView extends TurnErrorMetadata {
+  /** Original turn for a gateway capacity continuation; execution IDs remain native. */
+  retryOf?: string;
   id: string;
   threadId: string;
   status: RunStatus;
@@ -175,7 +177,18 @@ export interface TurnView extends TurnErrorMetadata {
   /** Codex's upstream retry state; independent of the browser's gateway connection. */
   reconnect?: TurnErrorMetadata & { status: 'retrying' | 'failed'; message: string };
 }
+export interface CapacityRetryView {
+  rootTurnId: string;
+  turnId: string;
+  status: 'waiting' | 'retrying' | 'cancelled' | 'stopped';
+  /** Upcoming attempt while waiting; current attempt after dispatch. */
+  attempt: number;
+  limit: number;
+  nextAttemptAt?: number;
+  reason?: 'progress' | 'native' | 'limit' | 'error';
+}
 export interface ThreadView {
+  capacityRetry?: CapacityRetryView;
   /** Native Codex archive state, read from its index and lifecycle notifications. */
   archived?: boolean;
   id: string;
@@ -333,6 +346,9 @@ export interface TaskMessage {
 export interface StartTurnInput extends CreateThreadInput, TaskMessage {}
 export type StartReviewInput = OperationInput;
 export interface SteerInput extends OperationInput, TaskMessage {
+  expectedTurnId: string;
+}
+export interface RetryTurnInput extends CreateThreadInput {
   expectedTurnId: string;
 }
 export interface InterruptInput extends OperationInput {

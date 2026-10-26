@@ -1077,6 +1077,57 @@ function contextCompaction(thread: Thread, turn: Turn, outcome: 'recover' | 'fai
   );
 }
 
+function capacityScenario(thread: Thread, turn: Turn, mode: string): void {
+  finishes.set(
+    turn.id,
+    setTimeout(() => {
+      if (turn.status !== 'inProgress') return;
+      const continuation = !turn.items.some((item) => item.type === 'userMessage');
+      if (mode === 'quote' || (continuation && (mode === 'recover' || mode === 'partial'))) {
+        const item: ThreadItem = {
+          id: randomUUID(),
+          type: 'agentMessage',
+          text: mode === 'quote' ? MODEL_CAPACITY_MESSAGE : '容量恢复，继续处理原任务。',
+          phase: 'final_answer',
+          memoryCitation: null,
+          delivery: null,
+          questions: null,
+        };
+        turn.items.push(item);
+        notify({
+          method: 'item/completed',
+          params: { threadId: thread.id, turnId: turn.id, item, completedAtMs: Date.now() },
+        });
+        complete(thread, turn);
+        return;
+      }
+      if (mode === 'partial') {
+        const item = command(randomUUID(), thread.cwd);
+        item.status = 'completed';
+        item.exitCode = 0;
+        item.command = 'printf already-done';
+        turn.items.push(item);
+        notify({
+          method: 'item/completed',
+          params: { threadId: thread.id, turnId: turn.id, item, completedAtMs: Date.now() },
+        });
+      }
+      turn.error = {
+        message: MODEL_CAPACITY_MESSAGE,
+        codexErrorInfo: mode === 'other' ? 'badRequest' : 'serverOverloaded',
+        additionalDetails: null,
+        misalignment: null,
+      };
+      for (let i = 0; i < 2; i++)
+        notify({
+          method: 'error',
+          params: { threadId: thread.id, turnId: turn.id, willRetry: false, error: turn.error },
+        });
+      complete(thread, turn, 'failed');
+    }, 200),
+  );
+}
+
 function codexReconnect(
   thread: Thread,
   turn: Turn,
@@ -2148,7 +2199,7 @@ function receive(request: ClientRequest): void {
       const turn: Turn = {
         id: randomUUID(),
         rootTurnId: null,
-        items: [input],
+        items: request.params.input.length ? [input] : [],
         itemsView: 'full',
         status: 'inProgress',
         error: null,
@@ -2171,6 +2222,7 @@ function receive(request: ClientRequest): void {
         });
       }
       const acceptedInput = () =>
+        request.params.input.length &&
         notify({
           method: 'item/completed',
           params: { threadId: thread.id, turnId: turn.id, item: input, completedAtMs: Date.now() },
@@ -2188,7 +2240,13 @@ function receive(request: ClientRequest): void {
           }),
         options.ackDelayMs ?? 0,
       );
-      const prompt = text.toLowerCase();
+      const inheritedPrompt = thread.turns
+        .flatMap((t) => t.items)
+        .filter((item) => item.type === 'userMessage')
+        .flatMap((item) => item.content)
+        .flatMap((input) => (input.type === 'text' ? input.text : []))
+        .join(' ');
+      const prompt = (text || inheritedPrompt).toLowerCase();
       if (thread.ephemeral) {
         const titleOutput = options.titleOutputs?.[titleAttempts++] ?? options.titleOutput;
         if (options.titleBehavior === 'hang') break;
@@ -2280,7 +2338,9 @@ function receive(request: ClientRequest): void {
       const reconnect = (['recover', 'fail', 'hold'] as const).find((outcome) =>
         prompt.includes(`[codex-retry-${outcome}]`),
       );
-      if (prompt.includes('[sticky-prompt]') || prompt.includes('[sticky-prompt-stream]'))
+      const capacity = /\[capacity-(recover|fail|partial|quote|other)\]/.exec(prompt)?.[1];
+      if (capacity) capacityScenario(thread, turn, capacity);
+      else if (prompt.includes('[sticky-prompt]') || prompt.includes('[sticky-prompt-stream]'))
         stickyPromptReply(thread, turn, prompt.includes('[sticky-prompt-stream]'));
       else if (
         prompt.includes('[activity-collapse]') ||

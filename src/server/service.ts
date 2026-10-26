@@ -1,4 +1,6 @@
 import type { CodexClient, CodexDiagnostics, CodexEvent } from '../codex/types.js';
+import { CapacityRetries, type CapacityAttempt } from './capacity-retry.js';
+import { isModelCapacityError } from '../shared/turn-errors.js';
 import { attentionKey, pendingAttention } from '../shared/thread-attention.js';
 import { ShellService } from './shell.js';
 import { readGithubRepository } from './github-repository.js';
@@ -35,6 +37,8 @@ import type {
   ResumeThreadInput,
   ServerMessage,
   StartTurnInput,
+  RetryTurnInput,
+  Settings,
   StartReviewInput,
   SteerInput,
   SystemInfo,
@@ -72,6 +76,7 @@ export interface GatewayOptions {
 
 /** Coordinates durable intent, upstream effects, and the recoverable browser projection. */
 export class GatewayService {
+  private readonly capacityRetries: CapacityRetries;
   readonly projectClones: ProjectClones;
   readonly shell: ShellService;
   readonly events: EventHub;
@@ -104,6 +109,7 @@ export class GatewayService {
   private readonly runtimeSettingsUpdates = new Map<string, number>();
   private readonly inFlightOperations = new Set<string>();
   private readonly pendingThreadCreations = new Map<string, string>();
+  private readonly capacityLinks = new Map<string, Map<string, string>>();
 
   constructor(private readonly options: GatewayOptions) {
     this.store = options.store;
@@ -127,6 +133,10 @@ export class GatewayService {
     this.shell = new ShellService(this.codex);
     this.events = new EventHub(options.limits?.eventBytes);
     this.projection = new Projection(options.limits?.itemBytes);
+    this.capacityRetries = new CapacityRetries(
+      (job) => this.dispatchCapacityRetry(job),
+      (id) => this.publishThread(id),
+    );
     this.currentEpoch = this.codex.epoch;
     this.store.recover();
     this.removeListener = this.codex.onEvent((event) => this.consume(event));
@@ -183,6 +193,8 @@ export class GatewayService {
       : new AppError('UPDATE_MAINTENANCE', '正在升级，请等待服务重新连接', 503);
   }
   prepareUpdate(reason: 'update' | 'backup' = 'update'): { ready: boolean; reason?: string } {
+    if (this.capacityRetries.active())
+      return { ready: false, reason: '等待模型容量重试结束或取消' };
     if (this.projectClones.hasActive) return { ready: false, reason: '等待项目克隆完成或取消' };
     if (this.shell.active()) return { ready: false, reason: '等待 Shell 命令结束' };
     if (this.inFlightOperations.size || this.resumes.size || this.pendingThreadCreations.size)
@@ -242,6 +254,7 @@ export class GatewayService {
         (thread) =>
           thread.projectId === projectId &&
           (isActive(thread.status) ||
+            this.capacityRetries.pending(thread.id) ||
             thread.actions.some((action) => ['pending', 'responding'].includes(action.status))),
       );
     if (pending || marker || active || this.shell.active(projectId))
@@ -611,6 +624,7 @@ export class GatewayService {
   private updateArchiveState(threadId: string, archived: boolean): void {
     const thread = this.projection.get(threadId);
     if (!thread || Boolean(thread.archived) === archived) return;
+    if (archived) this.capacityRetries.clear(threadId);
     thread.archived = archived;
     this.archiveRevisions.set(threadId, (this.archiveRevisions.get(threadId) ?? 0) + 1);
     if (archived) this.releaseThreadOwnership(threadId);
@@ -661,6 +675,11 @@ export class GatewayService {
       throw new AppError('HISTORY_UNAVAILABLE', '当前 Codex 不支持历史分页', 409);
     const page = this.normalize(await this.codex.readThreadPage(threadId, cursor));
     this.workspaces.assertOwnership(page.projectId, page.cwd, page.id);
+    const links = this.retryLinks(threadId);
+    for (const turn of page.turns) {
+      const root = links.get(turn.id);
+      if (root) turn.retryOf = root;
+    }
     return page;
   }
 
@@ -819,6 +838,7 @@ export class GatewayService {
 
   async resumeThread(threadId: string, input: ResumeThreadInput): Promise<Operation> {
     return this.perform('thread.resume', threadId, input, async () => {
+      this.capacityRetries.clear(threadId);
       const thread = await this.loadThread(threadId);
       this.ensureReady();
       this.ensureArchiveAvailable(thread);
@@ -933,11 +953,31 @@ export class GatewayService {
   }
 
   async startTurn(threadId: string, input: StartTurnInput): Promise<Operation> {
+    return this.dispatchTurn(threadId, input);
+  }
+
+  private async dispatchTurn(
+    threadId: string,
+    input: StartTurnInput,
+    retry?: CapacityAttempt,
+    expectedTurnId?: string,
+  ): Promise<Operation> {
     return this.perform('turn.start', threadId, input, async () => {
+      if (!retry && !expectedTurnId && this.capacityRetries.view(threadId)?.status === 'waiting')
+        this.capacityRetries.clear(threadId);
       const thread = await this.loadThread(threadId);
       this.ensureManaged(thread);
       const ownership = this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
-      if (isActive(thread.status))
+      if (expectedTurnId) {
+        const last = thread.turns.at(-1);
+        if (
+          last?.id !== expectedTurnId ||
+          last.status !== 'failed' ||
+          !isModelCapacityError(last.error ?? '', last.errorCode)
+        )
+          throw new AppError('TURN_CONFLICT', '目标容量失败已改变，请刷新后继续', 409);
+      }
+      if (isActive(this.projection.get(threadId)?.status ?? thread.status))
         throw new AppError('THREAD_BUSY', '会话已有活动任务，请追加要求或中断', 409, { threadId });
       this.ensureCompatibilityConfirmed();
       this.store.dispatch(input.clientOperationId, {
@@ -945,6 +985,21 @@ export class GatewayService {
         workspaceKey: ownership.workspaceKey,
         codexEpoch: this.codex.epoch,
       });
+      if (retry && !this.capacityRetries.owns(retry))
+        throw new AppError('TURN_CONFLICT', '容量重试已取消或被替代', 409);
+      const candidate =
+        retry ??
+        this.capacityRetries.begin(
+          threadId,
+          input.clientOperationId,
+          this.retrySettings(thread.runtimeSettings, input.settings),
+          this.codex.epoch,
+        );
+      const retryOf =
+        retry?.rootTurnId ??
+        (expectedTurnId
+          ? (this.retryLinks(threadId).get(expectedTurnId) ?? expectedTurnId)
+          : undefined);
       this.turnBaselines.set(input.clientOperationId, new Set(thread.turns.map((turn) => turn.id)));
       // A refresh must discover a dispatched first message even before its turn
       // notification or receipt arrives. A definite failure removes the marker.
@@ -960,18 +1015,102 @@ export class GatewayService {
       this.store.attachTurn(input.clientOperationId, turn.id);
       this.turnBaselines.delete(input.clientOperationId);
       this.projection.turn(threadId, turn, this.projection.revision(threadId) !== revision);
+      this.capacityRetries.observe({ type: 'turn', threadId, turn }, input.clientOperationId);
+      if (retryOf) this.retryLinks(threadId).set(turn.id, retryOf);
+      if (candidate.cancelled && retry) await this.interruptCancelledCapacity(candidate, turn.id);
       const projectedTurn = this.projection
         .get(threadId)
         ?.turns.find((entry) => entry.id === turn.id);
       if (projectedTurn && isTerminal(projectedTurn.status))
         this.store.finishTurn(threadId, turn.id, this.codex.epoch);
       this.publishThread(threadId);
-      return { result: { threadId, turnId: turn.id }, turnId: turn.id };
+      return {
+        result: { threadId, turnId: turn.id, ...(retryOf ? { retryOf } : {}) },
+        turnId: turn.id,
+      };
     });
+  }
+
+  private retrySettings(runtime: ThreadView['runtimeSettings'], input: Settings = {}): Settings {
+    return {
+      ...(runtime?.model ? { model: runtime.model } : {}),
+      ...(runtime?.reasoningEffort ? { reasoningEffort: runtime.reasoningEffort } : {}),
+      ...(runtime?.serviceTier === 'fast' || runtime?.serviceTier === null
+        ? { serviceTier: runtime.serviceTier }
+        : {}),
+      ...input,
+    };
+  }
+
+  private async dispatchCapacityRetry(job: CapacityAttempt): Promise<void> {
+    if (
+      !this.capacityRetries.owns(job) ||
+      !this.accepting ||
+      this.maintenance ||
+      !this.codex.ready ||
+      this.codex.epoch !== job.epoch
+    )
+      throw new AppError('TURN_CONFLICT', '容量重试的运行环境已改变', 409);
+    const thread = this.projection.get(job.threadId);
+    const last = thread?.turns.at(-1);
+    if (
+      !thread ||
+      !last ||
+      last.id !== job.turnId ||
+      last.status !== 'failed' ||
+      this.store.activeForThread(job.threadId) ||
+      !job.previousOperationId ||
+      this.store.get(job.previousOperationId)?.state !== 'acknowledged' ||
+      this.inFlightOperations.has(job.previousOperationId)
+    )
+      throw new AppError('TURN_CONFLICT', '原任务状态已改变，请检查后继续', 409);
+    await this.dispatchTurn(
+      job.threadId,
+      {
+        clientOperationId: job.operationId,
+        text: '',
+        settings: job.settings,
+      },
+      job,
+    );
+  }
+
+  async cancelCapacityRetry(threadId: string, input: InterruptInput): Promise<Operation> {
+    return this.perform('turn.retry.cancel', threadId, input, async () => {
+      const thread = await this.loadThread(threadId);
+      this.ensureManaged(thread);
+      const job = this.capacityRetries.current(threadId);
+      if (!job?.view || job.rootTurnId !== input.expectedTurnId)
+        throw new AppError('TURN_CONFLICT', '容量重试已结束或被替代', 409);
+      this.store.dispatch(input.clientOperationId);
+      this.capacityRetries.cancel(job);
+      if (job.attempt > 0 && job.turnId) await this.interruptCancelledCapacity(job, job.turnId);
+      return { result: { threadId, cancelled: true } };
+    });
+  }
+
+  private async interruptCancelledCapacity(job: CapacityAttempt, turnId: string): Promise<void> {
+    const turn = this.projection.get(job.threadId)?.turns.find((entry) => entry.id === turnId);
+    if (
+      !job.cancelled ||
+      job.interruptSent ||
+      !turn ||
+      !isActive(turn.status) ||
+      this.codex.epoch !== job.epoch ||
+      !this.codex.ready
+    )
+      return;
+    job.interruptSent = true;
+    await this.codex.interruptTurn(job.threadId, turnId);
+  }
+
+  async retryTurn(threadId: string, input: RetryTurnInput): Promise<Operation> {
+    return this.dispatchTurn(threadId, { ...input, text: '' }, undefined, input.expectedTurnId);
   }
 
   async compactThread(threadId: string, input: OperationInput): Promise<Operation> {
     return this.perform('thread.compact', threadId, input, async () => {
+      this.capacityRetries.clear(threadId);
       const thread = await this.loadThread(threadId);
       this.ensureManaged(thread);
       const ownership = this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
@@ -999,6 +1138,7 @@ export class GatewayService {
 
   async startReview(threadId: string, input: StartReviewInput): Promise<Operation> {
     return this.perform('review.start', threadId, input, async () => {
+      this.capacityRetries.clear(threadId);
       const thread = await this.loadThread(threadId);
       this.ensureManaged(thread);
       const ownership = this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
@@ -1165,6 +1305,7 @@ export class GatewayService {
 
   async shutdown(): Promise<void> {
     this.accepting = false;
+    this.capacityRetries.clearAll();
     await this.projectClones.close();
     this.store.recover();
     this.projection.runtimeReset();
@@ -1222,6 +1363,8 @@ export class GatewayService {
         const action = this.projection.resolveAction(target, 'pending');
         if (action?.threadId) this.publishThread(action.threadId);
       }
+      if (kind === 'turn.start')
+        this.capacityRetries.dispatchFailed(target, input.clientOperationId);
       if (dispatched && kind === 'turn.start') this.publishThread(target);
       this.events.publish('operation', operation);
       if (uncertain)
@@ -1552,8 +1695,31 @@ export class GatewayService {
     );
   }
 
+  private retryLinks(threadId: string): Map<string, string> {
+    let links = this.capacityLinks.get(threadId);
+    if (!links) {
+      links = this.store.capacityRetryTurns(threadId);
+      this.capacityLinks.set(threadId, links);
+    }
+    return links;
+  }
+
   private threadView(thread: ThreadView): ThreadView {
     const result = structuredClone(thread);
+    // Most threads have no empty-input continuation, so defer the operation-history lookup.
+    const links =
+      this.capacityLinks.get(thread.id) ??
+      (thread.turns.some((turn) => !turn.items.some((item) => item.type === 'userMessage'))
+        ? this.retryLinks(thread.id)
+        : undefined);
+    for (const turn of result.turns) {
+      const root = links?.get(turn.id);
+      if (root) turn.retryOf = root;
+    }
+    const retry = this.capacityRetries.view(thread.id);
+    if (retry) result.capacityRetry = structuredClone(retry);
+    else delete result.capacityRetry;
+    if (this.capacityRetries.pending(thread.id)) result.status = 'running';
     result.archived = thread.archived ?? false;
     result.historyVisible = this.historyVisible(thread);
     const marker = this.store.activeForThread(thread.id);
@@ -1615,6 +1781,29 @@ export class GatewayService {
   }
 
   private consume(event: CodexEvent): void {
+    if (
+      event.type === 'runtime' &&
+      (!event.diagnostics.ready || event.diagnostics.codexEpoch !== this.currentEpoch)
+    )
+      this.capacityRetries.clearAll();
+    const eventThread =
+      event.type === 'action'
+        ? event.action.threadId
+        : 'threadId' in event
+          ? event.threadId
+          : undefined;
+    const eventMarker = eventThread ? this.store.activeForThread(eventThread) : undefined;
+    const matchesDispatch =
+      event.type !== 'turn' ||
+      eventMarker?.turnId === event.turn.id ||
+      (eventMarker?.turnId === null &&
+        this.turnBaselines.get(eventMarker.operationId)?.has(event.turn.id) === false);
+    this.capacityRetries.observe(event, matchesDispatch ? eventMarker?.operationId : undefined);
+    if (event.type === 'turn') {
+      const job = this.capacityRetries.current(event.threadId);
+      if (job?.attempt && job.turnId === event.turn.id && job.rootTurnId)
+        this.retryLinks(event.threadId).set(event.turn.id, job.rootTurnId);
+    }
     if (event.type === 'runtime') {
       this.compatibilityConfirmation(event.diagnostics);
       if (!event.diagnostics.ready || event.diagnostics.codexEpoch !== this.currentEpoch) {
@@ -1738,7 +1927,7 @@ export class GatewayService {
       if (isTerminal(event.turn.status)) {
         this.store.finishTurn(thread.id, event.turn.id, this.codex.epoch);
         this.projection.expireTurn(thread.id, event.turn.id);
-        if (newCompletion) {
+        if (newCompletion && !this.capacityRetries.pending(thread.id)) {
           try {
             this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
             this.events.publishCompletion({

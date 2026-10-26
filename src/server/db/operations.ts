@@ -266,6 +266,22 @@ export class OperationStore {
       .all();
   }
 
+  capacityRetryTurns(threadId: string): Map<string, string> {
+    const rows = this.database
+      .select({ result: operations.result })
+      .from(operations)
+      .where(and(eq(operations.target, threadId), eq(operations.kind, 'turn.start')))
+      .all();
+    const links = new Map<string, string>();
+    for (const { result } of rows) {
+      if (typeof result !== 'object' || result === null) continue;
+      const value = result as { turnId?: unknown; retryOf?: unknown };
+      if (typeof value.turnId === 'string' && typeof value.retryOf === 'string')
+        links.set(value.turnId, value.retryOf);
+    }
+    return links;
+  }
+
   marker(operationId: string): ExecutionMarker | undefined {
     return this.database
       .select()

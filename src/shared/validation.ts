@@ -92,6 +92,7 @@ export const steerSchema = operationSchema
   })
   .refine(hasContent, 'Text or an image is required');
 export const interruptSchema = operationSchema.extend({ expectedTurnId: idSchema });
+export const retryTurnSchema = createThreadSchema.extend({ expectedTurnId: idSchema });
 const elicitationValueSchema = z.union([
   z.string().max(10_000),
   z.number().finite(),
