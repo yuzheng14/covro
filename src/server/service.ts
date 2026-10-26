@@ -1,6 +1,7 @@
 import type { CodexClient, CodexDiagnostics, CodexEvent } from '../codex/types.js';
 import { attentionKey, pendingAttention } from '../shared/thread-attention.js';
 import { ShellService } from './shell.js';
+import { readGithubRepository } from './github-repository.js';
 import type { StartShellInput } from '../shared/shell.js';
 import { realpathSync } from 'node:fs';
 import { cp } from 'node:fs/promises';
@@ -133,6 +134,26 @@ export class GatewayService {
 
   listProjects() {
     return this.projects.list();
+  }
+
+  async getProjectGithubRepository(projectId: string) {
+    const project = this.projects.get(projectId);
+    const url = await readGithubRepository(project.canonicalRoot);
+    this.projects.get(projectId);
+    return { url };
+  }
+
+  async getThreadGithubRepository(threadId: string) {
+    // Use the saved, authorized cwd, including archived and unassigned conversations.
+    let link = this.store.getThreadLink(threadId);
+    if (!link) {
+      this.normalize(await this.codex.readThreadMetadata(threadId));
+      link = this.store.getThreadLink(threadId)!;
+    }
+    const { cwd } = this.workspaces.assertOwnership(link.projectId, link.cwd, threadId);
+    const url = await readGithubRepository(cwd);
+    this.workspaces.assertOwnership(link.projectId, link.cwd, threadId);
+    return { url };
   }
   startShell(projectId: string, input: StartShellInput) {
     return this.perform('shell.start', projectId, input, async () => {

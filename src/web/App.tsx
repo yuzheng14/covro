@@ -12,6 +12,7 @@ import { Sidebar } from './components/Sidebar';
 import { FilePreviewProvider } from './components/FilePreviewProvider';
 import { Conversation } from './components/Conversation';
 import { ThreadTitle } from './components/ThreadTitle';
+import { GithubRepositoryLink } from './components/GithubRepositoryLink';
 import { Composer } from './components/Composer';
 import { ActionCard } from './components/ActionCard';
 import { ConnectionBadge, Diagnostics } from './components/Diagnostics';
@@ -524,6 +525,10 @@ export function App() {
                 </details>
               )}
             </div>
+            <GithubRepositoryLink
+              projectId={project?.available ? project.id : undefined}
+              threadId={workspace.selectedId}
+            />
           </div>
           <div className="topbar-status">
             <Button

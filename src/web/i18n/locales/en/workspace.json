@@ -78,5 +78,6 @@
   "login_expired_or_history_response_was_not_markdown": "Login expired or history response was not Markdown. Log in again and retry.",
   "export_response_has_no_valid_filename_no_file": "Export response has no valid filename. No file downloaded.",
   "export_response_lacks_history_completeness_information_no_file": "Export response lacks history completeness information. No file downloaded.",
-  "request_failed_please_try_again": "Request failed. Please try again."
+  "request_failed_please_try_again": "Request failed. Please try again.",
+  "open_github_repository": "Open GitHub repository"
 }

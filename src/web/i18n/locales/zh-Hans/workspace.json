@@ -78,5 +78,6 @@
   "login_expired_or_history_response_was_not_markdown": "登录已过期或历史接口未返回 Markdown，请重新登录后重试。",
   "export_response_has_no_valid_filename_no_file": "导出响应缺少有效文件名，未下载文件。",
   "export_response_lacks_history_completeness_information_no_file": "导出响应缺少历史完整性说明，未下载文件。",
-  "request_failed_please_try_again": "请求失败，请稍后重试。"
+  "request_failed_please_try_again": "请求失败，请稍后重试。",
+  "open_github_repository": "打开 GitHub 仓库"
 }

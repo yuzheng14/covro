@@ -211,6 +211,12 @@ export function createApp({
     return c.json(op, status(op));
   });
   app.get('/api/projects', async (c) => c.json({ data: await service.listProjects() }));
+  app.get('/api/projects/:projectId/github-repository', async (c) =>
+    c.json(await service.getProjectGithubRepository(id(c.req.param('projectId')))),
+  );
+  app.get('/api/threads/:threadId/github-repository', async (c) =>
+    c.json(await service.getThreadGithubRepository(id(c.req.param('threadId')))),
+  );
   app.get('/api/unassigned/runtime-settings', async (c) =>
     c.json(await service.readRuntimeSettings(null)),
   );
