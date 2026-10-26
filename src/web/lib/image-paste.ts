@@ -6,6 +6,7 @@ export interface DraftImage {
   name: string;
   size: number;
   dataUrl?: string;
+  failed?: boolean;
 }
 export interface MessageDraft {
   text: string;

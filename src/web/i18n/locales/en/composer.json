@@ -31,8 +31,8 @@
   "drag_up_to_increase_height_down_to_decrease": "Drag up to increase height, down to decrease; arrow keys also work",
   "resize_input_height": "Resize input height",
   "pixels": "{{v0}} pixels",
-  "paste_a_png_jpeg_webp_or_gif_image": "Paste a PNG, JPEG, WebP or GIF image.",
-  "the_image_is_empty_copy_and_paste_it": "The image is empty. Copy and paste it again.",
+  "paste_a_png_jpeg_webp_or_gif_image": "Choose or paste PNG, JPEG, WebP or GIF images.",
+  "the_image_is_empty_copy_and_paste_it": "The image is empty. Select or paste it again.",
   "up_to_images_per_message": "Up to {{v0}} images per message.",
   "images_per_message_cannot_exceed_2_mib_in": "Images per message cannot exceed 2 MiB in total. Resize them and retry.",
   "pixels_other": "{{v0}} pixels",
@@ -40,5 +40,8 @@
   "up_to_images_per_message_other": "Up to {{v0}} images per message.",
   "up_to_images_per_message_one": "Up to {{v0}} image per message.",
   "tap_to_send_enter_for_new_line": "Tap send · Enter for a new line",
-  "tap_to_run_command_enter_for_new_line": "Tap to run command · Enter for a new line"
+  "tap_to_run_command_enter_for_new_line": "Tap to run command · Enter for a new line",
+  "add_images": "Add images",
+  "retry_image": "Retry reading",
+  "image_read_failed": "Could not read the image. Retry or select it again."
 }

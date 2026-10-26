@@ -31,8 +31,8 @@
   "drag_up_to_increase_height_down_to_decrease": "向上拖动增高，向下拖动缩小；也可用方向键调整",
   "resize_input_height": "调整输入框高度",
   "pixels": "{{v0}} 像素",
-  "paste_a_png_jpeg_webp_or_gif_image": "请粘贴 PNG、JPEG、WebP 或 GIF 图片。",
-  "the_image_is_empty_copy_and_paste_it": "图片为空，请重新复制后粘贴。",
+  "paste_a_png_jpeg_webp_or_gif_image": "请选择或粘贴 PNG、JPEG、WebP 或 GIF 图片。",
+  "the_image_is_empty_copy_and_paste_it": "图片为空，请重新选择或粘贴。",
   "up_to_images_per_message": "每条消息最多添加 {{v0}} 张图片。",
   "images_per_message_cannot_exceed_2_mib_in": "每条消息的图片总大小不能超过 2 MiB，请缩小图片后重试。",
   "pixels_other": "{{v0}} 像素",
@@ -40,5 +40,8 @@
   "up_to_images_per_message_other": "每条消息最多添加 {{v0}} 张图片。",
   "up_to_images_per_message_one": "每条消息最多添加 {{v0}} 张图片。",
   "tap_to_send_enter_for_new_line": "点击发送按钮 · Enter 换行",
-  "tap_to_run_command_enter_for_new_line": "点击执行命令 · Enter 换行"
+  "tap_to_run_command_enter_for_new_line": "点击执行命令 · Enter 换行",
+  "add_images": "添加图片",
+  "retry_image": "重试读取",
+  "image_read_failed": "图片读取失败，请重试或重新选择。"
 }

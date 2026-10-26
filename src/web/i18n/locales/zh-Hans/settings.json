@@ -172,5 +172,7 @@
   "autoReviewRequired": "受管要求规定此模型必须使用自动审核",
   "fieldUnit": "{{label}}（MiB）",
   "fieldError": "{{label}}：{{reason}}",
-  "temporaryDirectories": "TMPDIR：{{tmpdir}}；/tmp：{{slashTmp}}"
+  "temporaryDirectories": "TMPDIR：{{tmpdir}}；/tmp：{{slashTmp}}",
+  "model_settings": "模型设置",
+  "close_model_settings": "关闭模型设置"
 }

@@ -1,3 +1,4 @@
+import { openModelSettings } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
 import type { SystemInfo } from '../../src/shared/types';
 import {
@@ -8,7 +9,8 @@ import {
   openSidebarSettings,
 } from './helpers';
 
-const effortControl = (page: Page) => page.getByRole('combobox', { name: '推理强度', exact: true });
+const effortControl = (page: Page) =>
+  page.getByRole('combobox', { name: '推理强度', exact: true, includeHidden: true });
 const effortHint = (page: Page) =>
   page.locator('.control-hint').filter({ has: effortControl(page) });
 const effortTooltip = (page: Page) => page.getByRole('tooltip').filter({ hasText: /^推理强度：/ });
@@ -18,6 +20,7 @@ async function newThread(page: Page) {
   await confirmCompatibility(page);
   await createEmptyThread(page);
   await expectThreadReady(page);
+  await openModelSettings(page);
 }
 
 test.beforeEach(async ({ request }) => {
@@ -34,6 +37,7 @@ test('effort hint reports the exact value on hover and keyboard focus and Escape
   await expect(effort).toHaveAccessibleDescription('推理强度：medium');
   await expect(hint).toHaveCount(0);
   await input.focus();
+  await openModelSettings(page);
   await effortHint(page).hover();
   await expect(hint).toBeVisible();
   await expect(hint).toHaveText('推理强度：medium');
@@ -52,18 +56,20 @@ test('effort hint reports the exact value on hover and keyboard focus and Escape
   await expect(input).toBeFocused();
   await page.mouse.move(0, 0, { steps: 5 });
   await expect(hint).toHaveCount(0);
+  await openModelSettings(page);
   await effortHint(page).hover();
   await expect(hint).toBeVisible();
   await input.press('Escape');
   await expect(hint).toHaveCount(0);
   await expect(input).toBeFocused();
   await page.mouse.move(0, 0, { steps: 5 });
+  await openModelSettings(page);
   await effortHint(page).hover();
   await expect(hint).toBeVisible();
   await page.mouse.move(0, 0, { steps: 5 });
   await expect(hint).toHaveCount(0);
 
-  const model = page.getByRole('combobox', { name: '模型', exact: true });
+  const model = page.getByRole('combobox', { name: '模型', exact: true, includeHidden: true });
   await model.focus();
   await model.press('Tab');
   await expect(effort).toBeFocused();
@@ -88,6 +94,7 @@ test('effort hint distinguishes the next task value from the confirmed current v
   await effort.click();
   await page.getByRole('option', { name: 'high', exact: true }).click();
   await expect(effort).toHaveAttribute('aria-expanded', 'false');
+  await openModelSettings(page);
   await effortHint(page).hover();
   await expect(hint).toBeVisible();
   await expect(hint).toContainText('推理强度：high');
@@ -101,6 +108,7 @@ test('effort hint distinguishes the next task value from the confirmed current v
   await page.getByRole('button', { name: '发送任务', exact: true }).click();
   await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
   await expect(effort).toBeEnabled();
+  await openModelSettings(page);
   await effortHint(page).hover();
   await expect(hint).toBeVisible();
   await expect(hint).toHaveText('推理强度：high');
@@ -117,6 +125,7 @@ test('disabled effort controls still expose their current value on hover', async
   await page.getByRole('button', { name: '发送任务', exact: true }).click();
   await expect(page.locator('.action-card')).toBeVisible();
   await expect(effort).toBeDisabled();
+  await openModelSettings(page);
   await effortHint(page).hover();
   await expect(hint).toBeVisible();
   await expect(hint).toHaveText('推理强度：medium');
@@ -124,6 +133,7 @@ test('disabled effort controls still expose their current value on hover', async
   await page.keyboard.press('Escape');
   await expect(hint).toHaveCount(0);
   await page.mouse.move(0, 0, { steps: 5 });
+  await openModelSettings(page);
   await effortHint(page).hover();
   await expect(hint).toBeVisible();
   await page.getByRole('button', { name: '中断', exact: true }).click();
@@ -146,8 +156,10 @@ test('a long unrecognized effort remains readable in a tooltip within a 320px vi
   await page.goto('/');
   await confirmCompatibility(page);
   const effort = effortControl(page);
+  await openModelSettings(page);
   await expect(effort).toHaveAttribute('data-value', effortValue);
   await expect(effort).toHaveAccessibleDescription(`推理强度：${effortValue}`);
+  await openModelSettings(page);
   await effortHint(page).hover();
   await expect(effortTooltip(page)).toHaveText(`推理强度：${effortValue}`);
   const popup = page.locator('[data-slot="tooltip-content"]');
@@ -176,7 +188,7 @@ test('custom menus support keyboard selection, Escape and outside dismissal with
   page,
 }) => {
   await newThread(page);
-  const model = page.getByRole('combobox', { name: '模型', exact: true });
+  const model = page.getByRole('combobox', { name: '模型', exact: true, includeHidden: true });
   const effort = effortControl(page);
   const hint = effortTooltip(page);
   await model.click();
@@ -254,8 +266,9 @@ test('model and effort menus fit a 320px viewport with long model names', async 
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto('/');
   await confirmCompatibility(page);
-  const model = page.getByRole('combobox', { name: '模型', exact: true });
+  const model = page.getByRole('combobox', { name: '模型', exact: true, includeHidden: true });
   const effort = effortControl(page);
+  await openModelSettings(page);
   await expect(model).toHaveAttribute('data-value', longModel);
   await model.click();
   const menu = page.getByRole('listbox');
@@ -296,6 +309,7 @@ test('Escape closes Slash commands and hovered tooltips together without executi
   page,
 }) => {
   await newThread(page);
+  await page.getByRole('button', { name: '关闭模型设置' }).click();
   const posts: string[] = [];
   page.on('request', (request) => {
     if (request.method() === 'POST') posts.push(request.url());
@@ -303,7 +317,7 @@ test('Escape closes Slash commands and hovered tooltips together without executi
   const input = page.getByRole('textbox', { name: '任务内容', exact: true });
   const menu = page.getByRole('listbox', { name: 'Slash 命令', exact: true });
 
-  for (const control of ['execute', 'effort'] as const) {
+  for (const control of ['execute', 'summary'] as const) {
     await input.fill('');
     await input.fill('/status');
     await expect(menu).toBeVisible();
@@ -311,9 +325,11 @@ test('Escape closes Slash commands and hovered tooltips together without executi
     const trigger =
       control === 'execute'
         ? page.getByRole('button', { name: '执行命令', exact: true })
-        : effortControl(page);
+        : page.getByRole('button', { name: '模型设置', exact: true });
     const description =
-      control === 'execute' ? 'Enter 执行命令 / Esc 关闭菜单' : '推理强度：medium';
+      control === 'execute'
+        ? 'Enter 执行命令 / Esc 关闭菜单'
+        : /模型：simulated-model.*推理强度：medium.*Fast 关/;
     await expect(trigger).toHaveAccessibleDescription(description);
     await trigger.hover();
     const hint = page.getByRole('tooltip').filter({ hasText: description });
@@ -404,3 +420,38 @@ for (const viewport of [
     await expect(page.locator('.sidebar-settings-trigger')).toBeFocused();
   });
 }
+
+test('the combined control opens a keyboard-accessible popover and Escape dismisses nested menus first', async ({
+  page,
+}) => {
+  await newThread(page);
+  await page.getByRole('button', { name: '关闭模型设置', exact: true }).click();
+  const summary = page.getByRole('button', { name: '模型设置', exact: true });
+  const popup = page.getByRole('dialog', { name: '模型设置', exact: true });
+  await expect(summary).toContainText('simulated-model');
+  await expect(summary).toContainText('medium');
+  await expect(popup).toBeHidden();
+  await summary.focus();
+  await summary.press('Enter');
+  await expect(popup).toBeVisible();
+  const close = popup.getByRole('button', { name: '关闭模型设置', exact: true });
+  await close.focus();
+  await close.press('Tab');
+  const model = popup.getByRole('combobox', { name: '模型', exact: true });
+  await expect(model).toBeFocused();
+  await model.press('ArrowDown');
+  await expect(page.getByRole('listbox', { name: '模型', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(popup).toBeVisible();
+  await expect(model).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(popup).toBeHidden();
+  await expect(summary).toBeFocused();
+  const input = page.getByRole('textbox', { name: '任务内容', exact: true });
+  await input.fill('收起设置后保留文字');
+  await summary.click();
+  await expect(popup).toBeVisible();
+  await input.click({ position: { x: 8, y: 8 } });
+  await expect(popup).toBeHidden();
+  await expect(input).toHaveValue('收起设置后保留文字');
+});

@@ -172,5 +172,7 @@
   "autoReviewRequired": "관리 정책에 따라 이 모델은 자동 검토를 사용해야 합니다.",
   "fieldUnit": "{{label}}(MiB)",
   "fieldError": "{{label}}: {{reason}}",
-  "temporaryDirectories": "TMPDIR: {{tmpdir}}; /tmp: {{slashTmp}}"
+  "temporaryDirectories": "TMPDIR: {{tmpdir}}; /tmp: {{slashTmp}}",
+  "model_settings": "모델 설정",
+  "close_model_settings": "모델 설정 닫기"
 }

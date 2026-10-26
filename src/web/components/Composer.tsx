@@ -27,6 +27,7 @@ import type { SentDraft } from '../lib/conversation-drafts';
 import { useUpgradeReloadState } from '../lib/upgrade-reload';
 import { ComposerResizeHandle } from './ComposerResizeHandle';
 import { usesMobileInput } from '../lib/mobile-input';
+import { IMAGE_TYPES } from '../../shared/images';
 
 interface Props {
   focusRequest?: number;
@@ -84,6 +85,9 @@ export function Composer(props: Props) {
   const sendingRef = useRef(new Set<string>());
   const submittedDrafts = useRef(new Map<string, MessageDraft>());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pickerDraftKey = useRef<string | undefined>(undefined);
+  const imageFiles = useRef(new Map<string, File>());
   useEffect(() => {
     if (props.focusRequest) textareaRef.current?.focus();
   }, [props.focusRequest]);
@@ -195,6 +199,7 @@ export function Composer(props: Props) {
     const sent = submittedDrafts.current.get(draftKey);
     if (!sent) return;
     submittedDrafts.current.delete(draftKey);
+    sent.images.forEach((image) => imageFiles.current.delete(image.id));
     updateDraft(draftKey, (previous) => ({
       text: previous.text === sent.text ? '' : previous.text,
       images: previous.images.filter(
@@ -209,10 +214,22 @@ export function Composer(props: Props) {
     if (!files.length) return;
     // Plain text continues through the browser's native paste and IME handling.
     event.preventDefault();
-    const current = draftsRef.current[key] ?? emptyDraft;
+    addImages(files, key, {
+      text: event.clipboardData.getData('text/plain'),
+      start: event.currentTarget.selectionStart,
+      end: event.currentTarget.selectionEnd,
+    });
+  }
+  function addImages(
+    files: File[],
+    draftKey: string,
+    pasted?: { text: string; start: number; end: number },
+  ) {
+    if (!files.length) return;
+    const current = draftsRef.current[draftKey] ?? emptyDraft;
     const error = imagePasteError(files, current.images);
     if (error) {
-      updateDraft(key, (previous) => ({ ...previous, error }));
+      updateDraft(draftKey, (previous) => ({ ...previous, error }));
       return;
     }
     const added = files.map((file) => ({
@@ -220,37 +237,51 @@ export function Composer(props: Props) {
       name: file.name || t('composer:pasted_image'),
       size: file.size,
     }));
-    const pastedText = event.clipboardData.getData('text/plain');
-    const start = event.currentTarget.selectionStart;
-    const end = event.currentTarget.selectionEnd;
-    updateDraft(key, (previous) => ({
-      text: pastedText
-        ? (previous.text.slice(0, start) + pastedText + previous.text.slice(end)).slice(0, 100000)
+    updateDraft(draftKey, (previous) => ({
+      text: pasted?.text
+        ? (
+            previous.text.slice(0, pasted.start) +
+            pasted.text +
+            previous.text.slice(pasted.end)
+          ).slice(0, 100000)
         : previous.text,
       images: [...previous.images, ...added],
     }));
     files.forEach((file, index) => {
       const id = added[index]!.id;
-      void readImage(file).then(
-        (dataUrl) =>
-          updateDraft(key, (previous) => ({
-            ...previous,
-            images: previous.images.map((image) =>
-              image.id === id ? { ...image, dataUrl } : image,
-            ),
-          })),
-        () =>
-          updateDraft(key, (previous) =>
-            previous.images.some((image) => image.id === id)
-              ? {
-                  ...previous,
-                  images: previous.images.filter((image) => image.id !== id),
-                  error: t('common:could_not_read_the_image_please_paste_it'),
-                }
-              : previous,
-          ),
-      );
+      imageFiles.current.set(id, file);
+      loadImage(draftKey, id, file);
     });
+  }
+  function loadImage(draftKey: string, id: string, file: File) {
+    updateDraft(draftKey, (previous) => ({
+      ...previous,
+      error: undefined,
+      images: previous.images.map((image) =>
+        image.id === id ? { ...image, failed: false } : image,
+      ),
+    }));
+    void readImage(file).then(
+      (dataUrl) => {
+        imageFiles.current.delete(id);
+        updateDraft(draftKey, (previous) => ({
+          ...previous,
+          images: previous.images.map((image) => (image.id === id ? { ...image, dataUrl } : image)),
+        }));
+      },
+      () =>
+        updateDraft(draftKey, (previous) =>
+          previous.images.some((image) => image.id === id)
+            ? {
+                ...previous,
+                images: previous.images.map((image) =>
+                  image.id === id ? { ...image, failed: true } : image,
+                ),
+                error: t('composer:image_read_failed'),
+              }
+            : previous,
+        ),
+    );
   }
   const active = Boolean(props.thread?.managed && isActive(props.thread.status));
   const external = props.thread && !props.thread.managed && !props.thread.archived;
@@ -369,6 +400,17 @@ export function Composer(props: Props) {
               <li key={image.id}>
                 {image.dataUrl ? (
                   <img src={image.dataUrl} alt={t('composer:image_to_send', { v0: index + 1 })} />
+                ) : image.failed ? (
+                  <button
+                    type="button"
+                    className="composer-image-retry"
+                    onClick={() => {
+                      const file = imageFiles.current.get(image.id);
+                      if (file) loadImage(key, image.id, file);
+                    }}
+                  >
+                    {t('composer:retry_image')}
+                  </button>
                 ) : (
                   <span role="status">{t('common:loading_2')}</span>
                 )}
@@ -379,13 +421,14 @@ export function Composer(props: Props) {
                   variant="secondary"
                   size="sm"
                   aria-label={t('composer:remove_image', { v0: index + 1 })}
-                  onClick={() =>
+                  onClick={() => {
+                    imageFiles.current.delete(image.id);
                     updateDraft(key, (previous) => ({
                       ...previous,
                       error: undefined,
                       images: previous.images.filter((entry) => entry.id !== image.id),
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   <Icon name="close" size={13} />
                 </Button>
@@ -492,6 +535,32 @@ export function Composer(props: Props) {
         />
         {mobileInput && <p className="composer-input-hint">{inputHint}</p>}
         <SettingsPanel
+          attachmentControl={
+            <ControlHint content={t('composer:add_images')}>
+              <Button
+                type="button"
+                className="composer-attach"
+                variant="ghost"
+                size="sm"
+                aria-label={t('composer:add_images')}
+                disabled={
+                  props.disabled ||
+                  Boolean(props.thread?.archived) ||
+                  Boolean(props.threadLoading) ||
+                  props.submitting ||
+                  props.resuming ||
+                  props.forking ||
+                  !(props.thread || props.projectId)
+                }
+                onClick={() => {
+                  pickerDraftKey.current = key;
+                  fileInputRef.current?.click();
+                }}
+              >
+                <Icon name="plus" size={20} />
+              </Button>
+            </ControlHint>
+          }
           settings={props.settings}
           projectName={props.projectName}
           models={props.models}
@@ -567,6 +636,20 @@ export function Composer(props: Props) {
             </Button>
           </ControlHint>
         </SettingsPanel>
+        <input
+          ref={fileInputRef}
+          type="file"
+          hidden
+          multiple
+          accept={IMAGE_TYPES.join(',')}
+          aria-label={t('composer:add_images')}
+          onChange={(event) => {
+            const files = Array.from(event.currentTarget.files ?? []);
+            event.currentTarget.value = '';
+            addImages(files, pickerDraftKey.current ?? key);
+            pickerDraftKey.current = undefined;
+          }}
+        />
       </div>
       <p className="composer-note">
         {active

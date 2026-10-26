@@ -15,6 +15,7 @@ import { Icon } from './Icon';
 import { PermissionDetails, PermissionModeSelect } from './PermissionModeSelect';
 import { permissionModes } from '../lib/permissions';
 import { permissionLabel } from '../lib/settings';
+import { ModelSettingsPopover } from './ModelSettingsPopover';
 import { ReasoningGauge } from './ReasoningGauge';
 import { ControlHint } from './ControlHint';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -22,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 export function SettingsPanel({
   settings,
   projectName,
+  attachmentControl,
   children,
   models,
   thread,
@@ -35,6 +37,7 @@ export function SettingsPanel({
 }: {
   settings: Settings;
   projectName?: string;
+  attachmentControl: ReactNode;
   children: ReactNode;
   models: ModelInfo[];
   thread?: ThreadView;
@@ -199,6 +202,7 @@ export function SettingsPanel({
       )}
       <div className="composer-actions">
         <div className="composer-context">
+          {attachmentControl}
           <ControlHint asChild content={projectName ?? t('common:unassigned')}>
             <span className="composer-target">
               <Icon name="folder" size={14} />
@@ -227,159 +231,189 @@ export function SettingsPanel({
           </ControlHint>
         </div>
         <div className="composer-send-controls">
-          <Select
-            value={model}
-            disabled={disabled || !models.length}
-            open={modelMenuOpen}
-            onOpenChange={(open) => {
-              if (!saving || !open) setModelMenuOpen(open);
-            }}
-            onValueChange={(value) => {
-              if (saving) return;
-              const selected = models.find((entry) => entry.id === value);
-              if (selected) {
-                onChange(chooseModel(settings, current, selected));
-                void saveModelDefaults(selectedModelDefaults(settings, current, selected));
-              }
-            }}
-          >
-            <ControlHint
-              content={t('settings:model', { v0: model || unknown })}
-              suppressed={modelMenuOpen}
-            >
-              <SelectTrigger
-                className="settings-choice settings-model"
-                aria-label={t('settings:model_2')}
-                aria-disabled={saving || undefined}
-                data-value={model}
-              >
-                <span className="settings-model-value">
-                  <SelectValue placeholder={unknown}>{model || unknown}</SelectValue>
+          <ModelSettingsPopover
+            scope={scope}
+            disabled={!model && !models.length}
+            description={
+              <>
+                <span>{t('settings:model', { v0: model || unknown })}</span>
+                <span>{t('settings:reasoning_effort', { v0: effort || unknown })}</span>
+                <span>{speedLabel(tier, unknown)}</span>
+              </>
+            }
+            summary={
+              <>
+                {fast && <Zap size={14} aria-hidden="true" className="settings-summary-fast" />}
+                <span className="settings-model-value">{model || unknown}</span>
+                <span className="settings-summary-effort reasoning-tier" data-effort={effort}>
+                  {effort || unknown}
                 </span>
-              </SelectTrigger>
-            </ControlHint>
-            <SelectContent side="top" aria-label={t('settings:model_2')}>
-              {model && !selectedModel && (
-                <SelectItem value={model} disabled>
-                  {model}
-                </SelectItem>
-              )}
-              {models.map((entry) => (
-                <SelectItem key={entry.id} value={entry.id}>
-                  {entry.id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={effort}
-            disabled={disabled || !selectedModel?.reasoningEfforts.length}
-            open={effortMenuOpen}
-            onOpenChange={(open) => {
-              if (!saving || !open) setEffortMenuOpen(open);
-            }}
-            onValueChange={(value) => {
-              if (saving) return;
-              onChange(pendingSettings({ ...settings, reasoningEffort: value }, current));
-              void saveModelDefaults({ model, reasoningEffort: value });
-            }}
+              </>
+            }
           >
+            <Select
+              value={model}
+              disabled={disabled || !models.length}
+              open={modelMenuOpen}
+              onOpenChange={(open) => {
+                if (!saving || !open) setModelMenuOpen(open);
+              }}
+              onValueChange={(value) => {
+                if (saving) return;
+                const selected = models.find((entry) => entry.id === value);
+                if (selected) {
+                  onChange(chooseModel(settings, current, selected));
+                  void saveModelDefaults(selectedModelDefaults(settings, current, selected));
+                }
+              }}
+            >
+              <ControlHint
+                content={t('settings:model', { v0: model || unknown })}
+                suppressed={modelMenuOpen}
+              >
+                <SelectTrigger
+                  className="settings-choice settings-model"
+                  aria-label={t('settings:model_2')}
+                  aria-disabled={saving || undefined}
+                  data-value={model}
+                >
+                  <span className="settings-model-value">
+                    <SelectValue placeholder={unknown}>{model || unknown}</SelectValue>
+                  </span>
+                </SelectTrigger>
+              </ControlHint>
+              <SelectContent side="top" aria-label={t('settings:model_2')}>
+                {model && !selectedModel && (
+                  <SelectItem value={model} disabled>
+                    {model}
+                  </SelectItem>
+                )}
+                {models.map((entry) => (
+                  <SelectItem key={entry.id} value={entry.id}>
+                    {entry.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={effort}
+              disabled={disabled || !selectedModel?.reasoningEfforts.length}
+              open={effortMenuOpen}
+              onOpenChange={(open) => {
+                if (!saving || !open) setEffortMenuOpen(open);
+              }}
+              onValueChange={(value) => {
+                if (saving) return;
+                onChange(pendingSettings({ ...settings, reasoningEffort: value }, current));
+                void saveModelDefaults({ model, reasoningEffort: value });
+              }}
+            >
+              <ControlHint
+                id={effortHintId}
+                suppressed={effortMenuOpen}
+                content={
+                  <>
+                    <span>{t('settings:reasoning_effort', { v0: effort || unknown })}</span>
+                    {changes.reasoningEffort !== undefined && (
+                      <span>
+                        {t('settings:pending_current', { v0: current?.reasoningEffort ?? unknown })}
+                      </span>
+                    )}
+                  </>
+                }
+              >
+                <SelectTrigger
+                  className="settings-choice settings-effort reasoning-tier"
+                  aria-label={t('settings:reasoning_effort_2')}
+                  aria-disabled={saving || undefined}
+                  aria-describedby={effortHintId}
+                  data-value={effort}
+                  data-effort={effort}
+                >
+                  <span className="reasoning-effort-display" key={effort} aria-hidden="true">
+                    <ReasoningGauge effort={effort} />
+                    {effortTierLabel && (
+                      <span className="reasoning-tier-label">{effortTierLabel}</span>
+                    )}
+                  </span>
+                  <span className="settings-effort-value">
+                    <SelectValue placeholder={unknown}>{effort || unknown}</SelectValue>
+                  </span>
+                </SelectTrigger>
+              </ControlHint>
+              <SelectContent side="top" aria-label={t('settings:reasoning_effort_2')}>
+                {effort && !selectedModel?.reasoningEfforts.includes(effort) && (
+                  <SelectItem
+                    value={effort}
+                    disabled
+                    className="reasoning-tier"
+                    data-effort={effort}
+                  >
+                    {effort}
+                  </SelectItem>
+                )}
+                {selectedModel?.reasoningEfforts.map((entry) => (
+                  <SelectItem
+                    key={entry}
+                    value={entry}
+                    className="reasoning-tier"
+                    data-effort={entry}
+                  >
+                    {entry}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <ControlHint
-              id={effortHintId}
-              suppressed={effortMenuOpen}
+              id={speedHintId}
               content={
                 <>
-                  <span>{t('settings:reasoning_effort', { v0: effort || unknown })}</span>
-                  {changes.reasoningEffort !== undefined && (
+                  <span>{speedLabel(tier, unknown)}</span>
+                  <span>
+                    {fast
+                      ? t('settings:turn_fast_off')
+                      : fastAvailable
+                        ? t('settings:turn_fast_on_faster_replies_increased_usage')
+                        : t('settings:fast_is_unavailable_for_this_model')}
+                  </span>
+                  {changes.serviceTier !== undefined && (
                     <span>
-                      {t('settings:pending_current', { v0: current?.reasoningEffort ?? unknown })}
+                      {t('settings:pending_current', {
+                        v0: speedLabel(current?.serviceTier, unknown),
+                      })}
                     </span>
                   )}
                 </>
               }
             >
-              <SelectTrigger
-                className="settings-choice settings-effort reasoning-tier"
-                aria-label={t('settings:reasoning_effort_2')}
-                aria-disabled={saving || undefined}
-                aria-describedby={effortHintId}
-                data-value={effort}
-                data-effort={effort}
+              <button
+                type="button"
+                className="settings-choice settings-speed"
+                aria-label={t('settings:fast_mode')}
+                aria-describedby={speedHintId}
+                aria-pressed={tier === undefined ? 'mixed' : fast}
+                disabled={disabled || Boolean(threadLoading) || (!fast && !fastAvailable)}
+                data-fast={fast}
+                data-pending={changes.serviceTier !== undefined}
+                onClick={() =>
+                  onChange(
+                    pendingSettings({ ...settings, serviceTier: fast ? null : 'fast' }, current),
+                  )
+                }
               >
-                <span className="reasoning-effort-display" key={effort} aria-hidden="true">
-                  <ReasoningGauge effort={effort} />
-                  {effortTierLabel && (
-                    <span className="reasoning-tier-label">{effortTierLabel}</span>
-                  )}
+                <Zap
+                  size={18}
+                  strokeWidth={1.7}
+                  fill={fast ? 'currentColor' : 'none'}
+                  aria-hidden="true"
+                />
+                <span>{t('settings:fast_mode')}</span>
+                <span className="settings-speed-state" aria-hidden="true">
+                  <span />
                 </span>
-                <span className="sr-only">
-                  <SelectValue placeholder={unknown}>{effort || unknown}</SelectValue>
-                </span>
-              </SelectTrigger>
+              </button>
             </ControlHint>
-            <SelectContent side="top" aria-label={t('settings:reasoning_effort_2')}>
-              {effort && !selectedModel?.reasoningEfforts.includes(effort) && (
-                <SelectItem value={effort} disabled className="reasoning-tier" data-effort={effort}>
-                  {effort}
-                </SelectItem>
-              )}
-              {selectedModel?.reasoningEfforts.map((entry) => (
-                <SelectItem
-                  key={entry}
-                  value={entry}
-                  className="reasoning-tier"
-                  data-effort={entry}
-                >
-                  {entry}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <ControlHint
-            id={speedHintId}
-            content={
-              <>
-                <span>{speedLabel(tier, unknown)}</span>
-                <span>
-                  {fast
-                    ? t('settings:turn_fast_off')
-                    : fastAvailable
-                      ? t('settings:turn_fast_on_faster_replies_increased_usage')
-                      : t('settings:fast_is_unavailable_for_this_model')}
-                </span>
-                {changes.serviceTier !== undefined && (
-                  <span>
-                    {t('settings:pending_current', {
-                      v0: speedLabel(current?.serviceTier, unknown),
-                    })}
-                  </span>
-                )}
-              </>
-            }
-          >
-            <button
-              type="button"
-              className="settings-choice settings-speed"
-              aria-label={t('settings:fast_mode')}
-              aria-describedby={speedHintId}
-              aria-pressed={tier === undefined ? 'mixed' : fast}
-              disabled={disabled || Boolean(threadLoading) || (!fast && !fastAvailable)}
-              data-fast={fast}
-              data-pending={changes.serviceTier !== undefined}
-              onClick={() =>
-                onChange(
-                  pendingSettings({ ...settings, serviceTier: fast ? null : 'fast' }, current),
-                )
-              }
-            >
-              <Zap
-                size={18}
-                strokeWidth={1.7}
-                fill={fast ? 'currentColor' : 'none'}
-                aria-hidden="true"
-              />
-            </button>
-          </ControlHint>
+          </ModelSettingsPopover>
           {children}
         </div>
       </div>

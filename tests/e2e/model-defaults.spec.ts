@@ -1,3 +1,4 @@
+import { openModelSettings } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
 import {
   confirmCompatibility,
@@ -9,9 +10,12 @@ import {
   saveConversationHistory,
 } from './helpers';
 
-const model = (page: Page) => page.getByRole('combobox', { name: '模型', exact: true });
-const effort = (page: Page) => page.getByRole('combobox', { name: '推理强度', exact: true });
+const model = (page: Page) =>
+  page.getByRole('combobox', { name: '模型', exact: true, includeHidden: true });
+const effort = (page: Page) =>
+  page.getByRole('combobox', { name: '推理强度', exact: true, includeHidden: true });
 async function choose(page: Page, control: '模型' | '推理强度', value: string) {
+  await openModelSettings(page);
   await page.getByRole('combobox', { name: control, exact: true }).click();
   await page.getByRole('option', { name: value, exact: true }).click();
 }
@@ -54,6 +58,7 @@ test('remembers explicit model and effort choices across new threads, projects a
   await expect(page.locator('.settings-pending')).toHaveCount(0);
   await page.reload();
   await expect(effort(page)).toHaveAttribute('data-value', 'high');
+  await openModelSettings(page);
   await effort(page).click();
   await page.screenshot({ path: '/tmp/codex-model-defaults-new-thread.png', fullPage: true });
   await page.keyboard.press('Escape');
