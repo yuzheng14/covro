@@ -30,6 +30,7 @@ import type {
   ActionResolution,
   PermissionCapabilities,
   RuntimeSettings,
+  ReviewTarget,
   PendingAction,
   Settings,
   ModelDefaults,
@@ -1087,10 +1088,13 @@ export class CodexAdapter implements CodexClient {
     );
     return turn;
   }
-  async startReview(id: string): Promise<TurnView> {
+  async startReview(
+    id: string,
+    target: ReviewTarget = { type: 'uncommittedChanges' },
+  ): Promise<TurnView> {
     const result = await this.call('review/start', {
       threadId: id,
-      target: { type: 'uncommittedChanges' },
+      target: target.type === 'commit' ? { ...target, title: null } : target,
       delivery: 'inline',
     });
     if (!isRecord(result) || result.reviewThreadId !== id)

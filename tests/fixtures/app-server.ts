@@ -2117,7 +2117,14 @@ function receive(request: ClientRequest): void {
       const item: ThreadItem = {
         id: randomUUID(),
         type: 'enteredReviewMode',
-        review: '未提交改动',
+        review:
+          request.params.target.type === 'baseBranch'
+            ? `分支：${request.params.target.branch}`
+            : request.params.target.type === 'commit'
+              ? `Commit：${request.params.target.sha}`
+              : request.params.target.type === 'custom'
+                ? request.params.target.instructions
+                : '未提交改动',
       };
       const turn: Turn = {
         id: randomUUID(),

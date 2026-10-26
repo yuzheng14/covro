@@ -142,9 +142,16 @@ describe('native inline code review lifecycle', () => {
     expect(ctx.codex.reviews).toBe(0);
   });
 
-  it('accepts only an operation identity, never custom prompts, targets, cwd, or settings', () => {
+  it('accepts native targets but never arbitrary prompts, cwd, or settings', () => {
     const input = { clientOperationId: operationId() };
     expect(startReviewSchema.parse(input)).toEqual(input);
+    for (const target of [
+      { type: 'uncommittedChanges' },
+      { type: 'baseBranch', branch: 'main' },
+      { type: 'commit', sha: 'abcdef123' },
+      { type: 'custom', instructions: 'Check correctness' },
+    ])
+      expect(startReviewSchema.parse({ ...input, target })).toEqual({ ...input, target });
     for (const extra of [
       { text: 'custom review' },
       { target: { type: 'custom' } },

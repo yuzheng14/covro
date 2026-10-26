@@ -46,7 +46,38 @@ export const saveModelDefaultsSchema = operationSchema.extend({
     })
     .strict(),
 });
-export const startReviewSchema = operationSchema;
+export const reviewTargetSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('uncommittedChanges') }).strict(),
+  z
+    .object({
+      type: z.literal('baseBranch'),
+      branch: z
+        .string()
+        .trim()
+        .min(1)
+        .max(256)
+        .refine(
+          (branch) =>
+            !branch.startsWith('-') &&
+            !/\s/.test(branch) &&
+            [...branch].every((char) => char.codePointAt(0)! >= 32 && char.codePointAt(0) !== 127),
+        ),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('commit'),
+      sha: z
+        .string()
+        .trim()
+        .regex(/^[a-fA-F0-9]{7,64}$/),
+    })
+    .strict(),
+  z
+    .object({ type: z.literal('custom'), instructions: z.string().trim().min(1).max(100_000) })
+    .strict(),
+]);
+export const startReviewSchema = operationSchema.extend({ target: reviewTargetSchema.optional() });
 export const confirmCompatibilitySchema = operationSchema.extend({
   codexEpoch: idSchema,
   codexVersion: z.string().min(1).max(200),

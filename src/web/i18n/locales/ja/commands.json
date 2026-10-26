@@ -94,5 +94,18 @@
   "modeUnknown": "モード未報告",
   "executeMode": "実行",
   "planMode": "Plan",
-  "modePending": "{{selected}} 適用待ち · 現在: {{current}}"
+  "modePending": "{{selected}} 適用待ち · 現在: {{current}}",
+  "reviewTarget": "コードレビュー対象",
+  "reviewUncommitted": "未コミットの変更",
+  "reviewBranch": "ベースブランチと比較",
+  "reviewCommit": "特定のコミット",
+  "reviewCustom": "カスタム指示",
+  "branchName": "ベースブランチ",
+  "reviewInstructions": "レビュー指示",
+  "startReview": "レビュー開始",
+  "cancelDialog": "キャンセル",
+  "closeDialog": "閉じる",
+  "reviewCancelled": "レビューをキャンセルしました。下書きは保持されます。",
+  "reviewDescription": "変更・ブランチ・コミット・カスタム指示をレビュー",
+  "reviewUsage": "/review [指示]"
 }

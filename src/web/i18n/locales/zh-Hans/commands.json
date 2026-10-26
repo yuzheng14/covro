@@ -94,5 +94,18 @@
   "modeUnknown": "模式未报告",
   "executeMode": "执行",
   "planMode": "Plan",
-  "modePending": "{{selected}} 待生效 · 当前：{{current}}"
+  "modePending": "{{selected}} 待生效 · 当前：{{current}}",
+  "reviewTarget": "代码审查目标",
+  "reviewUncommitted": "未提交改动",
+  "reviewBranch": "对比基础分支",
+  "reviewCommit": "指定 Commit",
+  "reviewCustom": "自定义要求",
+  "branchName": "基础分支",
+  "reviewInstructions": "审查要求",
+  "startReview": "开始审查",
+  "cancelDialog": "取消",
+  "closeDialog": "关闭",
+  "reviewCancelled": "已取消审查，命令草稿已保留。",
+  "reviewDescription": "审查工作目录、分支、Commit 或自定义要求",
+  "reviewUsage": "/review [自定义要求]"
 }

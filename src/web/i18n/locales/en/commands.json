@@ -94,5 +94,18 @@
   "modeUnknown": "Mode not reported",
   "executeMode": "Execute",
   "planMode": "Plan",
-  "modePending": "{{selected}} pending · current: {{current}}"
+  "modePending": "{{selected}} pending · current: {{current}}",
+  "reviewTarget": "Code review target",
+  "reviewUncommitted": "Uncommitted changes",
+  "reviewBranch": "Compare with base branch",
+  "reviewCommit": "Specific commit",
+  "reviewCustom": "Custom instructions",
+  "branchName": "Base branch",
+  "reviewInstructions": "Review instructions",
+  "startReview": "Start review",
+  "cancelDialog": "Cancel",
+  "closeDialog": "Close",
+  "reviewCancelled": "Review cancelled; the command draft is kept.",
+  "reviewDescription": "Review working-directory changes, a branch, a commit, or custom instructions",
+  "reviewUsage": "/review [instructions]"
 }

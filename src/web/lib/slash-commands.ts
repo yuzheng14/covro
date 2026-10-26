@@ -2,7 +2,14 @@ import { UNASSIGNED_SCOPE } from '../../shared/workspace-scope';
 import { displayMessage } from '../i18n/messages';
 import { errorMessage } from './error-message';
 import { t } from '../i18n';
-import type { Operation, Project, Settings, SystemInfo, ThreadView } from '../../shared/types';
+import type {
+  Operation,
+  Project,
+  Settings,
+  SystemInfo,
+  ThreadView,
+  ReviewTarget,
+} from '../../shared/types';
 import {
   threadNameError as originalThreadNameError,
   MAX_THREAD_NAME_CHARACTERS,
@@ -82,7 +89,7 @@ export function validateSlashCommand(input: string, commands: SlashCommand[]): s
   if (command.name === 'rename') {
     const problem = threadNameError(parsed.arguments);
     if (problem) return problem;
-  } else if (parsed.arguments && command.name !== 'plan')
+  } else if (parsed.arguments && command.name !== 'plan' && command.name !== 'review')
     return t('commands:does_not_accept_arguments_usage', { v0: command.name, v1: command.usage });
   return command.unavailableReason;
 }
@@ -110,6 +117,7 @@ export interface SlashCommandContext {
   openStatus: () => void;
   exportThread: (threadId: string) => Promise<{ partial: boolean }>;
   selectPlan?: (task: string) => Promise<boolean>;
+  chooseReviewTarget?: () => Promise<ReviewTarget | undefined>;
 }
 
 const definitions: { name: SlashCommandName; description: string }[] = [
@@ -146,7 +154,7 @@ const definitions: { name: SlashCommandName; description: string }[] = [
   {
     name: 'review',
     get description() {
-      return t('commands:review_uncommitted_working_directory_changes');
+      return t('commands:reviewDescription');
     },
   },
   {
@@ -408,18 +416,20 @@ function operationResult(name: SlashCommandName, operation?: Operation): SlashCo
   };
 }
 
+function commandUsage(name: SlashCommandName): string {
+  if (name === 'rename') return t('commands:rename_name');
+  if (name === 'plan') return t('commands:planUsage');
+  if (name === 'review') return t('commands:reviewUsage');
+  return t('commands:no_arguments', { v0: name });
+}
+
 /** Menu availability and execution share guards; re-read state before each dispatch. */
 export function createSlashCommands(getContext: () => SlashCommandContext): SlashCommand[] {
   const initial = getContext();
   return definitions.map(({ name, description }) => ({
     name,
     description,
-    usage:
-      name === 'rename'
-        ? t('commands:rename_name')
-        : name === 'plan'
-          ? t('commands:planUsage')
-          : t('commands:no_arguments', { v0: name }),
+    usage: commandUsage(name),
     unavailableReason: unavailableReason(name, initial),
     run: async (argumentsText = '') => {
       const context = getContext();
@@ -431,13 +441,8 @@ export function createSlashCommands(getContext: () => SlashCommandContext): Slas
                 v0: definitions
                   .map((entry) =>
                     t('commands:commandLine', {
-                      name: entry.name,
-                      arguments:
-                        entry.name === 'rename'
-                          ? t('commands:name')
-                          : entry.name === 'plan'
-                            ? t('commands:optionalTask')
-                            : '',
+                      name: commandUsage(entry.name).slice(1),
+                      arguments: '',
                       description: entry.description,
                     }),
                   )
@@ -529,7 +534,23 @@ export function createSlashCommands(getContext: () => SlashCommandContext): Slas
             settings: context.settings,
           });
         } else if (name === 'review') {
-          operation = await context.run('review', thread!.id, `${path}/review`);
+          const target: ReviewTarget | undefined = argumentsText
+            ? { type: 'custom', instructions: argumentsText }
+            : context.chooseReviewTarget
+              ? await context.chooseReviewTarget()
+              : { type: 'uncommittedChanges' };
+          if (!target) return { error: true, message: t('commands:reviewCancelled') };
+          const current = getContext();
+          if (
+            current.selectedId !== context.selectedId ||
+            (current.scopeId ?? current.project?.id) !== (context.scopeId ?? context.project?.id) ||
+            unavailableReason('review', current)
+          )
+            return {
+              error: true,
+              message: t('commands:the_project_or_session_changed_select_the_command'),
+            };
+          operation = await current.run('review', thread!.id, `${path}/review`, { target });
         } else if (name === 'rename') {
           operation = await context.run('rename', thread!.id, `${path}/rename`, {
             name: argumentsText.trim(),

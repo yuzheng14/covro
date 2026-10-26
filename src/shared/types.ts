@@ -348,7 +348,14 @@ export interface TaskMessage {
   images?: string[];
 }
 export interface StartTurnInput extends CreateThreadInput, TaskMessage {}
-export type StartReviewInput = OperationInput;
+export type ReviewTarget =
+  | { type: 'uncommittedChanges' }
+  | { type: 'baseBranch'; branch: string }
+  | { type: 'commit'; sha: string }
+  | { type: 'custom'; instructions: string };
+export interface StartReviewInput extends OperationInput {
+  target?: ReviewTarget;
+}
 export interface SteerInput extends OperationInput, TaskMessage {
   expectedTurnId: string;
 }

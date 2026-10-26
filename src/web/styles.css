@@ -5216,3 +5216,22 @@ dd {
 .model-capacity-note {
   margin: 6px 0 0;
 }
+
+.command-dialog .project-field select,
+.command-dialog .project-field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #dbe3dd;
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+.command-dialog .project-field textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+.command-dialog-wide {
+  width: min(1000px, calc(100vw - 32px));
+}

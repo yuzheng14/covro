@@ -1156,7 +1156,7 @@ export class GatewayService {
       });
       const revision = this.projection.revision(threadId);
       this.turnBaselines.set(input.clientOperationId, new Set(thread.turns.map((turn) => turn.id)));
-      const turn = await this.codex.startReview(threadId);
+      const turn = await this.codex.startReview(threadId, input.target);
       this.store.attachTurn(input.clientOperationId, turn.id);
       this.turnBaselines.delete(input.clientOperationId);
       // A completion or approval can arrive before review/start returns its initial turn.
