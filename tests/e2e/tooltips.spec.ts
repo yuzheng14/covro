@@ -6,6 +6,7 @@ import {
   controlRuntime,
   createEmptyThread,
   expectThreadReady,
+  openModelSettings,
   projectGroup,
   testOrigin,
 } from './helpers';
@@ -136,6 +137,8 @@ test('project, model, permissions and copy hints share dismissal behavior withou
     ['模型', '模型：simulated-model'],
     ['权限模式', '权限模式：只读'],
   ] as const) {
+    if (label === '模型') await openModelSettings(page);
+    else await page.getByRole('button', { name: '关闭模型设置', exact: true }).click();
     const select = page.getByRole('combobox', { name: label, exact: true });
     await select.hover();
     await expect(popup).toHaveText(content);

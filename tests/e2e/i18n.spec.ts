@@ -19,6 +19,7 @@ const languages = [
     title: '额外权限审批',
     allow: '当前任务允许',
     model: '模型',
+    modelSettings: '模型设置',
   },
   {
     locale: 'en',
@@ -27,6 +28,7 @@ const languages = [
     title: 'Additional permissions',
     allow: 'Allow for current task',
     model: 'Model',
+    modelSettings: 'Model settings',
   },
   {
     locale: 'ja',
@@ -35,6 +37,7 @@ const languages = [
     title: '追加権限の承認',
     allow: '現在のタスクで許可',
     model: 'モデル',
+    modelSettings: 'モデル設定',
   },
   {
     locale: 'ko',
@@ -43,6 +46,7 @@ const languages = [
     title: '추가 권한 승인',
     allow: '현재 작업에서 허용',
     model: '모델',
+    modelSettings: '모델 설정',
   },
 ] as const;
 
@@ -72,7 +76,9 @@ for (const language of languages) {
       ]);
       await page.keyboard.press('Escape');
       await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: language.modelSettings, exact: true }).click();
       await expect(page.getByRole('combobox', { name: language.model, exact: true })).toBeEnabled();
+      await page.keyboard.press('Escape');
       const prompt = '[permissions] 原文保留 Japanese 日本語 한국어 /workspace/example.ts';
       const input = page.locator('.composer-box textarea');
       await input.fill(prompt);
