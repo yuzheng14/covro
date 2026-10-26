@@ -152,5 +152,8 @@
   "GIT_DIFF_FAILED": "Could not read workspace changes. Retry after checking the working directory.",
   "DENIAL_EXPIRED": "This denial is no longer available. Reopen the current session’s denial list.",
   "RECAP_BUSY": "A recap is already running for this session.",
-  "RECAP_FAILED": "The recap could not be completed. The source conversation is unchanged."
+  "RECAP_FAILED": "The recap could not be completed. The source conversation is unchanged.",
+  "GOAL_UNAVAILABLE": "Goals are unavailable or disabled in the current Codex runtime.",
+  "GOAL_CONFLICT": "The goal changed. Reload its current state before editing.",
+  "GOAL_BUSY": "Another goal update is pending. Wait for its receipt."
 }

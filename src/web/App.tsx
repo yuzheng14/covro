@@ -7,6 +7,7 @@ import { ArrowLeft, Pencil } from 'lucide-react';
 import type { Settings, ThreadSummary, ReviewTarget } from '../shared/types';
 import { useCommandPrompt } from './hooks/useCommandPrompt';
 import { ReviewTargetDialog } from './components/ReviewTargetDialog';
+import { ThreadGoalDialog, GoalSummary } from './components/ThreadGoalDialog';
 import { CommandDialog } from './components/CommandDialog';
 import { GuardianDenialsDialog } from './components/GuardianDenialsDialog';
 import { WorkspaceDiffDialog } from './components/WorkspaceDiffDialog';
@@ -339,6 +340,8 @@ export function App() {
     workspace.selectedId,
     system?.codexEpoch,
   ]);
+  const [goalDialog, setGoalDialog] = useState<{ scope: string; initial: string }>();
+  useEffect(() => setGoalDialog(undefined), [commandScope]);
   const [recap, setRecap] = useState<{
     scope: string;
     summary: string;
@@ -360,6 +363,7 @@ export function App() {
       }),
     chooseReviewTarget: reviewPrompt.request,
     chooseDenial: denialPrompt.request,
+    openGoal: (initial) => setGoalDialog({ scope: commandScope, initial }),
     openRecap: (value) => setRecap({ ...value, scope: commandScope }),
     project,
     scopeId: workspace.projectId,
@@ -903,6 +907,44 @@ export function App() {
                 </Button>
               )}
             </div>
+          )}
+          {thread?.goal && (
+            <div className="goal-banner">
+              <GoalSummary goal={thread.goal} />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setGoalDialog({ scope: commandScope, initial: '' })}
+              >
+                {t('commands:goalManage')}
+              </Button>
+            </div>
+          )}
+          {goalDialog?.scope === commandScope && thread && (
+            <ThreadGoalDialog
+              key={`goal:${commandScope}`}
+              threadId={thread.id}
+              initial={goalDialog.initial}
+              onClose={() => setGoalDialog(undefined)}
+              run={(input) =>
+                workspace.run('goal', thread.id, `/api/threads/${encode(thread.id)}/goal`, input)
+              }
+              stoppingDisabled={
+                !canOperate ||
+                !thread.managed ||
+                Boolean(thread.archived) ||
+                workspace.busy.includes(`goal:${thread.id}`) ||
+                workspace.operations.some((op) => op.kind === 'goal' && blocksTarget(op, thread.id))
+              }
+              disabled={
+                !canOperate ||
+                !thread.managed ||
+                Boolean(thread.archived) ||
+                Boolean(activeTurn) ||
+                Boolean(waitingForConfirmation) ||
+                workspace.busy.includes(`goal:${thread.id}`)
+              }
+            />
           )}
           {recap?.scope === commandScope && (
             <CommandDialog

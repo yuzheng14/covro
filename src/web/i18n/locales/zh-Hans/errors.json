@@ -152,5 +152,8 @@
   "GIT_DIFF_FAILED": "无法读取工作区变更，请核对工作目录后重试。",
   "DENIAL_EXPIRED": "拒绝记录已失效，请重新打开当前会话的拒绝列表。",
   "RECAP_BUSY": "当前会话已有摘要请求正在处理。",
-  "RECAP_FAILED": "未能完成摘要，原会话保持不变。"
+  "RECAP_FAILED": "未能完成摘要，原会话保持不变。",
+  "GOAL_UNAVAILABLE": "当前 Codex 运行实例不支持或未启用目标功能。",
+  "GOAL_CONFLICT": "目标已发生变化，请重新读取当前状态再修改。",
+  "GOAL_BUSY": "另一个目标更新正在处理，请等待回执。"
 }

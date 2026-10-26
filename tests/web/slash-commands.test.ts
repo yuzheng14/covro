@@ -101,7 +101,7 @@ describe('slash command parsing and validation', () => {
 
   it('lists commands for a slash and searches names and descriptions', () => {
     const commands = createSlashCommands(context);
-    expect(filterSlashCommands(commands, '/')).toHaveLength(15);
+    expect(filterSlashCommands(commands, '/')).toHaveLength(16);
     expect(filterSlashCommands(commands, '/st').map((entry) => entry.name)).toEqual([
       'stop',
       'status',

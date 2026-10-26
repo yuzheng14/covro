@@ -193,6 +193,8 @@ export interface CapacityRetryView {
 }
 export interface ThreadView {
   capacityRetry?: CapacityRetryView;
+  /** Absent means no current native goal snapshot has been read. */
+  goal?: import('./thread-goal.js').ThreadGoal | null;
   /** Native Codex archive state, read from its index and lifecycle notifications. */
   archived?: boolean;
   id: string;

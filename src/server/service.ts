@@ -1,6 +1,8 @@
 import type { CodexClient, CodexDiagnostics, CodexEvent } from '../codex/types.js';
 import { CapacityRetries, type CapacityAttempt } from './capacity-retry.js';
 import { isModelCapacityError } from '../shared/turn-errors.js';
+import { randomUUID } from 'node:crypto';
+import type { GoalMutation } from '../shared/thread-goal.js';
 import { attentionKey, pendingAttention } from '../shared/thread-attention.js';
 import { ShellService } from './shell.js';
 import { assertProjectInstructionsMissing, PROJECT_INIT_PROMPT } from './project-init.js';
@@ -51,6 +53,7 @@ import type {
 } from '../shared/types.js';
 import {
   OperationStore,
+  requestDigest,
   StoreConflict,
   type ExecutionMarker,
   type OperationRow,
@@ -100,6 +103,7 @@ export class GatewayService {
   private readonly archiveRevisions = new Map<string, number>();
   private readonly turnBaselines = new Map<string, Set<string>>();
   private readonly renameChanges = new Set<string>();
+  private readonly goalWrites = new Set<string>();
   private readonly reads = new Map<string, Promise<ThreadView>>();
   private readonly resumes = new Map<string, Promise<void>>();
   private readonly executionReads = new Map<string, Promise<void>>();
@@ -665,16 +669,30 @@ export class GatewayService {
     if (!this.archiveChanges.has(threadId)) this.publishThread(threadId);
   }
 
+  private async refreshGoal(thread: ThreadView): Promise<void> {
+    if (thread.goal !== undefined || !this.codex.ready || !this.codex.getGoal) return;
+    try {
+      const goal = await this.codex.getGoal(thread.id);
+      this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+      if (thread.goal === undefined) thread.goal = goal;
+    } catch {
+      /* Unsupported or disabled goals must not block ordinary session reads. */
+    }
+  }
+
   async getThreadMetadata(threadId: string): Promise<ThreadView> {
     const cached = this.projection.get(threadId);
     if (cached) {
       this.workspaces.assertOwnership(cached.projectId, cached.cwd, cached.id);
       if (this.codex.ready) await this.refreshThreadMetadata(threadId);
       this.workspaces.assertOwnership(cached.projectId, cached.cwd, cached.id);
+      await this.refreshGoal(cached);
       return { ...this.threadView(cached), turns: [], actions: [] };
     }
     // Checking a remembered ID must not load history or resume an unsent thread.
     const metadata = this.threadView(this.normalize(await this.codex.readThreadMetadata(threadId)));
+    await this.refreshGoal(metadata);
+    metadata.historyVisible = this.historyVisible(metadata);
     return { ...metadata, turns: [], actions: [] };
   }
 
@@ -685,6 +703,7 @@ export class GatewayService {
     const thread = this.projection.get(threadId)!;
     // A completed project can be removed while its metadata request is in flight.
     this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+    await this.refreshGoal(thread);
     return this.threadView(thread);
   }
 
@@ -1138,6 +1157,81 @@ export class GatewayService {
 
   async retryTurn(threadId: string, input: RetryTurnInput): Promise<Operation> {
     return this.dispatchTurn(threadId, { ...input, text: '' }, undefined, input.expectedTurnId);
+  }
+
+  async getGoal(threadId: string) {
+    const thread = await this.loadThread(threadId);
+    this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+    this.ensureReady();
+    if (!this.codex.getGoal) throw new AppError('GOAL_UNAVAILABLE', '当前 Codex 不支持目标', 409);
+    const goal = await this.codex.getGoal(threadId);
+    this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+    const current = this.projection.get(threadId);
+    if (current) {
+      current.goal = goal;
+      this.projection.touch(threadId);
+      this.publishThread(threadId);
+    }
+    return { goal, version: requestDigest(goal) };
+  }
+  async mutateGoal(
+    threadId: string,
+    input: OperationInput & GoalMutation & { confirm: true; expectedVersion: string },
+  ): Promise<Operation> {
+    return this.perform('goal.update', threadId, input, async () => {
+      if (this.goalWrites.has(threadId))
+        throw new AppError('GOAL_BUSY', '目标更新正在进行，请等待回执', 409);
+      this.goalWrites.add(threadId);
+      try {
+        const thread = await this.loadThread(threadId);
+        this.ensureManaged(thread);
+        this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+        const stopping =
+          input.action === 'clear' ||
+          (input.action === 'set' &&
+            input.status !== 'active' &&
+            input.status !== undefined &&
+            input.objective === undefined &&
+            input.tokenBudget === undefined);
+        if (
+          !stopping &&
+          (thread.status === 'unknown' ||
+            isActive(thread.status) ||
+            thread.turns.some((turn) => isActive(turn.status)) ||
+            this.store.activeForThread(threadId))
+        )
+          throw new AppError('THREAD_BUSY', '请等待当前任务结束并核对状态后再修改或恢复目标', 409);
+        this.ensureCompatibilityConfirmed();
+        if (!this.codex.getGoal || !this.codex.mutateGoal)
+          throw new AppError('GOAL_UNAVAILABLE', '当前 Codex 不支持目标', 409);
+        const before = await this.getGoal(threadId);
+        if (before.version !== input.expectedVersion)
+          throw new AppError('GOAL_CONFLICT', '目标已发生变化，请重新读取后操作', 409);
+        // No marker until real turn evidence: a goal mutation may start an idle turn,
+        // inject into an existing turn, or remain limited without starting any turn.
+        this.store.dispatch(input.clientOperationId);
+        const mutation: GoalMutation =
+          input.action === 'clear'
+            ? { action: 'clear' }
+            : {
+                action: 'set',
+                ...(input.objective === undefined ? {} : { objective: input.objective }),
+                ...(input.status === undefined ? {} : { status: input.status }),
+                ...(input.tokenBudget === undefined ? {} : { tokenBudget: input.tokenBudget }),
+              };
+        const previousGoal = this.projection.get(threadId)?.goal;
+        const goal = await this.codex.mutateGoal(threadId, mutation);
+        const current = this.projection.get(threadId);
+        if (current && current.goal === previousGoal) {
+          current.goal = goal;
+          this.projection.touch(threadId);
+          this.publishThread(threadId);
+        }
+        return { result: { goal } };
+      } finally {
+        this.goalWrites.delete(threadId);
+      }
+    });
   }
 
   async recapThread(
@@ -1791,6 +1885,7 @@ export class GatewayService {
     return Boolean(
       thread.hasMessages ||
       thread.archived ||
+      thread.goal ||
       thread.turns.length ||
       this.store.activeForThread(thread.id) ||
       isActive(thread.status) ||
@@ -1968,6 +2063,12 @@ export class GatewayService {
     }
     const thread = this.projection.get(event.threadId);
     if (!thread) return;
+    if (event.type === 'goal') {
+      thread.goal = event.goal;
+      this.projection.touch(thread.id);
+      this.publishThread(thread.id);
+      return;
+    }
     const previousAttention = new Set(
       event.type === 'item' || event.type === 'turn'
         ? pendingAttention(thread).map(attentionKey)
@@ -2010,6 +2111,39 @@ export class GatewayService {
       this.projection.touch(thread.id);
     } else if (event.type === 'turn') {
       const previous = thread.turns.find((turn) => turn.id === event.turn.id);
+      if (
+        thread.goal &&
+        !isTerminal(event.turn.status) &&
+        (!previous || !isTerminal(previous.status)) &&
+        !this.store.activeForThread(thread.id) &&
+        this.store.getThreadLink(thread.id)?.managedEpoch === this.codex.epoch
+      ) {
+        try {
+          const ownership = this.workspaces.assertOwnership(
+            thread.projectId,
+            thread.cwd,
+            thread.id,
+          );
+          const operationId = randomUUID();
+          this.store.accept(operationId, 'goal.continue', thread.id, {
+            turnId: event.turn.id,
+            codexEpoch: this.codex.epoch,
+          });
+          this.store.dispatch(operationId, {
+            threadId: thread.id,
+            workspaceKey: ownership.workspaceKey,
+            codexEpoch: this.codex.epoch,
+          });
+          this.store.attachTurn(operationId, event.turn.id);
+          this.store.acknowledge(
+            operationId,
+            { threadId: thread.id, turnId: event.turn.id },
+            event.turn.id,
+          );
+        } catch {
+          /* Existing reservations remain authoritative. Never issue a new turn here. */
+        }
+      }
       const newCompletion = !previous || !isTerminal(previous.status);
       if (isTerminal(event.turn.status)) this.turnUsage.save(thread.id, event.turn);
       this.projection.turn(thread.id, event.turn);

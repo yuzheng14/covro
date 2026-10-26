@@ -128,6 +128,29 @@ export const steerSchema = operationSchema
     ...taskFields,
   })
   .refine(hasContent, 'Text or an image is required');
+export const goalMutationSchema = z.discriminatedUnion('action', [
+  operationSchema.extend({
+    action: z.literal('clear'),
+    confirm: z.literal(true),
+    expectedVersion: z.string().regex(/^[a-f0-9]{64}$/),
+  }),
+  operationSchema
+    .extend({
+      action: z.literal('set'),
+      confirm: z.literal(true),
+      expectedVersion: z.string().regex(/^[a-f0-9]{64}$/),
+      objective: z.string().trim().min(1).max(10000).optional(),
+      status: z.enum(['active', 'paused', 'complete']).optional(),
+      tokenBudget: z.number().int().positive().max(1000000000).optional(),
+    })
+    .refine(
+      (value) =>
+        value.objective !== undefined ||
+        value.status !== undefined ||
+        value.tokenBudget !== undefined,
+      'Goal update is empty',
+    ),
+]);
 export const recapSchema = operationSchema.extend({
   language: z.enum(['en', 'zh-Hans', 'ja', 'ko']),
 });
