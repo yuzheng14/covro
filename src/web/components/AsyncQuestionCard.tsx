@@ -4,6 +4,8 @@ import type { AsyncQuestion, AsyncQuestionReply } from '../../shared/types';
 import { asyncQuestionId } from '../../shared/async-questions';
 import { Button } from './ui/button';
 import { Icon } from './Icon';
+import { ControlHint } from './ControlHint';
+import { usesMobileInput } from '../lib/mobile-input';
 
 export interface AsyncQuestionControls {
   disabled: boolean;
@@ -22,6 +24,13 @@ export function AsyncQuestionCard({
   replies?: AsyncQuestionReply[];
 }) {
   const id = useId();
+  const shortcutId = `${id}-shortcut`;
+  const mac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+  const mobileInput = usesMobileInput(navigator);
+  const shortcut = mac ? '⌘ + Enter' : 'Ctrl + Enter';
+  const shortcutAria = mac ? 'Meta+Enter' : 'Control+Enter';
+  const composingRef = useRef(false);
+  const compositionEndedAtRef = useRef(-Infinity);
   const [choices, setChoices] = useState<number[]>(() =>
     questions.map((q) => (q.options?.length ? 0 : -1)),
   );
@@ -44,6 +53,8 @@ export function AsyncQuestionCard({
       '',
   );
   const locked = disabled || sending || Boolean(resolved);
+  const showShortcut =
+    !mobileInput && choices.some((choice, index) => choice === -1 && recorded[index] === undefined);
   return (
     <section
       className="async-question-card"
@@ -136,6 +147,47 @@ export function AsyncQuestionCard({
                     className="text-input"
                     aria-label={t('common:free_text_answer', { v0: question.title })}
                     placeholder={t('common:enter_your_answer')}
+                    enterKeyHint="enter"
+                    aria-describedby={mobileInput ? undefined : shortcutId}
+                    aria-keyshortcuts={mobileInput ? undefined : shortcutAria}
+                    onCompositionStart={() => {
+                      composingRef.current = true;
+                    }}
+                    onCompositionEnd={() => {
+                      composingRef.current = false;
+                      compositionEndedAtRef.current = performance.now();
+                    }}
+                    onBlur={() => {
+                      composingRef.current = false;
+                      compositionEndedAtRef.current = -Infinity;
+                    }}
+                    onKeyUp={(event) => {
+                      if (event.key === 'Enter') compositionEndedAtRef.current = -Infinity;
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        mobileInput ||
+                        event.defaultPrevented ||
+                        event.key !== 'Enter' ||
+                        event.shiftKey ||
+                        event.altKey ||
+                        (mac ? !event.metaKey || event.ctrlKey : !event.ctrlKey || event.metaKey)
+                      )
+                        return;
+                      // Keep IME confirmation native, including Safari's early compositionend.
+                      if (
+                        event.nativeEvent.isComposing ||
+                        event.nativeEvent.keyCode === 229 ||
+                        composingRef.current
+                      )
+                        return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (event.repeat || performance.now() - compositionEndedAtRef.current < 100)
+                        return;
+                      // Use this card's form so click and keyboard share every submit guard.
+                      event.currentTarget.form?.requestSubmit();
+                    }}
                     rows={2}
                     maxLength={10000}
                     value={texts[index] ?? ''}
@@ -155,9 +207,22 @@ export function AsyncQuestionCard({
         {!resolved && (
           <div className="async-question-footer">
             <span>{t('workspace:your_answer_will_be_sent_to_this_session')}</span>
-            <Button type="submit" disabled={locked || answers.some((answer) => !answer)}>
-              {sending ? t('workspace:sending') : t('workspace:send_answer')}
-            </Button>
+            <ControlHint
+              id={shortcutId}
+              content={
+                showShortcut ? t('workspace:answer_submit_shortcut', { shortcut }) : undefined
+              }
+              asChild
+            >
+              <Button type="submit" disabled={locked || answers.some((answer) => !answer)}>
+                {sending ? t('workspace:sending') : t('workspace:send_answer')}
+                {showShortcut && (
+                  <kbd className="answer-submit-shortcut" aria-hidden="true">
+                    {shortcut}
+                  </kbd>
+                )}
+              </Button>
+            </ControlHint>
           </div>
         )}
       </form>

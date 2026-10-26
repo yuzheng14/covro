@@ -50,6 +50,7 @@
   "answer_sent": "Answer sent",
   "sending": "Sending…",
   "you_can_answer_later": "You can answer later",
+  "answer_submit_shortcut": "{{shortcut}} to send / Enter for a new line",
   "send_answer": "Send answer",
   "codex_has_not_been_verified_some_features_may": "Codex {{v0}} has not been verified; some features may not work. {{v1}}",
   "view_compatibility_notice": "View compatibility notice",
