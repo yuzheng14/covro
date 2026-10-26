@@ -146,5 +146,8 @@
   "TEXT_CHANGED": "텍스트 파일이 변경되었습니다. 미리 보기를 다시 여세요.",
   "TEXT_NOT_FILE": "텍스트 파일 경로가 일반 파일이 아닙니다.",
   "AGENTS_EXISTS": "AGENTS.md가 이미 있습니다. 기존 내용을 유지했습니다.",
-  "AGENTS_CHECK_FAILED": "AGENTS.md를 확인하지 못해 초기화 작업을 제출하지 않았습니다."
+  "AGENTS_CHECK_FAILED": "AGENTS.md를 확인하지 못해 초기화 작업을 제출하지 않았습니다.",
+  "GIT_NOT_REPOSITORY": "현재 작업 공간은 Git 저장소가 아닙니다.",
+  "GIT_UNAVAILABLE": "서버에서 Git을 사용할 수 없습니다.",
+  "GIT_DIFF_FAILED": "변경을 읽지 못했습니다. 작업 디렉터리를 확인하고 재시도하세요."
 }

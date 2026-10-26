@@ -146,5 +146,8 @@
   "TEXT_CHANGED": "The text file changed. Reopen the preview.",
   "TEXT_NOT_FILE": "The text file path is not a regular file.",
   "AGENTS_EXISTS": "AGENTS.md already exists. The existing entry was preserved.",
-  "AGENTS_CHECK_FAILED": "Could not verify AGENTS.md. Initialization was not submitted."
+  "AGENTS_CHECK_FAILED": "Could not verify AGENTS.md. Initialization was not submitted.",
+  "GIT_NOT_REPOSITORY": "This workspace is not a Git working tree.",
+  "GIT_UNAVAILABLE": "Git is unavailable on the server.",
+  "GIT_DIFF_FAILED": "Could not read workspace changes. Retry after checking the working directory."
 }

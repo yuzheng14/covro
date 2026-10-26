@@ -110,5 +110,14 @@
   "reviewUsage": "/review [指示]",
   "initDescription": "既存ファイルを保持してプロジェクトの AGENTS.md を生成",
   "initSubmitted": "AGENTS.md 生成タスクを送信しました。結果は会話で確認してください。",
-  "initUnavailable": "アイドル状態の会話を再開するか新しい下書きを開いてください。"
+  "initUnavailable": "アイドル状態の会話を再開するか新しい下書きを開いてください。",
+  "workspaceDiff": "作業領域の Git 変更",
+  "diffSection": "変更範囲",
+  "diff_staged": "ステージ済み",
+  "diff_unstaged": "未ステージ",
+  "diff_untracked": "未追跡",
+  "diffPartial": "ファイル変更、読取不可、上限超過により一部内容を省略しました。",
+  "diffDescription": "ステージ済み・未ステージ・未追跡の変更を表示",
+  "diffUnavailable": "プロジェクトまたは保存済み会話を選択してください。",
+  "diffOpened": "作業領域の変更を開きました。更新で新しいスナップショットを取得できます。"
 }

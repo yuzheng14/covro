@@ -38,6 +38,7 @@ export type SlashCommandName =
   | 'compact'
   | 'plan'
   | 'init'
+  | 'diff'
   | 'review'
   | 'rename'
   | 'export';
@@ -119,6 +120,7 @@ export interface SlashCommandContext {
   exportThread: (threadId: string) => Promise<{ partial: boolean }>;
   selectPlan?: (task: string) => Promise<boolean>;
   initialize?: () => Promise<boolean>;
+  openDiff?: () => void;
   chooseReviewTarget?: () => Promise<ReviewTarget | undefined>;
 }
 
@@ -157,6 +159,12 @@ const definitions: { name: SlashCommandName; description: string }[] = [
     name: 'review',
     get description() {
       return t('commands:reviewDescription');
+    },
+  },
+  {
+    name: 'diff',
+    get description() {
+      return t('commands:diffDescription');
     },
   },
   {
@@ -203,6 +211,15 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
     return t('commands:your_login_expired_log_in_again_and_retry');
   if (context.connection !== 'connected')
     return t('commands:you_are_offline_wait_for_the_connection_to');
+  if (name === 'diff') {
+    if (!context.openDiff) return t('commands:diffUnavailable');
+    if (context.selectedId && !context.thread)
+      return t('commands:session_loading_try_again_shortly');
+    if (!context.thread && !context.project) return t('commands:diffUnavailable');
+    return context.project && !context.project.available
+      ? t('commands:the_project_directory_is_unavailable_check_project_configuration')
+      : undefined;
+  }
   if (context.system?.authenticated === false)
     return t('commands:codex_is_not_logged_in_authenticate_first');
   if (!context.system?.ready) return t('commands:codex_is_unavailable_check_diagnostics_first');
@@ -502,6 +519,14 @@ export function createSlashCommands(getContext: () => SlashCommandContext): Slas
       const thread = context.thread;
       const path = `/api/threads/${encodeURIComponent(thread?.id ?? '')}`;
       try {
+        if (name === 'diff') {
+          context.openDiff!();
+          return {
+            get message() {
+              return t('commands:diffOpened');
+            },
+          };
+        }
         if (name === 'init') {
           const submitted = await context.initialize!();
           return {

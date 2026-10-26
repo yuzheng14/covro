@@ -5,6 +5,7 @@ import { attentionKey, pendingAttention } from '../shared/thread-attention.js';
 import { ShellService } from './shell.js';
 import { assertProjectInstructionsMissing, PROJECT_INIT_PROMPT } from './project-init.js';
 import { readGithubRepository } from './github-repository.js';
+import { readWorkspaceDiff } from './workspace-diff.js';
 import type { StartShellInput } from '../shared/shell.js';
 import { realpathSync } from 'node:fs';
 import { cp } from 'node:fs/promises';
@@ -152,6 +153,34 @@ export class GatewayService {
     const url = await readGithubRepository(project.canonicalRoot);
     this.projects.get(projectId);
     return { url };
+  }
+
+  async getProjectDiff(projectId: string) {
+    const project = this.projects.get(projectId);
+    const result = await readWorkspaceDiff(
+      project.canonicalRoot,
+      this.workspaces.allocations().map((row) => row.canonicalRoot),
+    );
+    this.projects.get(projectId);
+    return result;
+  }
+
+  async getThreadDiff(threadId: string) {
+    let link = this.store.getThreadLink(threadId);
+    if (!link) {
+      this.normalize(await this.codex.readThreadMetadata(threadId));
+      link = this.store.getThreadLink(threadId)!;
+    }
+    const { cwd } = this.workspaces.assertOwnership(link.projectId, link.cwd, threadId);
+    const result = await readWorkspaceDiff(
+      cwd,
+      this.workspaces
+        .allocations()
+        .filter((row) => row.threadId !== threadId)
+        .map((row) => row.canonicalRoot),
+    );
+    this.workspaces.assertOwnership(link.projectId, link.cwd, threadId);
+    return result;
   }
 
   async getThreadGithubRepository(threadId: string) {

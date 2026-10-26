@@ -110,5 +110,14 @@
   "reviewUsage": "/review [요구]",
   "initDescription": "기존 파일을 유지하며 프로젝트 AGENTS.md 생성",
   "initSubmitted": "AGENTS.md 생성 작업을 제출했습니다. 대화에서 결과를 확인하세요.",
-  "initUnavailable": "유휴 대화를 재개하거나 새 작업 공간 초안을 여세요."
+  "initUnavailable": "유휴 대화를 재개하거나 새 작업 공간 초안을 여세요.",
+  "workspaceDiff": "작업 공간 Git 변경",
+  "diffSection": "변경 범위",
+  "diff_staged": "스테이징됨",
+  "diff_unstaged": "스테이징 안 됨",
+  "diff_untracked": "추적되지 않음",
+  "diffPartial": "파일 변경, 읽기 실패 또는 크기 제한으로 일부 내용을 생략했습니다.",
+  "diffDescription": "스테이징, 미스테이징 및 미추적 변경 보기",
+  "diffUnavailable": "프로젝트 또는 저장된 대화를 선택하세요.",
+  "diffOpened": "작업 공간 변경을 열었습니다. 새 스냅샷을 보려면 새로고침하세요."
 }

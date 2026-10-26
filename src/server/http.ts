@@ -211,6 +211,12 @@ export function createApp({
     return c.json(op, status(op));
   });
   app.get('/api/projects', async (c) => c.json({ data: await service.listProjects() }));
+  app.get('/api/projects/:projectId/diff', async (c) =>
+    c.json(await service.getProjectDiff(id(c.req.param('projectId')))),
+  );
+  app.get('/api/threads/:threadId/diff', async (c) =>
+    c.json(await service.getThreadDiff(id(c.req.param('threadId')))),
+  );
   app.get('/api/projects/:projectId/github-repository', async (c) =>
     c.json(await service.getProjectGithubRepository(id(c.req.param('projectId')))),
   );
