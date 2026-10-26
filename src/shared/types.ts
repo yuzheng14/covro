@@ -9,6 +9,8 @@ export type RunStatus =
   | 'interrupted'
   | 'unknown';
 export interface Settings {
+  /** Next-turn collaboration preset; never changes global Codex defaults. */
+  collaborationMode?: 'plan' | 'default';
   model?: string;
   reasoningEffort?: string;
   /** fast opts in; null explicitly clears Fast instead of inheriting it. */
@@ -31,6 +33,8 @@ export interface PermissionCapabilities {
 }
 /** Values reported by Codex; missing values are never replaced by guessed defaults. */
 export interface RuntimeSettings {
+  /** Only present when reported by the running Codex instance. */
+  collaborationMode?: 'plan' | 'default';
   model: string | null;
   reasoningEffort: string | null;
   /** null is reported standard speed; omitted means the upstream did not report it. */

@@ -4,7 +4,7 @@ import { t, useInterfaceLocale } from './i18n';
 import { BackupSettings } from './components/BackupSettings';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, Pencil } from 'lucide-react';
-import type { ThreadSummary } from '../shared/types';
+import type { Settings, ThreadSummary } from '../shared/types';
 import { useWorkspace } from './hooks/useWorkspace';
 import { useThreadReadState } from './hooks/useThreadReadState';
 import { useNewSessionShortcut } from './hooks/useNewSessionShortcut';
@@ -348,13 +348,23 @@ export function App() {
     refreshThread: workspace.refreshThread,
     openStatus: () => setDiagnosticsOpen(true),
     exportThread: downloadThreadExport,
+    selectPlan: async (task) => {
+      const settings: Settings = { ...workspace.settings, collaborationMode: 'plan' };
+      workspace.setSettings(settings);
+      return !task || sendMessage(task, false, undefined, settings);
+    },
   };
   const slashContextRef = useRef(slashContext);
   slashContextRef.current = slashContext;
   const slashCommands = createSlashCommands(() => slashContextRef.current);
   const renameCommand = slashCommands.find((command) => command.name === 'rename')!;
 
-  async function sendMessage(text: string, steer: boolean, images?: string[]) {
+  async function sendMessage(
+    text: string,
+    steer: boolean,
+    images?: string[],
+    settings = workspace.settings,
+  ) {
     if (!canOperate || workspace.restoringSelection || workspace.savingModelDefaults) return false;
     if (!thread) {
       if (workspace.selectedId) return false;
@@ -365,9 +375,7 @@ export function App() {
       steer ? 'steer' : 'send',
       thread.id,
       `/api/threads/${encode(thread.id)}/${steer ? 'steer' : 'turns'}`,
-      steer
-        ? { text, images, expectedTurnId: activeTurn!.id }
-        : { text, images, settings: workspace.settings },
+      steer ? { text, images, expectedTurnId: activeTurn!.id } : { text, images, settings },
       { kind: 'send', key: workspace.draftKey, text, images },
     );
     return operation?.status === 'acknowledged';

@@ -300,7 +300,9 @@ function notifySettings(thread: Thread) {
         summary: null,
         personality: null,
         collaborationMode: {
-          mode: 'default',
+          mode:
+            (thread as Thread & { collaborationMode?: 'plan' | 'default' }).collaborationMode ??
+            'default',
           settings: {
             model: thread.model!,
             reasoning_effort: thread.reasoningEffort,
@@ -1991,7 +1993,16 @@ function receive(request: ClientRequest): void {
       reply(request.id, {
         ...startResponse(thread),
         thread: { ...thread, turns: request.params.excludeTurns ? [] : thread.turns },
-        collaborationMode: null,
+        collaborationMode: {
+          mode:
+            (thread as Thread & { collaborationMode?: 'plan' | 'default' }).collaborationMode ??
+            'default',
+          settings: {
+            model: thread.model!,
+            reasoning_effort: thread.reasoningEffort,
+            developer_instructions: null,
+          },
+        },
         turnsBackwardsCursor: null,
         itemsBackwardsCursor: null,
       });
@@ -2176,6 +2187,17 @@ function receive(request: ClientRequest): void {
       if (request.params.serviceTier !== undefined)
         serviceTiers.set(thread.id, request.params.serviceTier);
       if (request.params.effort) thread.reasoningEffort = request.params.effort;
+      const collaboration = (
+        request.params as typeof request.params & {
+          collaborationMode?: import('../../src/codex/generated/CollaborationMode.js').CollaborationMode;
+        }
+      ).collaborationMode;
+      if (collaboration) {
+        (thread as Thread & { collaborationMode?: 'plan' | 'default' }).collaborationMode =
+          collaboration.mode;
+        thread.model = collaboration.settings.model;
+        thread.reasoningEffort = collaboration.settings.reasoning_effort;
+      }
       const current = policy(thread);
       const permissions = (request.params as PermissionSelection).permissions;
       if (options.rejectPermissions && permissions) {

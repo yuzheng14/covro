@@ -34,7 +34,7 @@
 - 📖 **Read results while you chat.** Preview documents, diagrams, and code changes beside the conversation on desktop, or full-screen on mobile.
 - 🔔 **Know when your attention is needed.** Enable browser notifications for completed work, questions, and approvals; keep the page open in a supported desktop browser.
 
-Use **＋** in the message box to attach images from your phone or computer. Open the combined model control to choose the model, reasoning effort, and Fast mode.
+Use **＋** in the message box to attach images from your phone or computer. Open the combined model control to choose the model, reasoning effort, Fast mode, and Plan/Execute mode. Use `/plan [task]` to select Plan mode or submit a planning task.
 
 When the selected model is at capacity, Covro shows native retry progress and can make up to three additional attempts after 5, 10, and 20 seconds when Codex does not retry and no output or tool work has started. You can cancel, or choose another model and retry manually. See [retry behavior](docs/capacity-retry.md) for recovery boundaries.
 

@@ -71,7 +71,7 @@
   "selected_session_resumed": "選択中のセッションを再開しました。",
   "rename_name": "/rename <名前>",
   "no_arguments": "/{{v0}}（引数なし）",
-  "rename_requires_a_name_other_commands_take_no": "{{v0}}\n/rename には名前が必要です。他のコマンドに引数は不要です。/ から始まる通常のメッセージには // を使ってください。",
+  "rename_requires_a_name_other_commands_take_no": "コマンドと使い方:\n{{v0}}\n表示された引数のみ使用できます。\n/ から始まる通常のメッセージには // を使ってください。",
   "name": " <名前>",
   "diagnostics_opened_refresh_status_or_reconcile_submissions_in": "状態の診断を開きました。パネルで状態の更新や送信結果の確認ができます。",
   "the_project_or_session_changed_select_the_command": "プロジェクトまたはセッションが変わりました。コマンドを選び直してください。",
@@ -82,5 +82,17 @@
   "renameLong": "セッション名は {{max}} 文字以内です。",
   "renameControls": "セッション名に改行や制御文字は使用できません。",
   "commandLine": "/{{name}}{{arguments}}：{{description}}",
-  "review_uncommitted_working_directory_changes": "現在のセッション設定で作業ディレクトリの未コミット変更をレビュー"
+  "review_uncommitted_working_directory_changes": "現在のセッション設定で作業ディレクトリの未コミット変更をレビュー",
+  "planDescription": "Plan モードを選択し、必要に応じてタスクを送信",
+  "planUsage": "/plan [タスク]",
+  "optionalTask": " [タスク]",
+  "planSelected": "次のタスクに Plan モードを選択しました。Codex の確認を待っています。",
+  "planSubmitted": "Plan タスクを送信しました。実際のモードと結果は会話で確認してください。",
+  "planNotSubmitted": "タスク送信は未確認です。再試行前に診断を確認してください。",
+  "planUnavailable": "アイドル状態の会話を再開するか、新しい下書きを開いてください。",
+  "mode": "共同作業モード",
+  "modeUnknown": "モード未報告",
+  "executeMode": "実行",
+  "planMode": "Plan",
+  "modePending": "{{selected}} 適用待ち · 現在: {{current}}"
 }

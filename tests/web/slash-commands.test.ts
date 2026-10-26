@@ -101,7 +101,7 @@ describe('slash command parsing and validation', () => {
 
   it('lists commands for a slash and searches names and descriptions', () => {
     const commands = createSlashCommands(context);
-    expect(filterSlashCommands(commands, '/')).toHaveLength(10);
+    expect(filterSlashCommands(commands, '/')).toHaveLength(11);
     expect(filterSlashCommands(commands, '/st').map((entry) => entry.name)).toEqual([
       'stop',
       'status',
@@ -468,7 +468,7 @@ describe('slash command execution', () => {
     const help = await command(state, 'help').run();
     expect(help.message).toContain('/resume');
     expect(help.message).toContain('不是 CLI 会话选择器');
-    expect(help.message).toContain('无需参数');
+    expect(help.message).toContain('/plan [任务]');
     expect(await command(state, 'status').run()).toEqual({
       message: '已打开状态诊断；可在面板中刷新或核对提交。',
     });
@@ -533,4 +533,28 @@ it('supports new, rename, resume and fork in an explicitly unassigned workspace'
   expect(command(state, 'rename').unavailableReason).toBeUndefined();
   state.busy = ['create:@unassigned'];
   expect(command(state, 'new').unavailableReason).toContain('正在新建');
+});
+
+it('selects Plan for an idle session or draft and blocks execution or stale contexts', async () => {
+  const state = context();
+  state.system!.capabilities.push('turn/start');
+  state.thread!.managed = true;
+  state.selectPlan = vi.fn().mockResolvedValue(true);
+  expect(
+    validateSlashCommand(
+      '/plan compare designs',
+      createSlashCommands(() => state),
+    ),
+  ).toBeUndefined();
+  await command(state, 'plan').run('compare designs');
+  expect(state.selectPlan).toHaveBeenCalledWith('compare designs');
+  expect(state.run).not.toHaveBeenCalled();
+  activeThread(state);
+  expect(await command(state, 'plan').run()).toMatchObject({ error: true });
+  state.thread = undefined;
+  state.selectedId = undefined;
+  expect(command(state, 'plan').unavailableReason).toBeUndefined();
+  const pending = command(state, 'plan');
+  state.selectedId = 'different-thread';
+  expect(await pending.run()).toMatchObject({ error: true });
 });

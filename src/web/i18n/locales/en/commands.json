@@ -71,7 +71,7 @@
   "selected_session_resumed": "Selected session resumed.",
   "rename_name": "/rename <name>",
   "no_arguments": "/{{v0}} (no arguments)",
-  "rename_requires_a_name_other_commands_take_no": "{{v0}}\n/rename requires a name; other commands take no arguments. Use // for regular messages starting with /.",
+  "rename_requires_a_name_other_commands_take_no": "Commands and usage:\n{{v0}}\nOnly the shown arguments are accepted.\nUse // for ordinary messages starting with /.",
   "name": " <name>",
   "diagnostics_opened_refresh_status_or_reconcile_submissions_in": "Diagnostics opened. Refresh status or reconcile submissions in the panel.",
   "the_project_or_session_changed_select_the_command": "The project or session changed. Select the command again.",
@@ -82,5 +82,17 @@
   "renameLong": "Session names may contain at most {{max}} characters.",
   "renameControls": "Session names cannot contain line breaks or control characters.",
   "commandLine": "/{{name}}{{arguments}}: {{description}}",
-  "review_uncommitted_working_directory_changes": "Review uncommitted changes in the current working directory using session settings"
+  "review_uncommitted_working_directory_changes": "Review uncommitted changes in the current working directory using session settings",
+  "planDescription": "Enter Plan mode, optionally with a task",
+  "planUsage": "/plan [task]",
+  "optionalTask": " [task]",
+  "planSelected": "Plan mode is selected for the next task; waiting for Codex confirmation.",
+  "planSubmitted": "Plan task submitted; follow the session for the confirmed mode and result.",
+  "planNotSubmitted": "The task was not confirmed. Check diagnostics before trying again.",
+  "planUnavailable": "Resume an idle session, or open a new workspace draft, before selecting Plan mode.",
+  "mode": "Collaboration mode",
+  "modeUnknown": "Mode not reported",
+  "executeMode": "Execute",
+  "planMode": "Plan",
+  "modePending": "{{selected}} pending · current: {{current}}"
 }

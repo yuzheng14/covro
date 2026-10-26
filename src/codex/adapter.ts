@@ -6,6 +6,11 @@ import { spawn, execFile, type ChildProcessWithoutNullStreams } from 'node:child
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { ThreadTitles } from './thread-titles.js';
+import {
+  collaborationSelection,
+  reportedCollaborationMode,
+  type CollaborationProvenance,
+} from './collaboration.js';
 import { TurnTokenUsage } from './turn-token-usage.js';
 import { AppError } from '../shared/errors.js';
 import { threadNameError } from '../shared/thread-name.js';
@@ -968,6 +973,9 @@ export class CodexAdapter implements CodexClient {
     const previous = this.permissionState.get(result.thread.id);
     const settings: RuntimeSettings = {
       model: result.model ?? result.thread.model ?? null,
+      ...reportedCollaborationMode(
+        (result as ThreadStartResponse & CollaborationProvenance).collaborationMode,
+      ),
       reasoningEffort: result.reasoningEffort ?? null,
       ...serviceTierSettings(result.serviceTier),
       ...permissionSettings(
@@ -1073,6 +1081,7 @@ export class CodexAdapter implements CodexClient {
           cwd,
           input: taskInput(text, images),
           ...turnSettings(cwd, settings),
+          ...collaborationSelection(settings, this.permissionState.get(id)),
         })
       ).turn,
     );
@@ -1166,6 +1175,12 @@ export class CodexAdapter implements CodexClient {
       case 'thread/settings/updated':
         {
           const observed: RuntimeSettings = {
+            ...reportedCollaborationMode(
+              (
+                event.params.threadSettings as typeof event.params.threadSettings &
+                  CollaborationProvenance
+              ).collaborationMode,
+            ),
             model: event.params.threadSettings.model ?? null,
             reasoningEffort: event.params.threadSettings.effort ?? null,
             ...serviceTierSettings(event.params.threadSettings.serviceTier),
