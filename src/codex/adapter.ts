@@ -1127,6 +1127,10 @@ export class CodexAdapter implements CodexClient {
     await this.call('turn/interrupt', { threadId: id, turnId });
   }
 
+  async recapThread(id: string, prompt: string) {
+    if (!this.titles) throw new CodexError('CODEX_UNAVAILABLE', 'Codex unavailable');
+    return this.titles.recap(id, prompt);
+  }
   listGuardianDenials(id: string) {
     return this.denials.list(id);
   }
@@ -1387,7 +1391,7 @@ export class CodexAdapter implements CodexClient {
       await this.rpc?.reject(
         message.id,
         -32601,
-        'Interactive tools are disabled for title generation',
+        'Interactive tools are disabled for isolated helper requests',
       );
       return;
     }

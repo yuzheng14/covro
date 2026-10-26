@@ -127,5 +127,12 @@
   "approveConfirm": "仅单次授权此操作，Codex 可据此重试；默认权限不变。",
   "approveOnce": "单次授权",
   "approveSubmitted": "已记录重试授权，可继续发送任务让 Codex 重试。",
-  "approveCancelled": "已取消授权。"
+  "approveCancelled": "已取消授权。",
+  "recapDescription": "独立总结近期会话",
+  "recapTitle": "会话摘要",
+  "recapNotice": "通过独立模型请求总结近期可见消息，原会话上下文保持不变。",
+  "recapPartial": "摘要仅包含部分已保存会话。",
+  "recapEmpty": "请先发送消息再生成摘要。",
+  "recapFailed": "未能确认摘要结果，请查看诊断。",
+  "recapOpened": "已打开会话摘要。"
 }

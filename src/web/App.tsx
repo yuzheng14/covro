@@ -7,6 +7,7 @@ import { ArrowLeft, Pencil } from 'lucide-react';
 import type { Settings, ThreadSummary, ReviewTarget } from '../shared/types';
 import { useCommandPrompt } from './hooks/useCommandPrompt';
 import { ReviewTargetDialog } from './components/ReviewTargetDialog';
+import { CommandDialog } from './components/CommandDialog';
 import { GuardianDenialsDialog } from './components/GuardianDenialsDialog';
 import { WorkspaceDiffDialog } from './components/WorkspaceDiffDialog';
 import { useWorkspace } from './hooks/useWorkspace';
@@ -338,6 +339,13 @@ export function App() {
     workspace.selectedId,
     system?.codexEpoch,
   ]);
+  const [recap, setRecap] = useState<{
+    scope: string;
+    summary: string;
+    partial: boolean;
+    readAt: number;
+  }>();
+  useEffect(() => setRecap(undefined), [commandScope]);
   const denialPrompt = useCommandPrompt<string>(commandScope);
   const reviewPrompt = useCommandPrompt<ReviewTarget>(commandScope);
   const [diffDialog, setDiffDialog] = useState<{ scope: string; path: string }>();
@@ -352,6 +360,7 @@ export function App() {
       }),
     chooseReviewTarget: reviewPrompt.request,
     chooseDenial: denialPrompt.request,
+    openRecap: (value) => setRecap({ ...value, scope: commandScope }),
     project,
     scopeId: workspace.projectId,
     selectedId: workspace.selectedId,
@@ -894,6 +903,18 @@ export function App() {
                 </Button>
               )}
             </div>
+          )}
+          {recap?.scope === commandScope && (
+            <CommandDialog
+              open
+              title={t('commands:recapTitle')}
+              onClose={() => setRecap(undefined)}
+              wide
+            >
+              <p>{t('commands:recapNotice')}</p>
+              {recap.partial && <p role="status">{t('commands:recapPartial')}</p>}
+              <div className="command-action-content recap-content">{recap.summary}</div>
+            </CommandDialog>
           )}
           {denialPrompt.open && thread && (
             <GuardianDenialsDialog

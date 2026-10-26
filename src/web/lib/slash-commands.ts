@@ -1,7 +1,7 @@
 import { UNASSIGNED_SCOPE } from '../../shared/workspace-scope';
 import { displayMessage } from '../i18n/messages';
 import { errorMessage } from './error-message';
-import { t } from '../i18n';
+import { currentLocale, t } from '../i18n';
 import type {
   Operation,
   Project,
@@ -40,6 +40,7 @@ export type SlashCommandName =
   | 'init'
   | 'diff'
   | 'approve'
+  | 'recap'
   | 'review'
   | 'rename'
   | 'export';
@@ -122,6 +123,7 @@ export interface SlashCommandContext {
   selectPlan?: (task: string) => Promise<boolean>;
   initialize?: () => Promise<boolean>;
   openDiff?: () => void;
+  openRecap?: (value: { summary: string; partial: boolean; readAt: number }) => void;
   chooseDenial?: () => Promise<string | undefined>;
   chooseReviewTarget?: () => Promise<ReviewTarget | undefined>;
 }
@@ -161,6 +163,12 @@ const definitions: { name: SlashCommandName; description: string }[] = [
     name: 'review',
     get description() {
       return t('commands:reviewDescription');
+    },
+  },
+  {
+    name: 'recap',
+    get description() {
+      return t('commands:recapDescription');
     },
   },
   {
@@ -243,6 +251,7 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
   if (name !== 'stop' && compatibilityConfirmationRequired(context.system))
     return t('commands:confirm_the_codex_version_compatibility_notice_first');
   const capabilities = {
+    recap: 'turn/start',
     approve: 'thread/approveGuardianDeniedAction',
     init: 'turn/start',
     plan: 'turn/start',
@@ -314,7 +323,9 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
     return undefined;
   }
   if (name === 'approve' && !context.chooseDenial) return t('commands:approveEmpty');
-  if (name === 'review' || name === 'approve') {
+  if (name === 'recap' && (!context.openRecap || !thread.turns.length))
+    return t('commands:recapEmpty');
+  if (name === 'review' || name === 'approve' || name === 'recap') {
     if (thread.archived) return t('commands:this_session_is_archived_unarchive_it_first');
     if (!thread.managed) return t('commands:resume_this_session_before_starting_code_review');
     if (busy('review', thread.id)) return t('commands:submitting_code_review_wait_for_the_receipt');
@@ -593,6 +604,39 @@ export function createSlashCommands(getContext: () => SlashCommandContext): Slas
           operation = await context.run('fork', thread!.id, `${path}/fork`, {
             settings: context.settings,
           });
+        } else if (name === 'recap') {
+          operation = await context.run('recap', thread!.id, `${path}/recap`, {
+            language: currentLocale(),
+          });
+          if (operation?.status !== 'acknowledged') return operationResult(name, operation);
+          const value = operation.result as
+            { summary?: unknown; partial?: unknown; readAt?: unknown } | undefined;
+          if (
+            !value ||
+            typeof value.summary !== 'string' ||
+            typeof value.partial !== 'boolean' ||
+            typeof value.readAt !== 'number'
+          )
+            return { error: true, message: t('commands:recapFailed') };
+          const current = getContext();
+          if (
+            current.selectedId !== context.selectedId ||
+            (current.scopeId ?? current.project?.id) !== (context.scopeId ?? context.project?.id)
+          )
+            return {
+              error: true,
+              message: t('commands:the_project_or_session_changed_select_the_command'),
+            };
+          current.openRecap!({
+            summary: value.summary,
+            partial: value.partial,
+            readAt: value.readAt,
+          });
+          return {
+            get message() {
+              return t('commands:recapOpened');
+            },
+          };
         } else if (name === 'approve') {
           const denialId = await context.chooseDenial!();
           if (!denialId) return { error: true, message: t('commands:approveCancelled') };

@@ -332,3 +332,46 @@ it('cancels pending naming when the runtime stops and never sends it to the repl
   expect(adapter.ready).toBe(true);
   expect((await requests()).some((r) => r.method === 'thread/name/set')).toBe(false);
 });
+
+it('isolates an explicit recap and cleans up its temporary thread without renaming the source', async () => {
+  const { adapter, events, requests } = await fixture();
+  const thread = await adapter.createThread('/tmp');
+  const summary = await adapter.recapThread(thread.id, 'Summarize visible conversation data.');
+  expect(summary).toContain('下一步');
+  expect((await adapter.readThread(thread.id)).turns).toHaveLength(0);
+  expect(events.some((event) => event.type === 'threadName')).toBe(false);
+  const calls = await requests();
+  const start = calls.find(
+    (call) => call.method === 'thread/start' && call.params?.threadSource === 'recap',
+  );
+  expect(start?.params).toMatchObject({
+    ephemeral: true,
+    sandbox: 'read-only',
+    runtimeWorkspaceRoots: [],
+    dynamicTools: [],
+    config: {
+      'features.shell_tool': false,
+      'features.goals': false,
+      'features.apps': false,
+      'features.plugins': false,
+    },
+  });
+  const internalTurn = calls.find((call) => call.method === 'turn/start');
+  expect(internalTurn?.params?.threadId).not.toBe(thread.id);
+  expect(calls.some((call) => call.method === 'thread/unsubscribe')).toBe(true);
+  expect(events.filter((event) => 'threadId' in event && event.threadId !== thread.id)).toEqual([]);
+});
+it('times out a recap without interrupting or writing to the source thread', async () => {
+  const { adapter, requests } = await fixture({ titleBehavior: 'hang' }, 40);
+  const thread = await adapter.createThread('/tmp');
+  await expect(adapter.recapThread(thread.id, 'Summarize')).rejects.toMatchObject({
+    code: 'RECAP_FAILED',
+  });
+  const calls = await requests();
+  expect(
+    calls
+      .filter((call) => call.method === 'turn/interrupt')
+      .every((call) => call.params?.threadId !== thread.id),
+  ).toBe(true);
+  expect((await adapter.readThread(thread.id)).turns).toHaveLength(0);
+});

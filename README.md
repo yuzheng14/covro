@@ -42,6 +42,8 @@ Use `/review` to choose uncommitted changes, a base branch, a commit, or custom 
 
 Use `/diff` to inspect staged, unstaged, and untracked Git changes in the current workspace without starting a model task. Use `/approve` to explicitly authorize a recorded automatic-review denial once, then ask Codex to continue.
 
+Use `/recap` to summarize recent visible messages in a separate model request without changing conversation context.
+
 See the [usage guide · 中文](docs/usage.zh-CN.md) for workflow details and controls.
 
 Start a new conversation in the current workspace with **⌘ + Option + N** on macOS or **Ctrl + Alt + N** on Windows/Linux. The message box receives focus and existing drafts stay available. When the workspace has a recognized GitHub remote, the GitHub icon in the header opens its repository in a new tab. See [workspace details](docs/workspaces.md#open-the-github-repository) for remote selection rules.

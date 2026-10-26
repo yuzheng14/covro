@@ -149,5 +149,8 @@
   "AGENTS_CHECK_FAILED": "AGENTS.md를 확인하지 못해 초기화 작업을 제출하지 않았습니다.",
   "GIT_NOT_REPOSITORY": "현재 작업 공간은 Git 저장소가 아닙니다.",
   "GIT_UNAVAILABLE": "서버에서 Git을 사용할 수 없습니다.",
-  "GIT_DIFF_FAILED": "변경을 읽지 못했습니다. 작업 디렉터리를 확인하고 재시도하세요."
+  "GIT_DIFF_FAILED": "변경을 읽지 못했습니다. 작업 디렉터리를 확인하고 재시도하세요.",
+  "DENIAL_EXPIRED": "거부 기록이 만료되었습니다. 현재 대화의 목록을 다시 여세요.",
+  "RECAP_BUSY": "이 대화의 요약을 생성 중입니다.",
+  "RECAP_FAILED": "요약을 완료할 수 없습니다. 원래 대화는 유지됩니다."
 }
