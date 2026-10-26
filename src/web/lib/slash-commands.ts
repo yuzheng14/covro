@@ -37,6 +37,7 @@ export type SlashCommandName =
   | 'status'
   | 'compact'
   | 'plan'
+  | 'init'
   | 'review'
   | 'rename'
   | 'export';
@@ -117,6 +118,7 @@ export interface SlashCommandContext {
   openStatus: () => void;
   exportThread: (threadId: string) => Promise<{ partial: boolean }>;
   selectPlan?: (task: string) => Promise<boolean>;
+  initialize?: () => Promise<boolean>;
   chooseReviewTarget?: () => Promise<ReviewTarget | undefined>;
 }
 
@@ -155,6 +157,12 @@ const definitions: { name: SlashCommandName; description: string }[] = [
     name: 'review',
     get description() {
       return t('commands:reviewDescription');
+    },
+  },
+  {
+    name: 'init',
+    get description() {
+      return t('commands:initDescription');
     },
   },
   {
@@ -210,6 +218,7 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
   if (name !== 'stop' && compatibilityConfirmationRequired(context.system))
     return t('commands:confirm_the_codex_version_compatibility_notice_first');
   const capabilities = {
+    init: 'turn/start',
     plan: 'turn/start',
     fork: 'thread/fork',
     resume: 'thread/resume',
@@ -239,11 +248,12 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
     return undefined;
   }
   const thread = context.thread;
-  if (name === 'plan') {
-    if (!context.selectPlan) return t('commands:planUnavailable');
-    if (context.busy.some((entry) => entry.startsWith('saveModelDefaults:')))
-      return t('commands:planUnavailable');
-    if (busy('create', scope!) || unsettled(scope!)) return t('commands:planUnavailable');
+  if (name === 'plan' || name === 'init') {
+    const blocked = t(name === 'plan' ? 'commands:planUnavailable' : 'commands:initUnavailable');
+    if ((name === 'plan' && !context.selectPlan) || (name === 'init' && !context.initialize))
+      return blocked;
+    if (context.busy.some((entry) => entry.startsWith('saveModelDefaults:'))) return blocked;
+    if (busy('create', scope!) || unsettled(scope!)) return blocked;
     if (!thread)
       return context.selectedId ? t('commands:session_loading_try_again_shortly') : undefined;
     if (
@@ -255,7 +265,7 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
       thread.turns.some((turn) => isActive(turn.status)) ||
       (thread.execution && !thread.execution.ended)
     )
-      return t('commands:planUnavailable');
+      return blocked;
     return undefined;
   }
   if (!thread)
@@ -492,6 +502,15 @@ export function createSlashCommands(getContext: () => SlashCommandContext): Slas
       const thread = context.thread;
       const path = `/api/threads/${encodeURIComponent(thread?.id ?? '')}`;
       try {
+        if (name === 'init') {
+          const submitted = await context.initialize!();
+          return {
+            error: !submitted,
+            get message() {
+              return t(submitted ? 'commands:initSubmitted' : 'commands:planNotSubmitted');
+            },
+          };
+        }
         if (name === 'plan') {
           const selected = await context.selectPlan!(argumentsText);
           return {

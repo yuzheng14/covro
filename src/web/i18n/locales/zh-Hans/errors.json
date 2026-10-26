@@ -144,5 +144,7 @@
   "INVALID_TEXT_PATH": "文本文件路径无效。",
   "TEXT_OUTSIDE_PROJECT": "只能预览当前会话所属项目或服务器临时目录内的文本文件。",
   "TEXT_CHANGED": "文本文件已变化，请重新打开预览。",
-  "TEXT_NOT_FILE": "文本路径不是普通文件。"
+  "TEXT_NOT_FILE": "文本路径不是普通文件。",
+  "AGENTS_EXISTS": "AGENTS.md 已存在，已保留原有内容。",
+  "AGENTS_CHECK_FAILED": "无法核对 AGENTS.md，未提交初始化任务。"
 }

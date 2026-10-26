@@ -107,5 +107,8 @@
   "closeDialog": "Close",
   "reviewCancelled": "Review cancelled; the command draft is kept.",
   "reviewDescription": "Review working-directory changes, a branch, a commit, or custom instructions",
-  "reviewUsage": "/review [instructions]"
+  "reviewUsage": "/review [instructions]",
+  "initDescription": "Generate a project AGENTS.md without replacing an existing entry",
+  "initSubmitted": "Project initialization task submitted; follow its result in this session.",
+  "initUnavailable": "Resume an idle session or open a new workspace draft before initializing."
 }
