@@ -48,6 +48,13 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      # Preserve Playwright's fonts and shared libraries, but avoid the Azure HTTP
+      # mirror that has stretched a shard's package downloads past ten minutes.
+      - name: Prefer the official Ubuntu HTTPS mirror for browser dependencies
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
       - run: pnpm exec playwright install --with-deps --only-shell chromium
       # Each runner has its own fixture server; tests within a shard stay serial.
       - run: pnpm test:e2e --shard=${{ matrix.shard }}/6
