@@ -33,7 +33,8 @@ jobs:
       - run: node --import tsx scripts/verify-upgrade.ts
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Browser dependencies can take over 10 minutes to install on a cold runner.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
