@@ -70,6 +70,7 @@ import {
   mapItem,
   mapThread,
   mapTurn,
+  mapTurnError,
   permissionSettings,
   serviceTierSettings,
   threadSettings,
@@ -1341,6 +1342,7 @@ export class CodexAdapter implements CodexClient {
           turnId: event.params.turnId,
           message: event.params.error.message,
           willRetry: event.params.willRetry,
+          ...mapTurnError(event.params.error),
         });
         break;
       default: // Unknown noninteractive notifications cannot authorize any action.

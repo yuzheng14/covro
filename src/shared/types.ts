@@ -154,7 +154,11 @@ export interface AsyncQuestionReply {
   question: string;
   answer: string;
 }
-export interface TurnView {
+export interface TurnErrorMetadata {
+  errorCode?: string;
+  errorDetails?: string;
+}
+export interface TurnView extends TurnErrorMetadata {
   id: string;
   threadId: string;
   status: RunStatus;
@@ -169,7 +173,7 @@ export interface TurnView {
   diff?: string;
   error?: string;
   /** Codex's upstream retry state; independent of the browser's gateway connection. */
-  reconnect?: { status: 'retrying' | 'failed'; message: string };
+  reconnect?: TurnErrorMetadata & { status: 'retrying' | 'failed'; message: string };
 }
 export interface ThreadView {
   /** Native Codex archive state, read from its index and lifecycle notifications. */

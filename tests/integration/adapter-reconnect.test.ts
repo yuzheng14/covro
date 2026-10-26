@@ -36,15 +36,57 @@ describe('Codex upstream reconnect notifications', () => {
       });
     }
     expect(events).toEqual([
-      { type: 'turnError', ...identity, message: 'Reconnecting... 2/5', willRetry: true },
+      {
+        type: 'turnError',
+        ...identity,
+        message: 'Reconnecting... 2/5',
+        willRetry: true,
+        errorCode: 'responseStreamDisconnected',
+      },
       {
         type: 'turnError',
         ...identity,
         message: 'Stream disconnected before completion',
         willRetry: false,
+        errorCode: 'responseStreamDisconnected',
       },
     ]);
     expect(adapter.diagnostics()).toEqual(diagnostics);
+  });
+
+  it('retains capacity classification and the original cause on native retries and history', () => {
+    const { events, notify } = fixture();
+    notify({
+      method: 'error',
+      params: {
+        ...identity,
+        willRetry: true,
+        error: {
+          message: 'Reconnecting... 1/5',
+          codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: null } },
+          additionalDetails: 'Selected model is at capacity. Please try a different model.',
+          misalignment: null,
+        },
+      },
+    });
+    expect(events[0]).toMatchObject({
+      errorCode: 'responseStreamDisconnected',
+      errorDetails: 'Selected model is at capacity. Please try a different model.',
+    });
+    notify({
+      method: 'error',
+      params: {
+        ...identity,
+        willRetry: false,
+        error: {
+          message: 'Selected model is at capacity. Please try a different model.',
+          codexErrorInfo: 'serverOverloaded',
+          additionalDetails: null,
+          misalignment: null,
+        },
+      },
+    });
+    expect(events[1]).toMatchObject({ errorCode: 'serverOverloaded', willRetry: false });
   });
 
   it.each([

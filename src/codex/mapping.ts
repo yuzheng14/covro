@@ -21,6 +21,19 @@ import { parseQuestionReplies } from '../shared/async-questions.js';
 import { imageDataBytes, MAX_IMAGES, MAX_IMAGE_BYTES } from '../shared/images.js';
 import { CodexError, isRecord } from './transport.js';
 
+/** Keep public diagnostics bounded and independent of upstream protocol types. */
+export function mapTurnError(error: {
+  codexErrorInfo?: unknown;
+  additionalDetails?: string | null;
+}) {
+  const info = error.codexErrorInfo;
+  const code = typeof info === 'string' ? info : isRecord(info) ? Object.keys(info)[0] : undefined;
+  return {
+    ...(code ? { errorCode: code.slice(0, 100) } : {}),
+    ...(error.additionalDetails ? { errorDetails: error.additionalDetails.slice(0, 4096) } : {}),
+  };
+}
+
 export function taskInput(text: string, images: string[] = []): UserInput[] {
   return [
     ...(text ? [{ type: 'text' as const, text, text_elements: [] }] : []),
@@ -98,7 +111,7 @@ export function mapTurn(threadId: string, turn: Turn): TurnView {
     ...(validTiming(turn.completedAt) ? { completedAt: turn.completedAt * 1000 } : {}),
     ...(validTiming(turn.durationMs) ? { durationMs: turn.durationMs } : {}),
     items: turn.items.map(mapItem),
-    ...(turn.error ? { error: turn.error.message } : {}),
+    ...(turn.error ? { error: turn.error.message, ...mapTurnError(turn.error) } : {}),
   };
 }
 function validTiming(value: unknown): value is number {

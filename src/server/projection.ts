@@ -6,6 +6,7 @@ import type {
   RunStatus,
   ThreadView,
   TurnView,
+  TurnErrorMetadata,
 } from '../shared/types.js';
 
 export const isActive = (status: RunStatus): boolean =>
@@ -101,16 +102,28 @@ export class Projection {
     this.touch(threadId);
   }
 
-  turnError(threadId: string, turnId: string, message: string, willRetry: boolean): boolean {
+  turnError(
+    threadId: string,
+    turnId: string,
+    message: string,
+    willRetry: boolean,
+    metadata: TurnErrorMetadata = {},
+  ): boolean {
     const turn = this.threads.get(threadId)?.turns.find((entry) => entry.id === turnId);
     if (!turn || !isActive(turn.status)) return false;
     // Keep display-only diagnostics bounded, without changing the execution reservation.
     const detail = message.slice(0, 4096);
-    if (willRetry) turn.reconnect = { status: 'retrying', message: detail };
+    const info = {
+      ...(metadata.errorCode ? { errorCode: metadata.errorCode.slice(0, 100) } : {}),
+      ...(metadata.errorDetails ? { errorDetails: metadata.errorDetails.slice(0, 4096) } : {}),
+    };
+    if (willRetry) turn.reconnect = { status: 'retrying', message: detail, ...info };
     else {
       turn.error = detail;
+      Object.assign(turn, info);
       endCompactions(turn, 'failed', detail);
-      if (turn.reconnect) turn.reconnect = { status: 'failed', message: detail };
+      if (turn.reconnect)
+        turn.reconnect = { ...turn.reconnect, ...info, status: 'failed', message: detail };
     }
     this.touch(threadId);
     return true;
@@ -140,6 +153,7 @@ export class Projection {
     if (!turn.reconnect || !isTerminal(turn.status)) return;
     if (turn.status === 'failed') {
       turn.reconnect = {
+        ...turn.reconnect,
         status: 'failed',
         message: (turn.error ?? turn.reconnect.message).slice(0, 4096),
       };

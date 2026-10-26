@@ -5166,3 +5166,53 @@ dd {
     display: none;
   }
 }
+
+.codex-retry-attempt {
+  margin-left: 10px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.model-capacity-notice {
+  display: block;
+}
+.model-capacity-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.model-capacity-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.model-capacity-progress {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.model-capacity-progress .button {
+  min-height: 0;
+  height: auto;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+.model-capacity-details {
+  margin-top: 6px;
+  font-size: 11px;
+}
+.model-capacity-details p {
+  margin: 4px 0 0;
+}
+.model-capacity-note {
+  margin: 6px 0 0;
+}

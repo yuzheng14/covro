@@ -1,3 +1,5 @@
+import { ModelCapacityNotice } from './ModelCapacityNotice';
+import { isCapacityTurnError, upstreamRetryAttempt } from '../../shared/turn-errors';
 import { message, displayMessage } from '../i18n/messages';
 import { t, currentLocale } from '../i18n';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -195,8 +197,9 @@ function Item({
 }
 
 function CodexReconnectNotice({ turn, offline }: { turn: TurnView; offline: boolean }) {
-  if (!turn.reconnect) return null;
+  if (!turn.reconnect || isCapacityTurnError(turn)) return null;
   const retrying = turn.reconnect.status === 'retrying';
+  const attempt = retrying ? upstreamRetryAttempt(turn.reconnect.message) : undefined;
   return (
     <div
       className={`codex-reconnect codex-reconnect-${turn.reconnect.status}`}
@@ -210,6 +213,9 @@ function CodexReconnectNotice({ turn, offline }: { turn: TurnView; offline: bool
         <strong>
           {offline && t('common:last_known')}
           {retrying ? t('conversation:reconnecting') : t('conversation:codex_reconnection_failed')}
+          {attempt && (
+            <span className="codex-retry-attempt">{t('conversation:retry_attempt', attempt)}</span>
+          )}
         </strong>
         <p>
           {retrying
@@ -221,10 +227,46 @@ function CodexReconnectNotice({ turn, offline }: { turn: TurnView; offline: bool
         <details>
           <summary>{t('conversation:connection_details')}</summary>
           <p className="codex-reconnect-message">{displayMessage(turn.reconnect.message)}</p>
+          {turn.reconnect.errorDetails && (
+            <p className="codex-reconnect-message">{turn.reconnect.errorDetails}</p>
+          )}
         </details>
       </div>
     </div>
   );
+}
+
+function TurnErrorNotice({ turn, offline }: { turn: TurnView; offline: boolean }) {
+  if (isCapacityTurnError(turn)) {
+    const retrying = turn.reconnect?.status === 'retrying';
+    const attempt = retrying ? upstreamRetryAttempt(turn.reconnect!.message) : undefined;
+    const details = [
+      turn.reconnect?.message ?? turn.error,
+      turn.reconnect?.errorDetails ?? turn.errorDetails,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join('\n');
+    return (
+      <ModelCapacityNotice
+        offline={offline}
+        retrying={retrying}
+        state={turn.reconnect?.status ?? 'failed'}
+        details={details}
+        progress={
+          retrying
+            ? attempt
+              ? t('conversation:retry_progress', attempt)
+              : t('conversation:retrying_short')
+            : t('conversation:retry_stopped_short')
+        }
+      />
+    );
+  }
+  return turn.error &&
+    turn.reconnect?.status !== 'failed' &&
+    !turn.items.some((item) => item.type === 'contextCompaction' && item.error === turn.error) ? (
+    <div className="error-banner">{displayMessage(turn.error)}</div>
+  ) : null;
 }
 
 interface ConversationProps {
@@ -443,7 +485,7 @@ function ConversationContent({
           )}
         </div>
       )}
-      {latestTurn?.reconnect && (
+      {latestTurn?.reconnect && !isCapacityTurnError(latestTurn) && (
         <div className="codex-reconnect-pinned">
           <CodexReconnectNotice turn={latestTurn} offline={offline} />
         </div>
@@ -592,9 +634,11 @@ function ConversationContent({
                     <span>{t('conversation:turn', { v0: index + 1 })}</span>
                     <Status status={turn.status} offline={offline} />
                   </div>
-                  {turn.id !== latestTurn?.id && turn.reconnect?.status === 'failed' && (
-                    <CodexReconnectNotice turn={turn} offline={offline} />
-                  )}
+                  {turn.id !== latestTurn?.id &&
+                    turn.reconnect?.status === 'failed' &&
+                    !isCapacityTurnError(turn) && (
+                      <CodexReconnectNotice turn={turn} offline={offline} />
+                    )}
                   {groupConversationItems(turn.items).map((group) =>
                     group.kind === 'message' ? (
                       <Item
@@ -638,11 +682,7 @@ function ConversationContent({
                       <Icon name="chevron" size={16} />
                     </Button>
                   )}
-                  {turn.error &&
-                    turn.reconnect?.status !== 'failed' &&
-                    !turn.items.some(
-                      (item) => item.type === 'contextCompaction' && item.error === turn.error,
-                    ) && <div className="error-banner">{displayMessage(turn.error)}</div>}
+                  <TurnErrorNotice turn={turn} offline={offline} />
                   <TurnCompletion turn={turn} />
                 </section>
               ))

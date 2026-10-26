@@ -103,5 +103,14 @@
   "copy_loaded_command_output": "复制此命令已加载的输出",
   "command_output_copy_failed": "复制失败，请手动选择输出复制。",
   "command_output_truncated": "输出已截断，仅可复制已加载部分。",
-  "copied_truncated_command_output": "已复制已加载部分（输出已截断）"
+  "copied_truncated_command_output": "已复制已加载部分（输出已截断）",
+  "model_busy_retrying": "模型繁忙，正在重试",
+  "model_busy_stopped": "模型繁忙，重试已停止",
+  "model_busy_native_retry": "Codex 正在等待模型容量恢复，将继续当前任务。",
+  "retry_attempt": "第 {{attempt}} / {{limit}} 次重试",
+  "model_capacity_unavailable": "模型容量不足",
+  "retry_progress": "重试 {{attempt}}/{{limit}}",
+  "retrying_short": "正在重试",
+  "retry_stopped_short": "重试已停止",
+  "error_details": "错误详情"
 }

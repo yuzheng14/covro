@@ -12,6 +12,7 @@ import type {
   ThreadPage,
   ThreadView,
   TurnView,
+  TurnErrorMetadata,
 } from '../shared/types.js';
 
 export type CodexDiagnostics = Omit<SystemInfo, 'authMode' | 'demo' | 'compatibilityConfirmation'>;
@@ -22,7 +23,13 @@ export type CodexEvent =
   | { type: 'threadArchive'; threadId: string; archived: boolean }
   | { type: 'threadStatus'; threadId: string; status: RunStatus }
   | { type: 'turn'; threadId: string; turn: TurnView }
-  | { type: 'turnError'; threadId: string; turnId: string; message: string; willRetry: boolean }
+  | ({
+      type: 'turnError';
+      threadId: string;
+      turnId: string;
+      message: string;
+      willRetry: boolean;
+    } & TurnErrorMetadata)
   | { type: 'compactionCompleted'; threadId: string; turnId: string }
   | { type: 'turnProgress'; threadId: string; turnId: string }
   | { type: 'item'; threadId: string; turnId: string; item: ItemView }
