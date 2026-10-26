@@ -79,5 +79,6 @@
   "login_expired_or_history_response_was_not_markdown": "로그인이 만료되었거나 기록 응답이 Markdown이 아닙니다. 다시 로그인한 후 시도하세요.",
   "export_response_has_no_valid_filename_no_file": "내보내기 응답에 유효한 파일 이름이 없어 다운로드하지 않았습니다.",
   "export_response_lacks_history_completeness_information_no_file": "내보내기 응답에 기록 완전성 정보가 없어 다운로드하지 않았습니다.",
-  "request_failed_please_try_again": "요청에 실패했습니다. 다시 시도하세요."
+  "request_failed_please_try_again": "요청에 실패했습니다. 다시 시도하세요.",
+  "open_github_repository": "GitHub 저장소 열기"
 }

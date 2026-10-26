@@ -79,5 +79,6 @@
   "login_expired_or_history_response_was_not_markdown": "ログインが期限切れか、履歴が Markdown で返されませんでした。再ログインして再試行してください。",
   "export_response_has_no_valid_filename_no_file": "エクスポートの応答に有効なファイル名がありません。ダウンロードは行いません。",
   "export_response_lacks_history_completeness_information_no_file": "履歴の完全性情報がないため、ダウンロードは行いません。",
-  "request_failed_please_try_again": "リクエストに失敗しました。再試行してください。"
+  "request_failed_please_try_again": "リクエストに失敗しました。再試行してください。",
+  "open_github_repository": "GitHub リポジトリを開く"
 }
