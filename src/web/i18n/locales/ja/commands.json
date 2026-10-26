@@ -119,5 +119,13 @@
   "diffPartial": "ファイル変更、読取不可、上限超過により一部内容を省略しました。",
   "diffDescription": "ステージ済み・未ステージ・未追跡の変更を表示",
   "diffUnavailable": "プロジェクトまたは保存済み会話を選択してください。",
-  "diffOpened": "作業領域の変更を開きました。更新で新しいスナップショットを取得できます。"
+  "diffOpened": "作業領域の変更を開きました。更新で新しいスナップショットを取得できます。",
+  "approveDescription": "拒否された操作を一度だけ許可",
+  "approveTitle": "拒否された操作",
+  "approveEmpty": "この実行環境に再試行可能な拒否はありません。",
+  "approveSelect": "拒否された操作を選択",
+  "approveConfirm": "この操作を一度だけ許可します。既定の権限は変更されません。",
+  "approveOnce": "一度だけ許可",
+  "approveSubmitted": "再試行の許可を記録しました。続行するタスクを送信してください。",
+  "approveCancelled": "許可をキャンセルしました。"
 }

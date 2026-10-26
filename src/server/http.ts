@@ -442,6 +442,16 @@ export function createApp({
     );
     return c.json(op, status(op));
   });
+  app.get('/api/threads/:threadId/denials', async (c) =>
+    c.json(await service.getGuardianDenials(id(c.req.param('threadId')))),
+  );
+  app.post('/api/threads/:threadId/approve', async (c) => {
+    const op = await service.approveGuardianDenial(
+      id(c.req.param('threadId')),
+      await parse(c, schemas.approveDenialSchema),
+    );
+    return c.json(op, status(op));
+  });
   app.post('/api/threads/:threadId/review', async (c) => {
     const op = await service.startReview(
       id(c.req.param('threadId')),

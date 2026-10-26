@@ -5235,3 +5235,11 @@ dd {
 .command-dialog-wide {
   width: min(1000px, calc(100vw - 32px));
 }
+
+.command-action-content {
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}

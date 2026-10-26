@@ -7,6 +7,7 @@ import { ArrowLeft, Pencil } from 'lucide-react';
 import type { Settings, ThreadSummary, ReviewTarget } from '../shared/types';
 import { useCommandPrompt } from './hooks/useCommandPrompt';
 import { ReviewTargetDialog } from './components/ReviewTargetDialog';
+import { GuardianDenialsDialog } from './components/GuardianDenialsDialog';
 import { WorkspaceDiffDialog } from './components/WorkspaceDiffDialog';
 import { useWorkspace } from './hooks/useWorkspace';
 import { useThreadReadState } from './hooks/useThreadReadState';
@@ -337,6 +338,7 @@ export function App() {
     workspace.selectedId,
     system?.codexEpoch,
   ]);
+  const denialPrompt = useCommandPrompt<string>(commandScope);
   const reviewPrompt = useCommandPrompt<ReviewTarget>(commandScope);
   const [diffDialog, setDiffDialog] = useState<{ scope: string; path: string }>();
   useEffect(() => setDiffDialog(undefined), [commandScope]);
@@ -349,6 +351,7 @@ export function App() {
           : `/api/projects/${encode(project!.id)}/diff`,
       }),
     chooseReviewTarget: reviewPrompt.request,
+    chooseDenial: denialPrompt.request,
     project,
     scopeId: workspace.projectId,
     selectedId: workspace.selectedId,
@@ -891,6 +894,14 @@ export function App() {
                 </Button>
               )}
             </div>
+          )}
+          {denialPrompt.open && thread && (
+            <GuardianDenialsDialog
+              key={`approve:${commandScope}`}
+              threadId={thread.id}
+              onChoose={denialPrompt.finish}
+              disabled={!canOperate || Boolean(activeTurn) || Boolean(waitingForConfirmation)}
+            />
           )}
           <ReviewTargetDialog
             key={`review:${commandScope}`}

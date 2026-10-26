@@ -39,6 +39,7 @@ export type SlashCommandName =
   | 'plan'
   | 'init'
   | 'diff'
+  | 'approve'
   | 'review'
   | 'rename'
   | 'export';
@@ -121,6 +122,7 @@ export interface SlashCommandContext {
   selectPlan?: (task: string) => Promise<boolean>;
   initialize?: () => Promise<boolean>;
   openDiff?: () => void;
+  chooseDenial?: () => Promise<string | undefined>;
   chooseReviewTarget?: () => Promise<ReviewTarget | undefined>;
 }
 
@@ -159,6 +161,12 @@ const definitions: { name: SlashCommandName; description: string }[] = [
     name: 'review',
     get description() {
       return t('commands:reviewDescription');
+    },
+  },
+  {
+    name: 'approve',
+    get description() {
+      return t('commands:approveDescription');
     },
   },
   {
@@ -235,6 +243,7 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
   if (name !== 'stop' && compatibilityConfirmationRequired(context.system))
     return t('commands:confirm_the_codex_version_compatibility_notice_first');
   const capabilities = {
+    approve: 'thread/approveGuardianDeniedAction',
     init: 'turn/start',
     plan: 'turn/start',
     fork: 'thread/fork',
@@ -304,7 +313,8 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
       return t('commands:an_execution_still_needs_checking_use_status_to');
     return undefined;
   }
-  if (name === 'review') {
+  if (name === 'approve' && !context.chooseDenial) return t('commands:approveEmpty');
+  if (name === 'review' || name === 'approve') {
     if (thread.archived) return t('commands:this_session_is_archived_unarchive_it_first');
     if (!thread.managed) return t('commands:resume_this_session_before_starting_code_review');
     if (busy('review', thread.id)) return t('commands:submitting_code_review_wait_for_the_receipt');
@@ -389,6 +399,12 @@ function operationResult(name: SlashCommandName, operation?: Operation): SlashCo
         return displayMessage(
           t('commands:submission_result_unconfirmed_use_status_before_submitting_again'),
         );
+      },
+    };
+  if (name === 'approve')
+    return {
+      get message() {
+        return t('commands:approveSubmitted');
       },
     };
   if (name === 'compact')
@@ -576,6 +592,23 @@ export function createSlashCommands(getContext: () => SlashCommandContext): Slas
         } else if (name === 'fork') {
           operation = await context.run('fork', thread!.id, `${path}/fork`, {
             settings: context.settings,
+          });
+        } else if (name === 'approve') {
+          const denialId = await context.chooseDenial!();
+          if (!denialId) return { error: true, message: t('commands:approveCancelled') };
+          const current = getContext();
+          if (
+            current.selectedId !== context.selectedId ||
+            (current.scopeId ?? current.project?.id) !== (context.scopeId ?? context.project?.id) ||
+            unavailableReason('approve', current)
+          )
+            return {
+              error: true,
+              message: t('commands:the_project_or_session_changed_select_the_command'),
+            };
+          operation = await current.run('approve', thread!.id, `${path}/approve`, {
+            denialId,
+            confirm: true,
           });
         } else if (name === 'review') {
           const target: ReviewTarget | undefined = argumentsText

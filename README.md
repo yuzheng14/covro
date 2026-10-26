@@ -40,7 +40,7 @@ When the selected model is at capacity, Covro shows native retry progress and ca
 
 Use `/review` to choose uncommitted changes, a base branch, a commit, or custom review instructions. Use `/init` to request a project contributor guide; an existing `AGENTS.md` is preserved.
 
-Use `/diff` to inspect staged, unstaged, and untracked Git changes in the current workspace without starting a model task.
+Use `/diff` to inspect staged, unstaged, and untracked Git changes in the current workspace without starting a model task. Use `/approve` to explicitly authorize a recorded automatic-review denial once, then ask Codex to continue.
 
 See the [usage guide · 中文](docs/usage.zh-CN.md) for workflow details and controls.
 

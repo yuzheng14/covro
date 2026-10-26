@@ -119,5 +119,13 @@
   "diffPartial": "部分内容因文件变化、无法读取或超过快照限制而未包含。",
   "diffDescription": "查看工作区已暂存、未暂存和未跟踪改动",
   "diffUnavailable": "请先选择项目或已有会话，再查看 Git 变更。",
-  "diffOpened": "已打开工作区变更，可在预览中刷新快照。"
+  "diffOpened": "已打开工作区变更，可在预览中刷新快照。",
+  "approveDescription": "单次授权已拒绝的操作",
+  "approveTitle": "已拒绝的操作",
+  "approveEmpty": "当前运行实例没有可重试的拒绝记录。",
+  "approveSelect": "选择一条拒绝记录",
+  "approveConfirm": "仅单次授权此操作，Codex 可据此重试；默认权限不变。",
+  "approveOnce": "单次授权",
+  "approveSubmitted": "已记录重试授权，可继续发送任务让 Codex 重试。",
+  "approveCancelled": "已取消授权。"
 }
