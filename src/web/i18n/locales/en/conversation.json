@@ -112,5 +112,18 @@
   "retry_progress": "Retry {{attempt}}/{{limit}}",
   "retrying_short": "Retrying",
   "retry_stopped_short": "Retries stopped",
-  "error_details": "Error details"
+  "error_details": "Error details",
+  "capacity_waiting": "Model busy, waiting to retry",
+  "capacity_cancelled": "Automatic retries cancelled",
+  "capacity_in_seconds": "Retrying in {{seconds}} s",
+  "capacity_dispatching": "Starting retry…",
+  "capacity_stopped_progress": "This turn produced output or ran tools. Review it before continuing manually.",
+  "capacity_stopped_native": "Codex has stopped its native retries.",
+  "capacity_stopped_limit": "Automatic retry limit reached.",
+  "capacity_stopped_error": "The task or runtime changed. Check its status before continuing.",
+  "cancel_retry": "Cancel retries",
+  "retry_with_selected_model": "Retry with selected model",
+  "capacity_in_seconds_short": "In {{seconds}} s",
+  "capacity_cancelled_short": "Cancelled",
+  "capacity_limit_short": "Limit reached"
 }

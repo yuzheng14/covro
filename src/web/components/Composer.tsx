@@ -283,7 +283,11 @@ export function Composer(props: Props) {
         ),
     );
   }
-  const active = Boolean(props.thread?.managed && isActive(props.thread.status));
+  const active = Boolean(
+    props.thread?.managed &&
+    isActive(props.thread.status) &&
+    props.thread.capacityRetry?.status !== 'waiting',
+  );
   const external = props.thread && !props.thread.managed && !props.thread.archived;
   const resumeError = external ? props.thread?.resumeError : undefined;
   const occupied = resumeError?.code === 'THREAD_IN_USE';

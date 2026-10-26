@@ -112,5 +112,18 @@
   "retry_progress": "重试 {{attempt}}/{{limit}}",
   "retrying_short": "正在重试",
   "retry_stopped_short": "重试已停止",
-  "error_details": "错误详情"
+  "error_details": "错误详情",
+  "capacity_waiting": "模型繁忙，等待重试",
+  "capacity_cancelled": "已取消自动重试",
+  "capacity_in_seconds": "{{seconds}} 秒后重试",
+  "capacity_dispatching": "正在提交重试…",
+  "capacity_stopped_progress": "本轮已有输出或工具操作，请检查后手动继续。",
+  "capacity_stopped_native": "Codex 已停止原生重试。",
+  "capacity_stopped_limit": "已达到自动重试上限。",
+  "capacity_stopped_error": "任务状态或运行环境已改变，请检查后继续。",
+  "cancel_retry": "取消重试",
+  "retry_with_selected_model": "使用所选模型重试",
+  "capacity_in_seconds_short": "{{seconds}} 秒后",
+  "capacity_cancelled_short": "已取消",
+  "capacity_limit_short": "已达上限"
 }

@@ -36,6 +36,8 @@
 
 Use **＋** in the message box to attach images from your phone or computer. Open the combined model control to choose the model, reasoning effort, and Fast mode.
 
+When the selected model is at capacity, Covro shows native retry progress and can make up to three additional attempts after 5, 10, and 20 seconds when Codex does not retry and no output or tool work has started. You can cancel, or choose another model and retry manually. See [retry behavior](docs/capacity-retry.md) for recovery boundaries.
+
 See the [usage guide · 中文](docs/usage.zh-CN.md) for workflow details and controls.
 
 Start a new conversation in the current workspace with **⌘ + Option + N** on macOS or **Ctrl + Alt + N** on Windows/Linux. The message box receives focus and existing drafts stay available. When the workspace has a recognized GitHub remote, the GitHub icon in the header opens its repository in a new tab. See [workspace details](docs/workspaces.md#open-the-github-repository) for remote selection rules.

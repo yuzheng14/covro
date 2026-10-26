@@ -13,6 +13,7 @@ export function cachedReadingView(thread: ThreadView): ThreadView {
     execution: undefined,
     resumeError: undefined,
     runtimeSettings: undefined,
+    capacityRetry: undefined,
     turns: thread.turns.map((turn) => ({
       ...turn,
       status: ['running', 'waitingApproval', 'waitingInput'].includes(turn.status)

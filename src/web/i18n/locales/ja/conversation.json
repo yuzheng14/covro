@@ -112,5 +112,18 @@
   "retry_progress": "再試行 {{attempt}}/{{limit}}",
   "retrying_short": "再試行中",
   "retry_stopped_short": "再試行を停止",
-  "error_details": "エラーの詳細"
+  "error_details": "エラーの詳細",
+  "capacity_waiting": "モデルが混雑しています。再試行を待機中",
+  "capacity_cancelled": "自動再試行をキャンセルしました",
+  "capacity_in_seconds": "{{seconds}} 秒後に再試行",
+  "capacity_dispatching": "再試行を開始中…",
+  "capacity_stopped_progress": "このターンには出力またはツール操作があります。確認後、手動で続行してください。",
+  "capacity_stopped_native": "Codex は再試行を停止しました。",
+  "capacity_stopped_limit": "自動再試行の上限に達しました。",
+  "capacity_stopped_error": "タスクまたは実行環境が変更されました。状態を確認してください。",
+  "cancel_retry": "再試行をキャンセル",
+  "retry_with_selected_model": "選択したモデルで再試行",
+  "capacity_in_seconds_short": "{{seconds}} 秒後",
+  "capacity_cancelled_short": "キャンセル済み",
+  "capacity_limit_short": "上限に到達"
 }

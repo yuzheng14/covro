@@ -745,6 +745,26 @@ export function App() {
         )}
         <Conversation
           thread={history.thread}
+          retryControls={{
+            disabled: !canOperate || !thread?.managed || Boolean(thread?.archived),
+            busy: busyFor('retry') || busyFor('cancelRetry'),
+            onCancel: () => {
+              if (thread?.capacityRetry)
+                void workspace.run(
+                  'cancelRetry',
+                  thread.id,
+                  `/api/threads/${encode(thread.id)}/retry/cancel`,
+                  { expectedTurnId: thread.capacityRetry.rootTurnId },
+                );
+            },
+            onRetry: (turnId) => {
+              if (thread)
+                void workspace.run('retry', thread.id, `/api/threads/${encode(thread.id)}/retry`, {
+                  expectedTurnId: turnId,
+                  settings: workspace.settings,
+                });
+            },
+          }}
           history={{
             cached: history.cached,
             cacheExhausted: history.cacheExhausted,
@@ -872,7 +892,10 @@ export function App() {
               Boolean(waitingForConfirmation) ||
               Boolean(thread?.archived)
             }
-            canInterrupt={canControl && Boolean(thread?.managed && activeTurn)}
+            canInterrupt={
+              canControl &&
+              Boolean(thread?.managed && (activeTurn || thread.capacityRetry?.status === 'waiting'))
+            }
             submitting={
               workspace.firstMessages.includes(workspace.projectId) ||
               busyFor('send') ||
@@ -887,6 +910,15 @@ export function App() {
             onFork={forkThread}
             onResume={resumeThread}
             onInterrupt={() => {
+              if (thread?.capacityRetry?.status === 'waiting') {
+                void workspace.run(
+                  'cancelRetry',
+                  thread.id,
+                  `/api/threads/${encode(thread.id)}/retry/cancel`,
+                  { expectedTurnId: thread.capacityRetry.rootTurnId },
+                );
+                return;
+              }
               if (thread && activeTurn)
                 void workspace.run(
                   'interrupt',
