@@ -2288,10 +2288,10 @@ html.composer-resizing * {
   flex: 1 1 0;
 }
 .composer-send-controls {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   margin-left: auto;
 }
-.composer-send-controls > :not(.settings-model) {
+.composer-send-controls > :not(.settings-model-summary) {
   flex-shrink: 0;
 }
 .composer-target {
@@ -5002,4 +5002,167 @@ dd {
 .backup-technical-details pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* One attachment entry and one combined model control keep the composer on one row. */
+.composer-actions {
+  flex-wrap: nowrap;
+}
+.composer-attach.button {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.settings-model-summary {
+  width: 240px;
+  flex: 0 1 240px;
+  min-width: 0;
+}
+.settings-model-toggle {
+  width: 100%;
+  gap: 6px;
+  padding: 8px 10px;
+  min-height: 36px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.settings-model-toggle > svg,
+.settings-summary-effort {
+  flex-shrink: 0;
+}
+.settings-summary-effort {
+  max-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #78877d;
+  font-size: 11px;
+}
+.settings-summary-fast {
+  color: #326744;
+  fill: currentColor;
+}
+.model-settings-popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 12px;
+  overflow: visible;
+  border: 1px solid #dbe3dd;
+  border-radius: 18px;
+  background: #fff;
+  color: #304c3c;
+  box-shadow: 0 12px 40px #18321f24;
+}
+.model-settings-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.model-settings-heading button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.model-settings-content {
+  max-height: max(0px, calc(var(--model-settings-height, 60dvh) - 72px));
+  overflow-y: auto;
+}
+.model-settings-content > .control-hint {
+  display: flex;
+  width: 100%;
+  margin-top: 6px;
+}
+.model-settings-popover .settings-choice {
+  width: 100%;
+  max-width: none;
+  min-height: 44px;
+  padding: 8px 12px;
+  gap: 10px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+.model-settings-popover .settings-model {
+  flex-basis: auto;
+  justify-content: space-between;
+}
+.model-settings-popover .settings-effort {
+  justify-content: flex-start;
+}
+.model-settings-popover .settings-effort .select-chevron {
+  display: block;
+  margin-left: auto;
+}
+.model-settings-popover .reasoning-tier-label {
+  display: none;
+}
+.model-settings-popover .settings-effort-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-settings-popover .settings-speed {
+  justify-content: flex-start;
+}
+.settings-speed-state {
+  margin-left: auto;
+  width: 30px;
+  height: 18px;
+  padding: 3px;
+  border-radius: 12px;
+  background: #d6ded8;
+}
+.settings-speed-state > span {
+  display: block;
+  width: 12px;
+  height: 12px;
+  background: white;
+  border-radius: 50%;
+}
+[data-fast='true'] .settings-speed-state {
+  background: #47775e;
+}
+[data-fast='true'] .settings-speed-state > span {
+  transform: translateX(12px);
+}
+.composer-images .composer-image-retry {
+  position: static;
+  width: 100%;
+  height: 72px;
+  border: 0;
+  color: #a33b36;
+  background: transparent;
+  cursor: pointer;
+}
+@container (max-width: 600px) {
+  .composer-context {
+    flex: 0 1 auto;
+  }
+  .composer-send-controls {
+    flex: 1 1 0;
+  }
+  .settings-model-summary {
+    flex: 1 1 0;
+    max-width: 240px;
+  }
+  .settings-model-toggle {
+    padding: 8px;
+    gap: 4px;
+  }
+}
+@container (max-width: 380px) {
+  .composer-target {
+    display: none;
+  }
 }

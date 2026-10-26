@@ -1,3 +1,4 @@
+import { openModelSettings } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
 import {
   confirmCompatibility,
@@ -6,8 +7,10 @@ import {
   expectThreadReady,
 } from './helpers';
 
-const effortControl = (page: Page) => page.getByRole('combobox', { name: '推理强度', exact: true });
+const effortControl = (page: Page) =>
+  page.getByRole('combobox', { name: '推理强度', exact: true, includeHidden: true });
 async function chooseEffort(page: Page, value: string) {
+  await openModelSettings(page);
   await effortControl(page).click();
   await page.getByRole('option', { name: value, exact: true }).click();
   await expect(effortControl(page)).toHaveAttribute('data-value', value);
@@ -29,6 +32,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await createEmptyThread(page);
       await expectThreadReady(page);
       await page.setViewportSize({ width, height: 844 });
+      await openModelSettings(page);
       const effort = effortControl(page);
       const display = effort.locator('.reasoning-effort-display');
       await expect(effort).toHaveAttribute('data-value', 'medium');
@@ -56,7 +60,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
         );
         await expect(effort.locator('.reasoning-tier-label')).toHaveText(label);
         if (width === 320) await expect(effort.locator('.reasoning-tier-label')).toBeHidden();
-        else await expect(effort.locator('.reasoning-tier-label')).toBeVisible();
+        else await expect(effort.locator('.reasoning-tier-label')).toBeHidden();
         await expect(effort).toHaveAccessibleDescription(new RegExp(`^推理强度：${value}`));
         await expect(display).toHaveCSS('animation-name', `effort-${value}-ignite`);
         const before = await effort.boundingBox();
@@ -76,7 +80,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
           true,
         );
         expect(
-          (await page.getByRole('combobox', { name: '模型', exact: true }).boundingBox())!.width,
+          (await page
+            .getByRole('combobox', { name: '模型', exact: true, includeHidden: true })
+            .boundingBox())!.width,
         ).toBeGreaterThanOrEqual(50);
         await page.locator('.composer-box').screenshot({
           path: `/tmp/codex-fast-${value}-${width}-${colorScheme}.png`,
@@ -97,6 +103,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await expect(effort.locator('.reasoning-tier-label')).toHaveCount(0);
       // Undo also restores the ordinary appearance without stale tier effects.
       await chooseEffort(page, 'ultra');
+      await page.getByRole('button', { name: '关闭模型设置', exact: true }).click();
       await page.getByRole('button', { name: '撤销本会话修改', exact: true }).click();
       await expect(effort).toHaveAttribute('data-value', 'medium');
       await expect(effort).toHaveCSS('color', ordinaryColor);
@@ -115,7 +122,7 @@ test('reduced motion keeps both tier accents and labels without playing animatio
   for (const value of ['max', 'ultra']) {
     await chooseEffort(page, value);
     const effort = effortControl(page);
-    await expect(effort.locator('.reasoning-tier-label')).toBeVisible();
+    await expect(effort.locator('.settings-effort-value')).toBeVisible();
     await expect(effort.locator('.reasoning-effort-display')).toHaveCSS('animation-name', 'none');
     colors.add(await effort.evaluate((element) => getComputedStyle(element).color));
     expect(

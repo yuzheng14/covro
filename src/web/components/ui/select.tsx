@@ -33,9 +33,9 @@ function SelectTrigger({
   const { setContainer } = useContext(SelectPortalContext);
   const triggerRef = useCallback(
     (node: HTMLButtonElement | null) => {
-      // Native modal dialogs make body portals inert and paint above them.
+      // Native dialogs and popovers paint above body portals.
       // Keep the menu in the same top layer as its own trigger.
-      setContainer(node?.closest('dialog') ?? null);
+      setContainer(node?.closest<HTMLElement>('dialog, [popover]') ?? null);
       if (typeof ref === 'function') return ref(node);
       if (ref) ref.current = node;
     },

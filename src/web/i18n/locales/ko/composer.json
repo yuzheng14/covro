@@ -31,8 +31,8 @@
   "drag_up_to_increase_height_down_to_decrease": "위로 드래그하면 높아지고 아래로 드래그하면 낮아집니다. 방향키로도 조절할 수 있습니다",
   "resize_input_height": "입력창 높이 조절",
   "pixels": "{{v0}}픽셀",
-  "paste_a_png_jpeg_webp_or_gif_image": "PNG, JPEG, WebP 또는 GIF 이미지를 붙여넣으세요.",
-  "the_image_is_empty_copy_and_paste_it": "이미지가 비어 있습니다. 다시 복사하여 붙여넣으세요.",
+  "paste_a_png_jpeg_webp_or_gif_image": "PNG, JPEG, WebP 또는 GIF 이미지를 선택하거나 붙여넣으세요.",
+  "the_image_is_empty_copy_and_paste_it": "이미지가 비어 있습니다. 다시 선택하거나 붙여넣으세요.",
   "up_to_images_per_message": "메시지당 최대 {{v0}}장의 이미지를 추가할 수 있습니다.",
   "images_per_message_cannot_exceed_2_mib_in": "메시지당 이미지 총 크기는 2 MiB를 초과할 수 없습니다. 이미지를 줄인 후 다시 시도하세요.",
   "pixels_other": "{{v0}}픽셀",
@@ -40,5 +40,8 @@
   "up_to_images_per_message_other": "메시지당 최대 {{v0}}장의 이미지를 추가할 수 있습니다.",
   "up_to_images_per_message_one": "메시지당 최대 {{v0}}장의 이미지를 추가할 수 있습니다.",
   "tap_to_send_enter_for_new_line": "전송 버튼으로 전송 · Enter로 줄바꿈",
-  "tap_to_run_command_enter_for_new_line": "탭하여 명령 실행 · Enter로 줄바꿈"
+  "tap_to_run_command_enter_for_new_line": "탭하여 명령 실행 · Enter로 줄바꿈",
+  "add_images": "이미지 추가",
+  "retry_image": "다시 읽기",
+  "image_read_failed": "이미지를 읽을 수 없습니다. 다시 시도하거나 다시 선택하세요."
 }

@@ -1,3 +1,4 @@
+import { openModelSettings } from './helpers';
 import { expect, test, type Page, type Request } from '@playwright/test';
 import { confirmCompatibility, controlRuntime, createThreadButton, projectGroup } from './helpers';
 
@@ -36,7 +37,8 @@ test('welcome sends the first prompt with the chosen settings; project and new e
 }) => {
   await open(page);
   const requests = outgoing(page);
-  await page.getByRole('combobox', { name: '推理强度', exact: true }).click();
+  await openModelSettings(page);
+  await page.getByRole('combobox', { name: '推理强度', exact: true, includeHidden: true }).click();
   await page.getByRole('option', { name: 'high', exact: true }).click();
   await expect(page.locator('.settings-defaults')).toContainText('已保存');
   await input(page).fill('实现首条消息直接创建会话 [title-fail]');

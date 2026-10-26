@@ -52,7 +52,7 @@ export function useNewSessionShortcut(enabled: boolean, onCreate: () => void) {
         return;
       if (
         document.querySelector(
-          'dialog:modal, [aria-modal="true"], [role="listbox"], [role="menu"]',
+          'dialog:modal, [aria-modal="true"], [role="listbox"], [role="menu"], [popover]:popover-open',
         ) ||
         (event.target instanceof Element &&
           event.target.closest(

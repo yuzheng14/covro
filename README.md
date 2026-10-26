@@ -34,6 +34,8 @@
 - 📖 **Read results while you chat.** Preview documents, diagrams, and code changes beside the conversation on desktop, or full-screen on mobile.
 - 🔔 **Know when your attention is needed.** Enable browser notifications for completed work, questions, and approvals; keep the page open in a supported desktop browser.
 
+Use **＋** in the message box to attach images from your phone or computer. Open the combined model control to choose the model, reasoning effort, and Fast mode.
+
 See the [usage guide · 中文](docs/usage.zh-CN.md) for workflow details and controls.
 
 Start a new conversation in the current workspace with **⌘ + Option + N** on macOS or **Ctrl + Alt + N** on Windows/Linux. The message box receives focus and existing drafts stay available. When the workspace has a recognized GitHub remote, the GitHub icon in the header opens its repository in a new tab. See [workspace details](docs/workspaces.md#open-the-github-repository) for remote selection rules.

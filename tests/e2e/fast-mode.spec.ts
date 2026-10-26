@@ -1,12 +1,15 @@
+import { openModelSettings } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
 import { createEmptyThread, confirmCompatibility, controlRuntime } from './helpers';
 
-const speed = (page: Page) => page.getByRole('button', { name: 'Fast 模式', exact: true });
+const speed = (page: Page) =>
+  page.getByRole('button', { name: 'Fast 模式', exact: true, includeHidden: true });
 async function chooseSpeed(page: Page, fast: boolean) {
+  await openModelSettings(page);
   await speed(page).click();
   await expect(speed(page)).toHaveAttribute('aria-pressed', String(fast));
   await expect(speed(page).locator('svg')).toHaveAttribute('fill', fast ? 'currentColor' : 'none');
-  await expect(speed(page)).toHaveText('');
+  await expect(speed(page)).toContainText('Fast 模式');
 }
 async function send(page: Page, text: string) {
   await page.getByRole('textbox', { name: '任务内容', exact: true }).fill(text);
@@ -59,6 +62,7 @@ test('enables and disables Fast with server confirmation, refresh and per-sessio
   await expect(speed(page)).toHaveAttribute('aria-pressed', 'false');
   await page.locator('.composer-box').screenshot({ path: '/tmp/codex-fast-off.png' });
   await chooseSpeed(page, true);
+  await page.getByRole('button', { name: '关闭模型设置', exact: true }).click();
   await page.getByRole('button', { name: '撤销修改', exact: true }).click();
   await expect(speed(page)).toHaveAttribute('aria-pressed', 'false');
   await chooseSpeed(page, true);
@@ -67,6 +71,7 @@ test('enables and disables Fast with server confirmation, refresh and per-sessio
     await page.setViewportSize({ width, height: 844 });
     await page.getByRole('button', { name: '打开项目与会话', exact: true }).click();
     await page.getByRole('button', { name: '关闭导航', exact: true }).click();
+    await openModelSettings(page);
     await expect(speed(page)).toBeVisible();
     expect(
       await page.locator('.composer-actions').evaluate((el) => el.scrollWidth <= el.clientWidth),
@@ -80,6 +85,7 @@ test('enables and disables Fast with server confirmation, refresh and per-sessio
       animations: 'disabled',
     });
   }
+  await openModelSettings(page);
   await speed(page).hover();
   await expect(page.getByRole('tooltip').filter({ hasText: 'Fast 开' })).toBeVisible();
   await page.screenshot({
@@ -101,6 +107,7 @@ test('reports missing and other tiers honestly, and does not offer Fast for unkn
   await expect(speed(page)).toHaveAttribute('aria-pressed', 'mixed');
   await expect(speed(page)).toHaveAccessibleDescription(/Fast 未报告.*当前模型未提供 Fast/);
   await expect(speed(page)).toBeDisabled();
+  await openModelSettings(page);
   await page
     .locator('.control-hint')
     .filter({ has: speed(page) })

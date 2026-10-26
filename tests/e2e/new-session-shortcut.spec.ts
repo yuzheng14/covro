@@ -1,3 +1,4 @@
+import { openModelSettings } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
 import {
   confirmCompatibility,
@@ -181,13 +182,18 @@ test('dialogs, selectors and Slash suggestions keep focus and the selected conve
   expect(await selected(page)).toBe(threadId);
   await page.keyboard.press('Escape');
   await expect(settings).not.toBeVisible();
-  const model = page.getByRole('combobox', { name: '模型', exact: true });
+  const model = page.getByRole('combobox', { name: '模型', exact: true, includeHidden: true });
+  await openModelSettings(page);
+  await page.keyboard.press(chord);
+  await expect(page.getByRole('dialog', { name: '模型设置', exact: true })).toBeVisible();
+  expect(await selected(page)).toBe(threadId);
   await model.click();
   await page.keyboard.press(chord);
   await expect(page.getByRole('listbox')).toBeVisible();
   expect(await selected(page)).toBe(threadId);
   await page.keyboard.press('Escape');
   await expect(model).toBeFocused();
+  await page.getByRole('button', { name: '关闭模型设置', exact: true }).click();
   await input(page).fill('/');
   await expect(page.getByRole('listbox', { name: 'Slash 命令' })).toBeVisible();
   await page.keyboard.press(chord);
@@ -247,7 +253,10 @@ test('saving defaults and first-message creation block shortcuts until their rec
   });
   const search = page.getByRole('searchbox', { name: '搜索项目与已加载会话' });
   try {
-    await page.getByRole('combobox', { name: '推理强度', exact: true }).click();
+    await openModelSettings(page);
+    await page
+      .getByRole('combobox', { name: '推理强度', exact: true, includeHidden: true })
+      .click();
     await page.getByRole('option', { name: 'high', exact: true }).click();
     await expect(createThreadButton(page)).toBeDisabled();
     await search.focus();

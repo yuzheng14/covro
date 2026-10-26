@@ -31,8 +31,8 @@
   "drag_up_to_increase_height_down_to_decrease": "上にドラッグすると高く、下にドラッグすると低くなります。矢印キーでも調整できます",
   "resize_input_height": "入力欄の高さを調整",
   "pixels": "{{v0}} ピクセル",
-  "paste_a_png_jpeg_webp_or_gif_image": "PNG、JPEG、WebP、GIF の画像を貼り付けてください。",
-  "the_image_is_empty_copy_and_paste_it": "画像が空です。コピーして貼り付け直してください。",
+  "paste_a_png_jpeg_webp_or_gif_image": "PNG、JPEG、WebP、GIF の画像を選択または貼り付けてください。",
+  "the_image_is_empty_copy_and_paste_it": "画像が空です。選択または貼り付けをやり直してください。",
   "up_to_images_per_message": "1 メッセージにつき {{v0}} 枚まで添付できます。",
   "images_per_message_cannot_exceed_2_mib_in": "1 メッセージの画像合計は 2 MiB 以下にしてください。縮小して再試行してください。",
   "pixels_other": "{{v0}} ピクセル",
@@ -40,5 +40,8 @@
   "up_to_images_per_message_other": "1 メッセージにつき {{v0}} 枚まで添付できます。",
   "up_to_images_per_message_one": "1 メッセージにつき {{v0}} 枚まで添付できます。",
   "tap_to_send_enter_for_new_line": "送信ボタンで送信 · Enter で改行",
-  "tap_to_run_command_enter_for_new_line": "タップしてコマンド実行 · Enter で改行"
+  "tap_to_run_command_enter_for_new_line": "タップしてコマンド実行 · Enter で改行",
+  "add_images": "画像を追加",
+  "retry_image": "再読み込み",
+  "image_read_failed": "画像を読み込めませんでした。再試行するか、選び直してください。"
 }

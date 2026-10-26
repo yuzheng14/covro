@@ -1,3 +1,4 @@
+import { openModelSettings } from './helpers';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import type { Project, SystemInfo } from '../../src/shared/types';
 import {
@@ -52,25 +53,26 @@ test('switching model names preserves layout and active controls fit on a narrow
   await configureNames(page, longModel, longProject);
   await page.goto('/');
   await confirmCompatibility(page);
-  const model = page.getByRole('combobox', { name: '模型', exact: true });
+  const model = page.getByRole('combobox', { name: '模型', exact: true, includeHidden: true });
   await expect(model).toHaveAttribute('data-value', longModel);
-  const longBox = (await model.boundingBox())!;
+  const summary = page.getByRole('button', { name: '模型设置', exact: true });
+  const longBox = (await summary.boundingBox())!;
   const projectBox = (await page.locator('.composer-target').boundingBox())!;
   // The long name is a display fixture; execute only a model known by the test server.
   await page.unroute('**/api/projects/fixture/runtime-settings');
+  await openModelSettings(page);
   await model.click();
   await page.getByRole('option', { name: 'simulated-model', exact: true }).click();
   await expect(page.locator('.settings-defaults')).toHaveText('已保存为 Codex 新会话默认值');
   await expect(model).toHaveAttribute('data-value', 'simulated-model');
-  expect(await model.boundingBox()).toEqual(longBox);
+  expect(await summary.boundingBox()).toEqual(longBox);
   expect(await page.locator('.composer-target').boundingBox()).toEqual(projectBox);
 
   await createEmptyThread(page, longProject);
   await expectThreadReady(page);
-  await expect(page.getByRole('combobox', { name: '推理强度', exact: true })).toHaveAttribute(
-    'data-value',
-    'ultra',
-  );
+  await expect(
+    page.getByRole('combobox', { name: '推理强度', exact: true, includeHidden: true }),
+  ).toHaveAttribute('data-value', 'ultra');
   await page
     .getByRole('textbox', { name: '任务内容', exact: true })
     .fill('[approval] 验证运行状态布局');
@@ -82,6 +84,7 @@ test('switching model names preserves layout and active controls fit on a narrow
     for (const group of ['.composer-context', '.composer-send-controls']) {
       let previousRight = 0;
       for (const child of await page.locator(`${group} > *`).all()) {
+        if (!(await child.isVisible())) continue;
         const box = await expectInside(child, composer);
         expect(box.x).toBeGreaterThanOrEqual(previousRight);
         previousRight = box.x + box.width;
@@ -109,7 +112,7 @@ async function expectInside(control: Locator, container: Locator) {
 async function expectProjectName(page: Page) {
   const text = page.locator('.composer-target > span');
   const width = await page.locator('.composer-box').evaluate((element) => element.clientWidth);
-  if (width <= 330) {
+  if (width <= 380) {
     await expect(text).toBeHidden();
   } else {
     await expect(text).toBeVisible();
@@ -123,10 +126,13 @@ async function expectSingleRow(page: Page) {
       (control) => control.boundingBox(),
     ),
   );
-  const centers = boxes.map((box) => box!.y + box!.height / 2);
+  const visibleBoxes = boxes.filter((box) => box !== null);
+  const centers = visibleBoxes.map((box) => box!.y + box!.height / 2);
   expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(2);
-  for (let index = 1; index < boxes.length; index++)
-    expect(boxes[index]!.x).toBeGreaterThanOrEqual(boxes[index - 1]!.x + boxes[index - 1]!.width);
+  for (let index = 1; index < visibleBoxes.length; index++)
+    expect(visibleBoxes[index]!.x).toBeGreaterThanOrEqual(
+      visibleBoxes[index - 1]!.x + visibleBoxes[index - 1]!.width,
+    );
 }
 
 for (const model of ['gpt-5', longModel]) {
@@ -139,7 +145,11 @@ for (const model of ['gpt-5', longModel]) {
       await configureNames(page, model, projectName);
       await page.goto('/');
       await confirmCompatibility(page);
-      const modelControl = page.getByRole('combobox', { name: '模型', exact: true });
+      const modelControl = page.getByRole('combobox', {
+        name: '模型',
+        exact: true,
+        includeHidden: true,
+      });
       const target = page.locator('.composer-target');
       const projectText = target.locator('span');
       const composer = page.locator('.composer-box');
@@ -154,21 +164,22 @@ for (const model of ['gpt-5', longModel]) {
         await page.setViewportSize({ width, height: 900 });
         await expectProjectName(page);
         await expectSingleRow(page);
-        const modelBox = await expectInside(modelControl, composer);
-        const projectBox = await expectInside(target, composer);
-        expect(modelBox.width).toBeLessThanOrEqual(160);
-        expect(projectBox.width).toBeLessThanOrEqual(180);
+        const modelBox = await expectInside(page.locator('.settings-model-toggle'), composer);
+        const projectBox = (await target.isVisible()) ? await expectInside(target, composer) : null;
+        expect(modelBox.width).toBeLessThanOrEqual(240);
+        if (projectBox) expect(projectBox.width).toBeLessThanOrEqual(180);
         for (const group of ['.composer-context', '.composer-send-controls']) {
           const children = page.locator(group).locator(':scope > *');
           let previousRight = 0;
           for (const child of await children.all()) {
+            if (!(await child.isVisible())) continue;
             const box = await expectInside(child, composer);
             expect(box.x).toBeGreaterThanOrEqual(previousRight);
             previousRight = box.x + box.width;
           }
         }
-        expect(projectBox.x + projectBox.width).toBeLessThanOrEqual(modelBox.x);
-        const modelText = page.locator('.settings-model-value');
+        if (projectBox) expect(projectBox.x + projectBox.width).toBeLessThanOrEqual(modelBox.x);
+        const modelText = page.locator('.settings-model-toggle .settings-model-value');
         expect(
           await modelText.evaluate((element) => element.scrollWidth > element.clientWidth),
         ).toBe(model === longModel);
@@ -181,8 +192,9 @@ for (const model of ['gpt-5', longModel]) {
         );
       }
 
+      await openModelSettings(page);
       await modelControl.click();
-      const menu = page.getByRole('listbox', { name: '模型', exact: true });
+      const menu = page.getByRole('listbox', { name: '模型', exact: true, includeHidden: true });
       await expect(page.getByRole('option', { name: model, exact: true })).toBeVisible();
       await expect(page.getByRole('option', { name: model, exact: true })).toHaveAttribute(
         'aria-selected',

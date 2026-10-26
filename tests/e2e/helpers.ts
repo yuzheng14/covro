@@ -119,3 +119,10 @@ export async function createEmptyThread(page: Page, projectName = '测试项目'
     await page.unroute('**/api/threads/*/turns', acknowledgeSetup);
   }
 }
+
+export async function openModelSettings(page: Page) {
+  const trigger = page.getByRole('button', { name: '模型设置', exact: true });
+  const panel = page.getByRole('dialog', { name: '模型设置', exact: true });
+  if (!(await panel.isVisible())) await trigger.click();
+  await expect(panel).toBeVisible();
+}

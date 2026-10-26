@@ -1,5 +1,6 @@
 import {
   cloneElement,
+  useCallback,
   isValidElement,
   useEffect,
   useId,
@@ -39,6 +40,12 @@ export function ControlHint({
   const generatedId = useId();
   const id = providedId ?? generatedId;
   const [open, setOpen] = useState(false);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
+  const portalRef = useCallback(
+    (node: HTMLSpanElement | null) =>
+      setPortalContainer(node?.closest<HTMLElement>('dialog, [popover]') ?? null),
+    [],
+  );
   const suppressRestoredFocus = useRef(false);
   useEffect(() => {
     if (suppressed) {
@@ -80,7 +87,7 @@ export function ControlHint({
           {asChild ? (
             describedChildren
           ) : (
-            <span className={cn('control-hint', className)}>
+            <span ref={portalRef} className={cn('control-hint', className)}>
               {describedChildren}
               {description}
             </span>
@@ -88,7 +95,12 @@ export function ControlHint({
         </TooltipTrigger>
         {/* Keep descriptions available while closed without adding layout children. */}
         {asChild && <TooltipPortal forceMount>{description}</TooltipPortal>}
-        <TooltipContent side={side} align={align}>
+        <TooltipContent
+          container={portalContainer}
+          side={side}
+          align={align}
+          sideOffset={portalContainer?.hasAttribute('popover') ? 4 : 8}
+        >
           <div className="control-hint-content">{content}</div>
         </TooltipContent>
       </Tooltip>
