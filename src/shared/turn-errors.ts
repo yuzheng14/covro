@@ -1,4 +1,4 @@
-import type { TurnErrorMetadata } from './types.js';
+import type { TurnErrorMetadata, TurnView } from './types.js';
 
 export const MODEL_CAPACITY_MESSAGE =
   'Selected model is at capacity. Please try a different model.';
@@ -30,4 +30,11 @@ export function upstreamRetryAttempt(message: string) {
     limit <= 100
     ? { attempt, limit }
     : undefined;
+}
+
+export function isCapacityTurnError(turn: TurnView): boolean {
+  return (
+    Boolean(turn.reconnect && capacityRetryNotice(turn.reconnect)) ||
+    Boolean(turn.error && isModelCapacityError(turn.error, turn.errorCode))
+  );
 }

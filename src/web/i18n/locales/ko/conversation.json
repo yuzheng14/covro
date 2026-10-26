@@ -107,5 +107,10 @@
   "model_busy_retrying": "모델 사용량이 많아 재시도 중",
   "model_busy_stopped": "모델 사용량이 많아 재시도 중지됨",
   "model_busy_native_retry": "Codex가 모델 용량이 확보되면 현재 작업을 계속합니다.",
-  "retry_attempt": "재시도 {{attempt}} / {{limit}}"
+  "retry_attempt": "재시도 {{attempt}} / {{limit}}",
+  "model_capacity_unavailable": "모델 용량 부족",
+  "retry_progress": "재시도 {{attempt}}/{{limit}}",
+  "retrying_short": "재시도 중",
+  "retry_stopped_short": "재시도 중지됨",
+  "error_details": "오류 세부 정보"
 }

@@ -107,5 +107,10 @@
   "model_busy_retrying": "モデルが混雑しています。再試行中",
   "model_busy_stopped": "モデルが混雑しています。再試行を停止しました",
   "model_busy_native_retry": "Codex はモデルの空きを待ち、現在のタスクを続行します。",
-  "retry_attempt": "再試行 {{attempt}} / {{limit}}"
+  "retry_attempt": "再試行 {{attempt}} / {{limit}}",
+  "model_capacity_unavailable": "モデルの容量不足",
+  "retry_progress": "再試行 {{attempt}}/{{limit}}",
+  "retrying_short": "再試行中",
+  "retry_stopped_short": "再試行を停止",
+  "error_details": "エラーの詳細"
 }

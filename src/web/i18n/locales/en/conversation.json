@@ -107,5 +107,10 @@
   "model_busy_retrying": "Model busy, retrying",
   "model_busy_stopped": "Model busy, retries stopped",
   "model_busy_native_retry": "Codex is waiting for model capacity and will continue this task.",
-  "retry_attempt": "Retry {{attempt}} / {{limit}}"
+  "retry_attempt": "Retry {{attempt}} / {{limit}}",
+  "model_capacity_unavailable": "Model at capacity",
+  "retry_progress": "Retry {{attempt}}/{{limit}}",
+  "retrying_short": "Retrying",
+  "retry_stopped_short": "Retries stopped",
+  "error_details": "Error details"
 }

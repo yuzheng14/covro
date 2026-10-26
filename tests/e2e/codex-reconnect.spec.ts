@@ -201,12 +201,20 @@ for (const width of [1280, 390]) {
   test(`native capacity retry shows its reason and attempt at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await start(page, '[codex-capacity-native] 等待当前模型恢复容量');
-    await expect(notice(page)).toContainText('模型繁忙，正在重试');
-    await expect(notice(page)).toContainText('第 1 / 5 次重试');
-    await notice(page).getByText('连接详情', { exact: true }).click();
-    await expect(notice(page)).toContainText('Selected model is at capacity.');
+    const capacity = page.getByTestId('model-capacity-status');
+    await expect(capacity).toContainText('模型容量不足');
+    await expect(notice(page)).toHaveCount(0);
+    await expect(capacity.locator('.model-capacity-progress')).toContainText('重试 1/5');
+    await expect(page.locator('.codex-reconnect-pinned')).toHaveCount(0);
+    const labelBox = (await capacity.locator('.model-capacity-label').boundingBox())!;
+    const progressBox = (await capacity.locator('.model-capacity-progress').boundingBox())!;
+    expect(progressBox.x).toBeGreaterThan(labelBox.x + labelBox.width);
+    expect(Math.abs(progressBox.y - labelBox.y)).toBeLessThan(10);
+    await capacity.getByText('错误详情', { exact: true }).click();
+    await expect(capacity).toContainText('Selected model is at capacity.');
+    await capacity.getByText('错误详情', { exact: true }).click();
     await screenshot(page, `capacity-native-${width}`);
     await page.getByRole('button', { name: '中断', exact: true }).click();
-    await expect(notice(page)).toHaveCount(0);
+    await expect(capacity).toHaveCount(0);
   });
 }
