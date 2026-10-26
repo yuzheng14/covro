@@ -95,6 +95,7 @@ test('retry updates survive tool completion, reload and browser disconnection an
   expect(snapshot.turns.at(-1)?.reconnect).toEqual({
     status: 'retrying',
     message: 'Reconnecting... 2/5 (stream disconnected before completion)',
+    errorCode: 'responseStreamDisconnected',
   });
   await page.reload();
   await expect(notice(page)).toHaveAttribute('data-state', 'retrying');
@@ -193,5 +194,19 @@ for (const viewport of [
         .getByTestId('codex-reconnect-status'),
     ).toHaveAttribute('data-state', 'failed');
     expect((await currentThread(page, threadId)).turns.at(-1)?.reconnect).toBeUndefined();
+  });
+}
+
+for (const width of [1280, 390]) {
+  test(`native capacity retry shows its reason and attempt at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await start(page, '[codex-capacity-native] 等待当前模型恢复容量');
+    await expect(notice(page)).toContainText('模型繁忙，正在重试');
+    await expect(notice(page)).toContainText('第 1 / 5 次重试');
+    await notice(page).getByText('连接详情', { exact: true }).click();
+    await expect(notice(page)).toContainText('Selected model is at capacity.');
+    await screenshot(page, `capacity-native-${width}`);
+    await page.getByRole('button', { name: '中断', exact: true }).click();
+    await expect(notice(page)).toHaveCount(0);
   });
 }

@@ -1,3 +1,4 @@
+import { capacityRetryNotice, upstreamRetryAttempt } from '../../shared/turn-errors';
 import { message, displayMessage } from '../i18n/messages';
 import { t, currentLocale } from '../i18n';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -197,6 +198,8 @@ function Item({
 function CodexReconnectNotice({ turn, offline }: { turn: TurnView; offline: boolean }) {
   if (!turn.reconnect) return null;
   const retrying = turn.reconnect.status === 'retrying';
+  const capacity = capacityRetryNotice(turn.reconnect);
+  const attempt = retrying ? upstreamRetryAttempt(turn.reconnect.message) : undefined;
   return (
     <div
       className={`codex-reconnect codex-reconnect-${turn.reconnect.status}`}
@@ -209,11 +212,22 @@ function CodexReconnectNotice({ turn, offline }: { turn: TurnView; offline: bool
       <div className="codex-reconnect-content">
         <strong>
           {offline && t('common:last_known')}
-          {retrying ? t('conversation:reconnecting') : t('conversation:codex_reconnection_failed')}
+          {capacity
+            ? t(retrying ? 'conversation:model_busy_retrying' : 'conversation:model_busy_stopped')
+            : retrying
+              ? t('conversation:reconnecting')
+              : t('conversation:codex_reconnection_failed')}
+          {attempt && (
+            <span className="codex-retry-attempt">{t('conversation:retry_attempt', attempt)}</span>
+          )}
         </strong>
         <p>
           {retrying
-            ? t('conversation:reconnecting_to_the_model_service_codex_will_retry')
+            ? t(
+                capacity
+                  ? 'conversation:model_busy_native_retry'
+                  : 'conversation:reconnecting_to_the_model_service_codex_will_retry',
+              )
             : isActive(turn.status)
               ? t('conversation:codex_stopped_retrying_check_the_server_network_and')
               : t('conversation:codex_stopped_retrying_check_the_server_network_and_2')}
@@ -221,6 +235,9 @@ function CodexReconnectNotice({ turn, offline }: { turn: TurnView; offline: bool
         <details>
           <summary>{t('conversation:connection_details')}</summary>
           <p className="codex-reconnect-message">{displayMessage(turn.reconnect.message)}</p>
+          {turn.reconnect.errorDetails && (
+            <p className="codex-reconnect-message">{turn.reconnect.errorDetails}</p>
+          )}
         </details>
       </div>
     </div>

@@ -103,5 +103,9 @@
   "copy_loaded_command_output": "이 명령의 로드된 출력 복사",
   "command_output_copy_failed": "복사하지 못했습니다. 출력을 선택하여 직접 복사하세요.",
   "command_output_truncated": "출력이 잘렸습니다. 로드된 부분만 복사할 수 있습니다.",
-  "copied_truncated_command_output": "로드된 부분을 복사했습니다(출력 잘림)"
+  "copied_truncated_command_output": "로드된 부분을 복사했습니다(출력 잘림)",
+  "model_busy_retrying": "모델 사용량이 많아 재시도 중",
+  "model_busy_stopped": "모델 사용량이 많아 재시도 중지됨",
+  "model_busy_native_retry": "Codex가 모델 용량이 확보되면 현재 작업을 계속합니다.",
+  "retry_attempt": "재시도 {{attempt}} / {{limit}}"
 }

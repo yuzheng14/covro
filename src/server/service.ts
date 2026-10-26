@@ -1689,7 +1689,13 @@ export class GatewayService {
     if (event.type === 'turnError' || event.type === 'turnProgress') {
       const changed =
         event.type === 'turnError'
-          ? this.projection.turnError(thread.id, event.turnId, event.message, event.willRetry)
+          ? this.projection.turnError(
+              thread.id,
+              event.turnId,
+              event.message,
+              event.willRetry,
+              event,
+            )
           : this.projection.turnProgress(thread.id, event.turnId);
       if (changed) this.publishThread(thread.id);
       return;

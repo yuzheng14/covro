@@ -103,5 +103,9 @@
   "copy_loaded_command_output": "このコマンドの読み込み済み出力をコピー",
   "command_output_copy_failed": "コピーに失敗しました。出力を選択して手動でコピーしてください。",
   "command_output_truncated": "出力は切り詰められています。読み込み済みの部分のみコピーできます。",
-  "copied_truncated_command_output": "読み込み済み部分をコピーしました（出力は切り詰められています）"
+  "copied_truncated_command_output": "読み込み済み部分をコピーしました（出力は切り詰められています）",
+  "model_busy_retrying": "モデルが混雑しています。再試行中",
+  "model_busy_stopped": "モデルが混雑しています。再試行を停止しました",
+  "model_busy_native_retry": "Codex はモデルの空きを待ち、現在のタスクを続行します。",
+  "retry_attempt": "再試行 {{attempt}} / {{limit}}"
 }

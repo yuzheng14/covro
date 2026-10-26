@@ -5166,3 +5166,9 @@ dd {
     display: none;
   }
 }
+
+.codex-retry-attempt {
+  margin-left: 10px;
+  font-weight: 400;
+  white-space: nowrap;
+}

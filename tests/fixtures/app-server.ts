@@ -1,3 +1,4 @@
+import { MODEL_CAPACITY_MESSAGE } from '../../src/shared/turn-errors.js';
 import { diffPreviewChanges } from './diff-preview';
 /** Explicit test process. Its envelopes and payloads use the checked-in CLI-generated protocol. */
 import { CODEX_COMPATIBILITY } from '../../src/codex/compatibility.js';
@@ -1076,7 +1077,12 @@ function contextCompaction(thread: Thread, turn: Turn, outcome: 'recover' | 'fai
   );
 }
 
-function codexReconnect(thread: Thread, turn: Turn, outcome: 'recover' | 'fail' | 'hold'): void {
+function codexReconnect(
+  thread: Thread,
+  turn: Turn,
+  outcome: 'recover' | 'fail' | 'hold',
+  capacity = false,
+): void {
   const cmd = command(randomUUID(), thread.cwd);
   cmd.command = '读取已有任务的后台输出';
   turn.items.push(cmd);
@@ -1094,7 +1100,7 @@ function codexReconnect(thread: Thread, turn: Turn, outcome: 'recover' | 'fail' 
         error: {
           message: `Reconnecting... ${attempt}/5 (stream disconnected before completion)`,
           codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: null } },
-          additionalDetails: null,
+          additionalDetails: capacity ? MODEL_CAPACITY_MESSAGE : null,
           misalignment: null,
         },
       },
@@ -1134,7 +1140,7 @@ function codexReconnect(thread: Thread, turn: Turn, outcome: 'recover' | 'fail' 
         turn.error = {
           message: 'stream disconnected before completion: exceeded retry limit',
           codexErrorInfo: { responseTooManyFailedAttempts: { httpStatusCode: 503 } },
-          additionalDetails: null,
+          additionalDetails: capacity ? MODEL_CAPACITY_MESSAGE : null,
           misalignment: null,
         };
         notify({
@@ -2299,6 +2305,8 @@ function receive(request: ClientRequest): void {
               ? 'hold'
               : 'recover',
         );
+      else if (prompt.includes('[codex-capacity-native]'))
+        codexReconnect(thread, turn, 'hold', true);
       else if (reconnect) codexReconnect(thread, turn, reconnect);
       else if (prompt.includes('[async-questions'))
         asyncQuestions(thread, turn, prompt.includes('-running]'), prompt.includes('-multiple]'));
