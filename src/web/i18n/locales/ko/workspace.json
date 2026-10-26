@@ -50,6 +50,7 @@
   "answer_sent": "답변 전송됨",
   "sending": "전송 중…",
   "you_can_answer_later": "나중에 답변할 수 있습니다",
+  "answer_submit_shortcut": "{{shortcut}}로 전송 / Enter로 줄바꿈",
   "send_answer": "답변 보내기",
   "codex_has_not_been_verified_some_features_may": "Codex {{v0}}의 호환성이 검증되지 않아 일부 기능이 정상적으로 작동하지 않을 수 있습니다. {{v1}}",
   "view_compatibility_notice": "호환성 안내 보기",

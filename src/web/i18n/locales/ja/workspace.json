@@ -50,6 +50,7 @@
   "answer_sent": "回答を送信済み",
   "sending": "送信中…",
   "you_can_answer_later": "後で回答できます",
+  "answer_submit_shortcut": "{{shortcut}} で送信 / Enter で改行",
   "send_answer": "回答を送信",
   "codex_has_not_been_verified_some_features_may": "Codex {{v0}} の互換性は未検証のため、一部の機能が正常に動作しない可能性があります。{{v1}}",
   "view_compatibility_notice": "互換性の注意事項を表示",

@@ -50,6 +50,7 @@
   "answer_sent": "已发送回答",
   "sending": "正在发送…",
   "you_can_answer_later": "可稍后回答",
+  "answer_submit_shortcut": "{{shortcut}} 发送 / Enter 换行",
   "send_answer": "发送回答",
   "codex_has_not_been_verified_some_features_may": "当前 Codex {{v0}} 尚未验证兼容性，部分功能可能无法正常使用。 {{v1}}",
   "view_compatibility_notice": "查看兼容性提示",
