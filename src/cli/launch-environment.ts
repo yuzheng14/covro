@@ -4,14 +4,17 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 
 // The launchd job receives only this socket path. Credentials stay in memory, never in a plist.
-export async function environmentBridge(home: string) {
+export async function environmentBridge(home: string, runtimePath = process.env.PATH) {
   const path = join(home, `e-${randomBytes(6).toString('hex')}.sock`);
   const clients = new Set<Socket>();
   let accept: (() => void) | undefined;
   const consumed = new Promise<void>((resolve) => {
     accept = resolve;
   });
-  const payload = JSON.stringify({ env: { ...process.env, COVRO_HOME: home }, cwd: process.cwd() });
+  const payload = JSON.stringify({
+    env: { ...process.env, PATH: runtimePath, COVRO_HOME: home },
+    cwd: process.cwd(),
+  });
   const server = createServer((socket) => {
     clients.add(socket);
     socket.setTimeout(5000, () => socket.destroy());

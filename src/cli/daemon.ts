@@ -7,6 +7,7 @@ import { packageInfo, paths } from './paths.js';
 import { UpdateManager } from '../updates/manager.js';
 import { saveJson } from '../updates/files.js';
 import { doctor, launchContext } from './doctor.js';
+import { runningRuntime } from './runtime.js';
 
 export async function runDaemon(configPath: string) {
   const location = paths(configPath);
@@ -38,6 +39,7 @@ export async function runDaemon(configPath: string) {
             codexVersion: runtime?.codex.diagnostics().codexVersion ?? null,
             codexReady: runtime?.codex.ready ?? false,
             launchContext: context,
+            runtime: runningRuntime(),
           }),
         );
       } else if (request.url === '/doctor') {

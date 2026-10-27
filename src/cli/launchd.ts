@@ -7,6 +7,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import type { CovroPaths } from './paths.js';
 import { environmentBridge, launchRunner } from './launch-environment.js';
 import { readJson, saveJson } from '../updates/files.js';
+import type { LaunchRuntime } from './runtime-launch.js';
 
 const exec = promisify(execFile);
 const launchctl = (args: string[]) =>
@@ -77,10 +78,15 @@ export async function loginServiceInstalled(location: CovroPaths) {
   return Boolean(await loginRegistration(location));
 }
 
-export function launchdPlist(location: CovroPaths, args: string[], login: boolean) {
+export function launchdPlist(
+  location: CovroPaths,
+  args: string[],
+  login: boolean,
+  path = process.env.PATH ?? '/usr/bin:/bin',
+) {
   const { label } = launchdPaths(location, login ? `dev.covro.${location.key}` : undefined);
   const environment = {
-    PATH: process.env.PATH ?? '/usr/bin:/bin',
+    PATH: path,
     COVRO_HOME: location.home,
     ...(process.env.CODEX_HOME ? { CODEX_HOME: process.env.CODEX_HOME } : {}),
   };
@@ -120,7 +126,12 @@ export async function unloadLaunchd(location: CovroPaths) {
   await rm(temporary, { force: true });
 }
 
-export async function configureLaunchdLogin(location: CovroPaths, entry: string, install: boolean) {
+export async function configureLaunchdLogin(
+  location: CovroPaths,
+  entry: string,
+  install: boolean,
+  runtime?: LaunchRuntime,
+) {
   // Preserve the installed label so older CLIs can still uninstall it after a rollback.
   const { label, login } = launchdPaths(location, `dev.covro.${location.key}`);
   const previous = await loginRegistration(location);
@@ -130,7 +141,12 @@ export async function configureLaunchdLogin(location: CovroPaths, entry: string,
     await mkdir(dirname(login), { recursive: true });
     await writeFile(
       login,
-      launchdPlist(location, [process.execPath, entry, 'run', '--config', location.config], true),
+      launchdPlist(
+        location,
+        [runtime?.node ?? process.execPath, entry, 'run', '--config', location.config],
+        true,
+        runtime?.path,
+      ),
       { mode: 0o600 },
     );
     await saveJson(join(location.state, 'service.json'), { platform: 'darwin', label });
@@ -144,7 +160,7 @@ export async function configureLaunchdLogin(location: CovroPaths, entry: string,
 }
 
 /** Caller holds the per-instance lifecycle lock and has verified the daemon is stopped. */
-export async function startLaunchd(location: CovroPaths, entry: string) {
+export async function startLaunchd(location: CovroPaths, entry: string, runtime?: LaunchRuntime) {
   const installed = await loginRegistration(location);
   const { domain, target, temporary, login } = launchdPaths(location, installed?.label);
   if (!(await guiSessionAvailable(location))) {
@@ -157,7 +173,7 @@ export async function startLaunchd(location: CovroPaths, entry: string) {
     await launchctl(['bootstrap', domain, login]);
     return true;
   }
-  const bridge = await environmentBridge(location.home);
+  const bridge = await environmentBridge(location.home, runtime?.path);
   try {
     const runner = join(location.state, 'launch-runner.mjs');
     await writeFile(runner, launchRunner, { mode: 0o600 });
@@ -165,8 +181,9 @@ export async function startLaunchd(location: CovroPaths, entry: string) {
       temporary,
       launchdPlist(
         location,
-        [process.execPath, runner, bridge.path, entry, location.config],
+        [runtime?.node ?? process.execPath, runner, bridge.path, entry, location.config],
         false,
+        runtime?.path,
       ),
       { mode: 0o600 },
     );
