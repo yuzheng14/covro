@@ -11,9 +11,9 @@ runner_image=${ImageVersion:?ImageVersion must identify the GitHub runner image}
 cache_dir="$PWD/.local/e2e-deps/apt"
 mkdir -p "$cache_dir"
 
-if [[ "$mode" == prepare ]]; then
-  # Keep the downloaded packages in the workspace so the cache action can read
-  # them without archiving system directories or dpkg's installed-package state.
+install_with_apt_cache() {
+  # Apt can also reuse matching archives after an image change or a failed
+  # offline install, while still resolving current versions from the source.
   apt_config="$cache_dir/apt.conf"
   system_config=/etc/apt/apt.conf.d/99covro-e2e-cache
   trap 'sudo rm -f "$system_config"; rm -f "$apt_config"' EXIT
@@ -21,6 +21,10 @@ if [[ "$mode" == prepare ]]; then
     "$cache_dir" > "$apt_config"
   sudo install -m 0644 "$apt_config" "$system_config"
   pnpm exec playwright install --with-deps --only-shell chromium
+}
+
+if [[ "$mode" == prepare ]]; then
+  install_with_apt_cache
   # Write this only after the complete install succeeds, including the case
   # where a future runner already provides every required system package.
   printf '%s\n' "$runner_image" > "$cache_dir/runner-image"
@@ -40,9 +44,9 @@ if [[ "${E2E_CACHE_HIT:-}" == true && -f "$cache_dir/runner-image" && \
     pnpm exec playwright install --only-shell chromium
     exit 0
   fi
-  echo "Cached system packages could not be installed offline; using the Azure source."
+  echo "Cached package installation failed; resolving with apt and the restored archives."
 else
-  echo "No system package cache for this runner image; using the Azure source."
+  echo "No offline package set for this runner image; resolving with apt and the restored archives."
 fi
 
-pnpm exec playwright install --with-deps --only-shell chromium
+install_with_apt_cache

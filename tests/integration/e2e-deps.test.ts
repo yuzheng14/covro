@@ -117,8 +117,16 @@ describe('CI E2E dependency installation', () => {
     (image) => {
       const fixture = setup();
       if (image) writeFileSync(join(fixture.cache, 'runner-image'), image);
+      const archive = join(fixture.cache, 'fonts_1_amd64.deb');
+      writeFileSync(archive, 'restored package');
       expect(fixture.run('install').status).toBe(0);
-      expect(fixture.commands()).toEqual([fullInstall]);
+      expect(fixture.commands().filter((command) => command.startsWith('pnpm'))).toEqual([
+        fullInstall,
+      ]);
+      expect(readFileSync(fixture.config, 'utf8')).toContain(
+        `Dir::Cache::archives "${fixture.cache}";`,
+      );
+      expect(readFileSync(archive, 'utf8')).toBe('restored package');
     },
   );
 
@@ -127,9 +135,12 @@ describe('CI E2E dependency installation', () => {
     writeFileSync(join(fixture.cache, 'runner-image'), '20261026.1\n');
     writeFileSync(join(fixture.cache, 'fonts_1_amd64.deb'), 'fixture');
     expect(fixture.run('install', { DPKG_STUB_EXIT: '1' }).status).toBe(0);
-    expect(fixture.commands()).toHaveLength(2);
+    expect(fixture.commands()).toHaveLength(4);
     expect(fixture.commands()[0]).toContain('dpkg\t--install');
-    expect(fixture.commands()[1]).toBe(fullInstall);
+    expect(fixture.commands()[2]).toBe(fullInstall);
+    expect(readFileSync(fixture.config, 'utf8')).toContain(
+      `Dir::Cache::archives "${fixture.cache}";`,
+    );
   });
 
   it('does not use files left behind by a failed cache restore', () => {
@@ -137,7 +148,10 @@ describe('CI E2E dependency installation', () => {
     writeFileSync(join(fixture.cache, 'runner-image'), '20261026.1\n');
     writeFileSync(join(fixture.cache, 'fonts_1_amd64.deb'), 'fixture');
     expect(fixture.run('install', { E2E_CACHE_HIT: 'false' }).status).toBe(0);
-    expect(fixture.commands()).toEqual([fullInstall]);
+    expect(fixture.commands().filter((command) => command.startsWith('pnpm'))).toEqual([
+      fullInstall,
+    ]);
+    expect(fixture.commands().some((command) => command.startsWith('sudo\tdpkg'))).toBe(false);
   });
 
   it('handles an image that already provides all system packages', () => {
