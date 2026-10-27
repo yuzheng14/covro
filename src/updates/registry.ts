@@ -1,15 +1,12 @@
 import { npmPackageName } from '../shared/package.js';
 import { validVersion, compareVersions } from '../shared/versions.js';
 export { validVersion, compareVersions } from '../shared/versions.js';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { realpath, access, lstat } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 import type { ReleaseChannel } from '../shared/updates.js';
 
-const run = promisify(execFile);
 export const registry = 'https://registry.npmjs.org';
 export const npmTags: Record<ReleaseChannel, string> = {
   stable: 'latest',
@@ -57,8 +54,15 @@ export async function lookupRelease(channel: ReleaseChannel, signal?: AbortSigna
 }
 export async function inspectInstallation(root: string): Promise<string | undefined> {
   try {
-    const { stdout } = await run('npm', ['root', '--global'], { timeout: 15_000 });
-    return await inspectPackageDirectory(root, stdout.trim());
+    const globalRoot = dirname(dirname(resolve(root)));
+    if (!globalRoot.endsWith('/lib/node_modules'))
+      return '当前为非 npm 全局安装；请使用原部署方式更新。';
+    if (
+      (await realpath(join(dirname(dirname(globalRoot)), 'bin/covro'))) !==
+      join(resolve(root), 'bin/covro.mjs')
+    )
+      return '当前 Covro 入口与 npm 全局安装来源不匹配；请使用原部署方式更新。';
+    return await inspectPackageDirectory(root, globalRoot);
   } catch {
     return '无法确认可写的 npm 全局安装；请检查 npm、安装目录权限及后台 PATH。';
   }

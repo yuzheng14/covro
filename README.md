@@ -95,7 +95,7 @@ The host computer must stay awake and online. When adding projects remotely, ent
 
 ## Updates and release channels
 
-Choose stable, beta, or dev in the update panel or with `covro update`. Managed upgrades support **macOS and Linux npm global installations**; other installations use their original update method. Automatic installation is off by default and requires verified Codex compatibility; unverified combinations need explicit confirmation. Covro does not upgrade Codex CLI. See [updates and recovery](docs/distribution.md).
+Choose stable, beta, or dev in the update panel or with `covro update`. Managed upgrades support **macOS and Linux npm global installations**; other installations use their original update method. Updates can also switch to a supported default Node environment with an existing global Covro installation, including the same Covro version. Automatic installation is off by default and requires verified Codex compatibility; unverified combinations need explicit confirmation. Covro does not upgrade Codex CLI. See [updates and recovery](docs/distribution.md).
 
 ## Your computer, your workspace
 

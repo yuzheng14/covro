@@ -23,9 +23,15 @@ export interface UpdateEffects {
   hasCommitted?(): Promise<boolean>;
   resume?(): Promise<void>;
   phase(phase: UpdateRun['phase'], message: string): Promise<void>;
+  switchLaunch?(): Promise<void>;
+  restoreLaunch?(): Promise<void>;
 }
 /** Rollback is confined to admission: no new business writes are accepted before commit. */
-export async function activateUpdate(paths: TransactionPaths, effects: UpdateEffects) {
+export async function activateUpdate(
+  paths: TransactionPaths,
+  effects: UpdateEffects,
+  reuseTarget = false,
+) {
   let stopped = false;
   let moved = false;
   let backedUp = false;
@@ -39,9 +45,12 @@ export async function activateUpdate(paths: TransactionPaths, effects: UpdateEff
     await effects.stop();
     await effects.backup();
     backedUp = true;
-    await rename(paths.root, paths.previous);
-    moved = true;
-    await rename(paths.candidate, paths.root);
+    if (!reuseTarget) {
+      await rename(paths.root, paths.previous);
+      moved = true;
+      await rename(paths.candidate, paths.root);
+    }
+    await effects.switchLaunch?.();
     await effects.phase('verifying', '正在启动新版、迁移数据库并验证；业务写入保持暂停');
     await effects.start(true);
     await effects.verify();
@@ -63,6 +72,7 @@ export async function activateUpdate(paths: TransactionPaths, effects: UpdateEff
         await rename(paths.previous, paths.root);
       }
       if (backedUp) await effects.restore();
+      await effects.restoreLaunch?.();
       await effects.phase(
         'rolledBack',
         `新版启动失败，已恢复旧版：${error instanceof Error ? error.message : String(error)}`,

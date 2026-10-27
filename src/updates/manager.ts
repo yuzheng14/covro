@@ -6,7 +6,7 @@ import {
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { copyFile, mkdir, open } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import lockfile from 'proper-lockfile';
 import { z } from 'zod';
 import { AppError } from '../shared/errors.js';
@@ -22,6 +22,16 @@ import {
 import { packageInfo, packageRoot, type CovroPaths } from '../cli/paths.js';
 import { readJson, saveJson } from './files.js';
 import { compareVersions, inspectInstallation, lookupRelease } from './registry.js';
+import {
+  assertRuntime,
+  resolveRuntimeTarget,
+  runtimeChanged as changedRuntime,
+  type RuntimeTarget,
+} from './runtime.js';
+import { runningRuntime } from '../cli/runtime.js';
+import { launchRuntime, type LaunchRuntime } from '../cli/runtime-launch.js';
+const runtimeChanged = (target: Parameters<typeof changedRuntime>[0]) =>
+  changedRuntime(target, runningRuntime());
 
 export const settingsSchema = z
   .object({ channel: z.enum(releaseChannels), automatic: z.boolean() })
@@ -42,6 +52,9 @@ export interface UpdateContext {
   dataDir: string;
   root: string;
   directory: string;
+  target?: RuntimeTarget;
+  reuseTarget?: boolean;
+  source?: LaunchRuntime;
 }
 export class UpdateManager implements UpdateController {
   private settings: UpdateSettings = {
@@ -57,6 +70,8 @@ export class UpdateManager implements UpdateController {
   private available?: UpdateStatus['available'];
   private checkedAt?: number;
   private checkError?: string;
+  private target?: RuntimeTarget;
+  private runtimeError?: string;
   private reason = '当前服务未通过 covro 启动，网页仅支持版本检测；升级请使用原部署方式。';
   private timer?: ReturnType<typeof setInterval>;
   private checking?: Promise<UpdateStatus>;
@@ -81,6 +96,7 @@ export class UpdateManager implements UpdateController {
   }
   async initialize() {
     if (!this.context) return;
+    await this.loadDirectory();
     const saved = await readJson<unknown>(join(this.context.directory, 'settings.json'));
     if (saved !== undefined) this.settings = settingsSchema.parse(saved);
     this.reason =
@@ -91,6 +107,18 @@ export class UpdateManager implements UpdateController {
     this.timer.unref();
     // No network request in the startup critical path.
     void this.automatic().catch(() => {});
+  }
+  private async loadDirectory() {
+    if (!this.context) return;
+    const saved = await readJson<{ directory: string }>(
+      join(this.context.location.state, 'updates.json'),
+    );
+    if (saved) {
+      const directory = resolve(saved.directory);
+      if (!directory.startsWith(resolve(this.context.location.home, 'updates') + sep))
+        throw new Error('升级记录目录不在 Covro 管理目录中');
+      this.context.directory = directory;
+    }
   }
   async status(): Promise<UpdateStatus> {
     const run = this.context
@@ -113,11 +141,46 @@ export class UpdateManager implements UpdateController {
       checkedAt: this.checkedAt,
       checkError: this.checkError,
       run,
+      runtime: {
+        current: runningRuntime(),
+        target: this.target,
+        migration: Boolean(this.target && runtimeChanged(this.target)),
+        error: this.runtimeError,
+      },
     };
   }
   async check(channel: ReleaseChannel = this.settings.channel) {
+    this.target = undefined;
+    this.runtimeError = undefined;
+    if (this.context && !this.reason) {
+      try {
+        this.target = await resolveRuntimeTarget();
+      } catch (error) {
+        this.runtimeError = (error as Error).message;
+      }
+    }
     try {
-      const release = await lookupRelease(channel, this.network.signal);
+      const local = this.target && runtimeChanged(this.target) ? this.target : undefined;
+      let release;
+      try {
+        release = await lookupRelease(channel, this.network.signal);
+      } catch (error) {
+        if (!local) throw error;
+      }
+      // A preinstalled newer target must never be overwritten by an older channel tag.
+      if (local && (!release || compareVersions(local.version, release.version) >= 0))
+        release = {
+          version: local.version,
+          channel: (local.version.includes('-dev.')
+            ? 'dev'
+            : local.version.includes('-beta.')
+              ? 'beta'
+              : 'stable') as ReleaseChannel,
+          covroCommit: local.covroCommit,
+          gitHead: undefined,
+          covroCodex: local.covroCodex,
+        };
+      if (!release) throw new Error('未找到可用版本');
       this.available = {
         version: release.version,
         requestedChannel: channel,
@@ -142,7 +205,12 @@ export class UpdateManager implements UpdateController {
   }
   async activationPending() {
     const run = (await this.status()).run;
-    if (run && !run.committed && run.phase === 'failed' && run.from !== packageInfo.version)
+    if (
+      run &&
+      !run.committed &&
+      ['failed', 'rolledBack'].includes(run.phase) &&
+      (run.from !== packageInfo.version || (run.runtime && runtimeChanged(run.runtime.from)))
+    )
       throw new Error(
         '上次升级尚未完成恢复；请运行 covro update repair 后再启动，避免写入未激活版本。',
       );
@@ -151,6 +219,7 @@ export class UpdateManager implements UpdateController {
     if (run && !run.committed && run.phase === 'verifying') {
       if (run.target !== packageInfo.version)
         throw new Error('升级候选身份不匹配，请运行 covro update repair');
+      if (run.runtime) assertRuntime(runningRuntime(), run.runtime.target);
       return true;
     }
     return false;
@@ -160,6 +229,7 @@ export class UpdateManager implements UpdateController {
     const run = (await this.status()).run;
     if (!run || run.id !== id || run.phase !== 'verifying' || run.target !== packageInfo.version)
       throw new Error('升级记录、版本或运行状态不匹配');
+    if (run.runtime) assertRuntime(runningRuntime(), run.runtime.target);
     if (!run.codex || run.codex.version !== this.codexVersion())
       throw new Error('Codex 版本在升级期间发生变化或缺少校验记录，拒绝激活');
     requireCodexCompatibility(
@@ -175,6 +245,7 @@ export class UpdateManager implements UpdateController {
       phase: 'succeeded',
       message: '升级成功，服务已恢复',
       updatedAt: Date.now(),
+      runtime: run.runtime ? { ...run.runtime, actual: runningRuntime() } : undefined,
     });
   }
   async start(input: z.infer<typeof updateRequestSchema>) {
@@ -211,6 +282,13 @@ export class UpdateManager implements UpdateController {
       }
       const channel = request.channel ?? this.settings.channel;
       const checked = await this.check(channel);
+      const target = this.target;
+      if (this.runtimeError || !target)
+        throw new AppError(
+          'UPDATE_RUNTIME',
+          this.runtimeError ?? '无法确认目标 Node 环境，请重新检查。',
+          409,
+        );
       if (!checked.available)
         throw new AppError('UPDATE_CHECK_FAILED', checked.checkError ?? '未找到可用版本', 502);
       if (checked.available.downgrade && !request.allowDowngrade)
@@ -219,7 +297,10 @@ export class UpdateManager implements UpdateController {
           '目标版本较旧，需要明确允许降级；仍将检查数据库兼容性。',
           409,
         );
-      if (compareVersions(checked.available.version, packageInfo.version) === 0) {
+      if (
+        compareVersions(checked.available.version, packageInfo.version) === 0 &&
+        !runtimeChanged(target)
+      ) {
         return this.configure({ ...this.settings, channel });
       }
       const confirmation = request.codexConfirmation;
@@ -252,8 +333,28 @@ export class UpdateManager implements UpdateController {
         message: '正在安装候选 npm 包',
         startedAt: Date.now(),
         updatedAt: Date.now(),
+        runtime: { from: runningRuntime(), target: target },
       };
-      await saveJson(join(this.context.directory, 'context.json'), this.context);
+      const currentLaunch = await launchRuntime(this.context.location, runningRuntime().entry);
+      if (currentLaunch.node !== process.execPath || currentLaunch.entry !== runningRuntime().entry)
+        throw new AppError(
+          'UPDATE_RUNTIME',
+          '保存的启动来源与当前实例不一致，请核对实例后重试。',
+          409,
+        );
+      const context = {
+        ...this.context,
+        source: currentLaunch,
+        target: target,
+        reuseTarget:
+          runtimeChanged(target) &&
+          target.root !== this.context.root.replace(/\/$/, '') &&
+          target.version === run.target,
+      };
+      await saveJson(join(this.context.directory, 'context.json'), context);
+      await saveJson(join(this.context.location.state, 'updates.json'), {
+        directory: this.context.directory,
+      });
       const worker = join(this.context.directory, 'worker.cjs');
       await copyFile(join(packageRoot, 'dist/update-worker.cjs'), worker);
       const log = await open(join(this.context.directory, 'update.log'), 'a', 0o600);
@@ -291,6 +392,7 @@ export class UpdateManager implements UpdateController {
   }
   async repair() {
     if (!this.context) throw new Error('没有可恢复的受管安装');
+    await this.loadDirectory();
     const directory = this.context.directory;
     let releaseLock: () => Promise<void>;
     try {

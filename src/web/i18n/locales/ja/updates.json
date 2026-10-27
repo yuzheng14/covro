@@ -66,5 +66,9 @@
   "releaseNotesMissing": "このバージョンのリリースノートはありません。一部の Beta / Dev バージョンには GitHub Release がありません。更新は続行できます。",
   "releaseNotesEmpty": "このリリースにはまだ説明がありません。更新は続行できます。",
   "releaseNotesRateLimited": "GitHub のリクエスト制限に達しました。後で再試行してください。更新は続行できます。",
-  "releaseNotesFailed": "リリースノートを読み込めませんでした。接続を確認して再試行してください。更新は続行できます。"
+  "releaseNotesFailed": "リリースノートを読み込めませんでした。接続を確認して再試行してください。更新は続行できます。",
+  "runtime": "Node 環境",
+  "installation_source": "インストール元",
+  "runtime_unavailable": "移行先の Node 環境を確認できません。詳細を確認して再チェックしてください。",
+  "migrate_and_restart": "Node を切り替えて再起動"
 }

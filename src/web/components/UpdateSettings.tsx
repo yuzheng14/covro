@@ -92,18 +92,24 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
       ? status?.available
       : undefined;
   const active = updateActive(status?.run);
+  const migration = Boolean(status?.runtime?.migration);
   const current =
     selected &&
     status &&
     validVersion(status.version) &&
     compareVersions(selected.version, status.version) === 0;
   const [codexConsent, setCodexConsent] = useState<string>();
-  const identity = JSON.stringify([channel, selected?.version, selected?.codex]);
+  const identity = JSON.stringify([
+    channel,
+    selected?.version,
+    selected?.codex,
+    status?.runtime?.target,
+  ]);
   const confirmedCodex = codexConsent === identity;
   const compatibility = selected?.codex;
-  const needsCodexConsent = !current && compatibility?.status === 'unverified';
+  const needsCodexConsent = (!current || migration) && compatibility?.status === 'unverified';
   const codexBlocked =
-    !current &&
+    (!current || migration) &&
     selected &&
     (!compatibility ||
       compatibility.status === 'unknown' ||
@@ -142,6 +148,41 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
           <Icon name="close" size={17} />
         </Button>
       </div>
+      {status?.runtime && (
+        <section className="update-runtime" aria-label={t('updates:runtime')}>
+          <div className="update-version">
+            <span>Node.js</span>
+            <strong>{status.runtime.current.nodeVersion}</strong>
+            {migration && status.runtime.target && (
+              <strong>→ {status.runtime.target.nodeVersion}</strong>
+            )}
+          </div>
+          <details>
+            <summary>{t('updates:installation_source')}</summary>
+            <pre>
+              {status.runtime.current.node}
+              {'\n'}
+              {status.runtime.current.entry}
+            </pre>
+            {migration && status.runtime.target && (
+              <pre>
+                → {status.runtime.target.node}
+                {'\n'}
+                {status.runtime.target.entry}
+              </pre>
+            )}
+          </details>
+          {status.runtime.error && (
+            <div className="inline-error" role="alert">
+              <p>{t('updates:runtime_unavailable')}</p>
+              <details>
+                <summary>{t('common:technical_details')}</summary>
+                <pre>{status.runtime.error}</pre>
+              </details>
+            </div>
+          )}
+        </section>
+      )}
       <div className="update-version">
         <span>{t('updates:current_covro')}</span>
         <strong>{status?.version ?? t('common:loading_2')}</strong>
@@ -275,9 +316,10 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
             active ||
             !selected ||
             !status?.supported ||
+            Boolean(status?.runtime?.error) ||
             Boolean(codexBlocked) ||
             (selected.downgrade && !allowDowngrade) ||
-            (current && channel === status.settings.channel)
+            (current && !migration && channel === status.settings.channel)
           }
           onClick={() =>
             void updates.start(
@@ -289,11 +331,13 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
             )
           }
         >
-          {current
-            ? t('updates:use_this_channel')
-            : selected?.downgrade
-              ? t('updates:switch_and_restart')
-              : t('updates:update_and_restart')}
+          {current && migration
+            ? t('updates:migrate_and_restart')
+            : current
+              ? t('updates:use_this_channel')
+              : selected?.downgrade
+                ? t('updates:switch_and_restart')
+                : t('updates:update_and_restart')}
         </Button>
       </div>
       {selected?.downgrade && (
@@ -317,6 +361,7 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
           <details>
             <summary>{t('common:technical_details')}</summary>
             <pre>{status.run.message}</pre>
+            {status.run.runtime && <pre>{JSON.stringify(status.run.runtime, null, 2)}</pre>}
           </details>
           {active && <progress aria-label={t('updates:update_progress')} />}
         </section>
