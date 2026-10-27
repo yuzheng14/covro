@@ -7,10 +7,9 @@ import { stopAndWait } from './control.js';
 import { saveJson } from '../updates/files.js';
 import { ensureConfig, packageRoot, type CovroPaths } from './paths.js';
 import { macOSLoginService } from './background.js';
+import { launchRuntime, systemdQuote as unit } from './runtime-launch.js';
 
 const exec = promisify(execFile);
-const unit = (value: string) =>
-  `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('%', '%%')}"`;
 
 export async function service(location: CovroPaths, install: boolean) {
   if (!['darwin', 'linux'].includes(process.platform))
@@ -32,11 +31,16 @@ export async function service(location: CovroPaths, install: boolean) {
   const filename = join(directory, `${label}.service`);
   if (install) {
     await mkdir(directory, { recursive: true });
-    if (/[\r\n]/.test([entry, location.config, location.home, process.env.PATH].join('')))
+    const runtime = await launchRuntime(location, entry);
+    if (
+      /[\r\n]/.test(
+        [runtime.node, runtime.entry, location.config, location.home, runtime.path].join(''),
+      )
+    )
       throw new Error('服务路径和 PATH 不能包含换行');
     await writeFile(
       filename,
-      `[Unit]\nDescription=Covro\n[Service]\nExecStart=${[process.execPath, entry, 'run', '--config', location.config].map(unit).join(' ')}\nEnvironment=${unit(`COVRO_HOME=${location.home}`)} ${unit(`PATH=${process.env.PATH ?? '/usr/bin:/bin'}`)}\nRestart=on-failure\nRestartSec=30\n[Install]\nWantedBy=default.target\n`,
+      `[Unit]\nDescription=Covro\n[Service]\nExecStart=${[runtime.node, runtime.entry, 'run', '--config', location.config].map(unit).join(' ')}\nEnvironment=${unit(`COVRO_HOME=${location.home}`)} ${unit(`PATH=${runtime.path}`)}\nRestart=on-failure\nRestartSec=30\n[Install]\nWantedBy=default.target\n`,
       { mode: 0o600 },
     );
     await exec('systemctl', ['--user', 'daemon-reload']);

@@ -11,6 +11,15 @@ export interface UpdateSettings {
 }
 export type UpdatePhase =
   'installing' | 'waiting' | 'stopping' | 'verifying' | 'succeeded' | 'rolledBack' | 'failed';
+export interface RuntimeIdentity {
+  node: string;
+  nodeVersion: string;
+  root: string;
+  entry: string;
+  npm?: string;
+  npmVersion?: string;
+  globalRoot?: string;
+}
 export interface UpdateRun {
   id: string;
   from: string;
@@ -25,6 +34,7 @@ export interface UpdateRun {
   startedAt: number;
   updatedAt: number;
   committed?: boolean;
+  runtime?: { from: RuntimeIdentity; target: RuntimeIdentity; actual?: RuntimeIdentity };
   codex?: { version: string; manifest: CodexCompatibilityManifest; confirmedUnverified: boolean };
 }
 export interface UpdateStatus {
@@ -47,6 +57,12 @@ export interface UpdateStatus {
   supported: boolean;
   unsupportedReason?: string;
   run?: UpdateRun;
+  runtime?: {
+    current: RuntimeIdentity;
+    target?: RuntimeIdentity;
+    migration: boolean;
+    error?: string;
+  };
 }
 export const updateActive = (run?: UpdateRun) =>
   Boolean(run && ['installing', 'waiting', 'stopping', 'verifying'].includes(run.phase));

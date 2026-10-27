@@ -14,6 +14,7 @@ import {
   unloadLaunchd,
 } from './launchd.js';
 import { readJson } from '../updates/files.js';
+import { launchRuntime, type LaunchRuntime } from './runtime-launch.js';
 
 const exec = promisify(execFile);
 async function lifecycle<T>(location: CovroPaths, action: () => Promise<T>) {
@@ -31,17 +32,18 @@ async function lifecycle<T>(location: CovroPaths, action: () => Promise<T>) {
   }
 }
 
-async function start(location: CovroPaths, entry: string) {
+async function start(location: CovroPaths, entry: string, override?: LaunchRuntime) {
   try {
     return await control(location, 'status');
   } catch (error) {
     if (!isNotRunning(error)) throw error;
   }
   let child: ReturnType<typeof spawn> | undefined;
+  const runtime = await launchRuntime(location, entry, override);
   const installed = await readJson<{ platform: string; label: string }>(
     join(location.state, 'service.json'),
   );
-  if (process.platform === 'darwin' && (await startLaunchd(location, entry))) {
+  if (process.platform === 'darwin' && (await startLaunchd(location, runtime.entry, runtime))) {
     // launchd owns the process; startup is confirmed through the same private control socket.
   } else if (installed?.platform === 'linux') {
     await exec('systemctl', ['--user', 'start', `${installed.label}.service`]);
@@ -52,11 +54,11 @@ async function start(location: CovroPaths, entry: string) {
       );
     const log = await open(location.log, 'a', 0o600);
     try {
-      child = spawn(process.execPath, [entry, 'run', '--config', location.config], {
+      child = spawn(runtime.node, [runtime.entry, 'run', '--config', location.config], {
         detached: true,
         stdio: ['ignore', log.fd, log.fd],
         windowsHide: true,
-        env: { ...process.env, COVRO_HOME: location.home },
+        env: { ...process.env, PATH: runtime.path, COVRO_HOME: location.home },
       });
       await new Promise<void>((resolve, reject) => {
         child!.once('spawn', resolve);
@@ -91,15 +93,16 @@ async function stop(location: CovroPaths) {
   }
 }
 
-export const startBackground = (location: CovroPaths, entry: string) =>
-  lifecycle(location, () => start(location, entry));
+export const startBackground = (location: CovroPaths, entry: string, runtime?: LaunchRuntime) =>
+  lifecycle(location, () => start(location, entry, runtime));
 export const stopBackground = (location: CovroPaths) => lifecycle(location, () => stop(location));
 export const macOSLoginService = (location: CovroPaths, entry: string, install: boolean) =>
   lifecycle(location, async () => {
     if (install && !(await guiSessionAvailable(location)))
       throw new Error('启用登录自启需要当前用户已登录 macOS 桌面');
     if (!install && !(await loginServiceInstalled(location))) return;
+    const runtime = await launchRuntime(location, entry);
     await stop(location);
-    await configureLaunchdLogin(location, entry, install);
-    if (install) await start(location, entry);
+    await configureLaunchdLogin(location, runtime.entry, install, runtime);
+    if (install) await start(location, runtime.entry, runtime);
   });
