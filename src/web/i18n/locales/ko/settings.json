@@ -174,5 +174,11 @@
   "fieldError": "{{label}}: {{reason}}",
   "temporaryDirectories": "TMPDIR: {{tmpdir}}; /tmp: {{slashTmp}}",
   "model_settings": "모델 설정",
-  "close_model_settings": "모델 설정 닫기"
+  "close_model_settings": "모델 설정 닫기",
+  "next_turn": "다음 턴에 적용",
+  "live_updating": "실행 중인 작업 업데이트 중…",
+  "live_fast_applied": "Fast: 이후 모델 단계에 반영",
+  "live_reviewer_applied": "검토자: 이후 단계에 반영. 대기 중인 승인은 유지",
+  "live_permissions_deferred": "권한: 다음 턴에 적용 (샌드박스 및 승인 정책 고정)",
+  "live_fast_deferred": "Fast: 실행 중 업데이트가 확인될 때까지 다음 턴에 적용"
 }

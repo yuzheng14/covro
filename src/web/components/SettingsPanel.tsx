@@ -1,3 +1,4 @@
+import { isActive } from './Status';
 import { displayMessage } from '../i18n/messages';
 import { t } from '../i18n';
 import { useEffect, useId, useState, type ReactNode } from 'react';
@@ -7,6 +8,7 @@ import type {
   ModelDefaultsResult,
   ModelInfo,
   Settings,
+  LiveSettings,
   ThreadView,
 } from '../../shared/types';
 import { useRuntimeDefaults } from '../hooks/useRuntimeDefaults';
@@ -33,6 +35,8 @@ export function SettingsPanel({
   disabled,
   threadLoading,
   onChange,
+  onLiveSettings,
+  liveSettingsPending,
   onSaveModelDefaults,
   savingModelDefaults,
 }: {
@@ -47,6 +51,8 @@ export function SettingsPanel({
   disabled: boolean;
   threadLoading?: boolean;
   onChange: (settings: Settings) => void;
+  onLiveSettings: (settings: LiveSettings) => void;
+  liveSettingsPending: boolean;
   onSaveModelDefaults: (settings: ModelDefaults) => Promise<ModelDefaultsResult | undefined>;
   savingModelDefaults: boolean;
 }) {
@@ -98,7 +104,57 @@ export function SettingsPanel({
   const selectedModel = models.find((entry) => entry.id === model);
   const fastAvailable = selectedModel?.serviceTiers?.includes('fast');
   const changes = pendingSettings(settings, current);
-  const pending = Object.keys(changes).length > 0;
+
+  const active = Boolean(thread?.managed && isActive(thread.status));
+  const live =
+    active && thread?.liveSettings?.turnId === thread?.turns.at(-1)?.id
+      ? thread?.liveSettings
+      : undefined;
+  const currentModel = models.find((entry) => entry.id === current?.model);
+  const liveFast = active && current?.liveSettingsCapabilities?.fast;
+  const currentSpeed = live?.serviceTier !== undefined ? live.serviceTier : current?.serviceTier;
+  const selectedPermission = settings.permissionMode ?? current?.permissionMode;
+  const observedPermissions =
+    live?.approvalReviewer &&
+    current &&
+    (current.permissionMode === 'ask' || current.permissionMode === 'auto-review')
+      ? {
+          ...current,
+          ...permissions,
+          approvalReviewer: live.approvalReviewer,
+          permissionMode:
+            live.approvalReviewer === 'user' ? ('ask' as const) : ('auto-review' as const),
+        }
+      : permissions;
+  const speedPending = tier !== currentSpeed;
+  const permissionPending = selectedPermission !== observedPermissions?.permissionMode;
+  const pending = Object.keys(changes).length > 0 || speedPending || permissionPending;
+  const fastApplied =
+    live?.serviceTier !== undefined &&
+    live.serviceTier === tier &&
+    (changes.serviceTier !== undefined || live.serviceTier !== current?.serviceTier);
+  const reviewerApplied =
+    live?.approvalReviewer &&
+    !permissionPending &&
+    (changes.permissionMode !== undefined || live.approvalReviewer !== current?.approvalReviewer) &&
+    (selectedPermission === 'ask' || selectedPermission === 'auto-review');
+  function changePermission(next: Settings) {
+    onChange(next);
+    const mode = next.permissionMode ?? current?.permissionMode;
+    if (
+      active &&
+      current?.liveSettingsCapabilities?.reviewer &&
+      (current.permissionMode === 'ask' || current.permissionMode === 'auto-review') &&
+      (mode === 'ask' || mode === 'auto-review')
+    )
+      onLiveSettings({ permissionMode: mode });
+  }
+  function changeSpeed() {
+    const value = fast ? null : 'fast';
+    onChange(pendingSettings({ ...settings, serviceTier: value }, current));
+    if (liveFast && (value === null || currentModel?.serviceTiers?.includes('fast')))
+      onLiveSettings({ serviceTier: value });
+  }
   const source = thread
     ? thread.managed
       ? t('settings:current_session_settings')
@@ -136,16 +192,20 @@ export function SettingsPanel({
               v1: current?.model ?? t('common:not_reported'),
               v2: current?.reasoningEffort ?? t('common:not_reported'),
               v3:
-                changes.serviceTier !== undefined &&
+                (changes.serviceTier !== undefined || speedPending) &&
+                !fastApplied &&
                 t('settings:pending_speed_current', {
-                  v0: speedLabel(changes.serviceTier),
-                  v1: speedLabel(current?.serviceTier, unknown),
+                  v0: speedLabel(tier),
+                  v1: speedLabel(currentSpeed, unknown),
                 }),
               v4:
-                changes.permissionMode &&
+                selectedPermission &&
+                selectedPermission !== 'custom' &&
+                (changes.permissionMode || permissionPending) &&
+                !reviewerApplied &&
                 t('settings:pending_permissions_current', {
-                  v0: permissionModes[changes.permissionMode].label,
-                  v1: permissionLabel(current),
+                  v0: permissionModes[selectedPermission].label,
+                  v1: permissionLabel(observedPermissions),
                 }),
             })}
           </span>
@@ -170,6 +230,21 @@ export function SettingsPanel({
             disabled={disabled || saving}
             onClick={() => {
               onChange({});
+              if (active) {
+                const rollback: LiveSettings = {};
+                if (
+                  (live?.serviceTier !== undefined ||
+                    (liveFast && changes.serviceTier !== undefined)) &&
+                  (current?.serviceTier === 'fast' || current?.serviceTier === null)
+                )
+                  rollback.serviceTier = current.serviceTier;
+                if (
+                  (live?.approvalReviewer || changes.permissionMode) &&
+                  (current?.permissionMode === 'ask' || current?.permissionMode === 'auto-review')
+                )
+                  rollback.permissionMode = current.permissionMode;
+                if (Object.keys(rollback).length) onLiveSettings(rollback);
+              }
               if (notice?.state === 'error') setSaveNotice(undefined);
             }}
           >
@@ -179,6 +254,31 @@ export function SettingsPanel({
           </button>
         </div>
       )}
+      {active &&
+        (fastApplied ||
+          reviewerApplied ||
+          changes.permissionMode ||
+          permissionPending ||
+          changes.serviceTier !== undefined ||
+          speedPending ||
+          liveSettingsPending) && (
+          <div className="settings-live-status settings-pending" role="status">
+            {liveSettingsPending ? (
+              <span>{t('settings:live_updating')}</span>
+            ) : (
+              <>
+                {fastApplied && <span>{t('settings:live_fast_applied')}</span>}
+                {reviewerApplied && <span>{t('settings:live_reviewer_applied')}</span>}
+                {(changes.permissionMode || permissionPending) && !reviewerApplied && (
+                  <span>{t('settings:live_permissions_deferred')}</span>
+                )}
+                {(changes.serviceTier !== undefined || speedPending) && !fastApplied && (
+                  <span>{t('settings:live_fast_deferred')}</span>
+                )}
+              </>
+            )}
+          </div>
+        )}
       {notice && (
         <p className="settings-defaults" data-state={notice.state} role="status">
           {notice.state === 'saving'
@@ -210,7 +310,7 @@ export function SettingsPanel({
       {expanded && (
         <div className="settings-fields" id={advancedId}>
           <PermissionDetails
-            current={permissions}
+            current={observedPermissions}
             source={source}
             settings={changes}
             thread={Boolean(thread)}
@@ -233,7 +333,7 @@ export function SettingsPanel({
             unknown={unknown}
             disabled={disabled || Boolean(threadLoading)}
             scope={`${projectId}:${thread?.id ?? ''}:${runtimeKey}`}
-            onChange={onChange}
+            onChange={changePermission}
           />
           <ControlHint asChild content={t('common:permission_details')}>
             <button
@@ -251,7 +351,7 @@ export function SettingsPanel({
         <div className="composer-send-controls">
           <ModelSettingsPopover
             scope={scope}
-            disabled={!model && !models.length}
+            disabled={Boolean(threadLoading) || (!model && !models.length)}
             description={
               <>
                 <span>{t('settings:model', { v0: model || unknown })}</span>
@@ -293,7 +393,12 @@ export function SettingsPanel({
               }}
             >
               <ControlHint
-                content={t('settings:model', { v0: model || unknown })}
+                content={
+                  <>
+                    <span>{t('settings:model', { v0: model || unknown })}</span>
+                    {active && <span>{t('settings:next_turn')}</span>}
+                  </>
+                }
                 suppressed={modelMenuOpen}
               >
                 <SelectTrigger
@@ -339,6 +444,7 @@ export function SettingsPanel({
                 content={
                   <>
                     <span>{t('settings:reasoning_effort', { v0: effort || unknown })}</span>
+                    {active && <span>{t('settings:next_turn')}</span>}
                     {changes.reasoningEffort !== undefined && (
                       <span>
                         {t('settings:pending_current', { v0: current?.reasoningEffort ?? unknown })}
@@ -404,7 +510,7 @@ export function SettingsPanel({
                   {changes.serviceTier !== undefined && (
                     <span>
                       {t('settings:pending_current', {
-                        v0: speedLabel(current?.serviceTier, unknown),
+                        v0: speedLabel(currentSpeed, unknown),
                       })}
                     </span>
                   )}
@@ -419,12 +525,8 @@ export function SettingsPanel({
                 aria-pressed={tier === undefined ? 'mixed' : fast}
                 disabled={disabled || Boolean(threadLoading) || (!fast && !fastAvailable)}
                 data-fast={fast}
-                data-pending={changes.serviceTier !== undefined}
-                onClick={() =>
-                  onChange(
-                    pendingSettings({ ...settings, serviceTier: fast ? null : 'fast' }, current),
-                  )
-                }
+                data-pending={changes.serviceTier !== undefined && !fastApplied}
+                onClick={changeSpeed}
               >
                 <Zap
                   size={18}

@@ -28,6 +28,7 @@ test.beforeEach(async ({ request }) => {
 
 test('remembers explicit model and effort choices across new threads, projects and reloads without rewriting history', async ({
   page,
+  request,
 }) => {
   const writes: unknown[] = [];
   page.on('request', (request) => {
@@ -63,8 +64,14 @@ test('remembers explicit model and effort choices across new threads, projects a
   await page.screenshot({ path: '/tmp/codex-model-defaults-new-thread.png', fullPage: true });
   await page.keyboard.press('Escape');
   await page.locator(`[data-thread-id="${original}"]`).click();
-  await expect(model(page)).toHaveAttribute('data-value', 'simulated-model');
-  await expect(effort(page)).toHaveAttribute('data-value', 'medium');
+  await expect(model(page)).toHaveAttribute('data-value', 'simulated-alternative');
+  await expect(effort(page)).toHaveAttribute('data-value', 'high');
+  await expect(page.locator('.settings-pending')).toContainText('当前 simulated-model / medium');
+  const originalThread = await (await request.get(`/api/threads/${original}`)).json();
+  expect(originalThread.runtimeSettings).toMatchObject({
+    model: 'simulated-model',
+    reasoningEffort: 'medium',
+  });
   await projectGroup(page, '另一个项目')
     .getByRole('button', { name: '另一个项目', exact: true })
     .click();

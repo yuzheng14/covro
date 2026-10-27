@@ -174,5 +174,11 @@
   "fieldError": "{{label}}：{{reason}}",
   "temporaryDirectories": "TMPDIR：{{tmpdir}}；/tmp：{{slashTmp}}",
   "model_settings": "モデル設定",
-  "close_model_settings": "モデル設定を閉じる"
+  "close_model_settings": "モデル設定を閉じる",
+  "next_turn": "次のターンで適用",
+  "live_updating": "実行中のタスクを更新中…",
+  "live_fast_applied": "Fast：後続のモデルステップに反映",
+  "live_reviewer_applied": "承認担当：後続ステップに反映。保留中の承認は変更なし",
+  "live_permissions_deferred": "権限：次のターンで適用（サンドボックスと承認ポリシーは固定）",
+  "live_fast_deferred": "Fast：実行中の更新が確認されるまで次のターンで適用"
 }

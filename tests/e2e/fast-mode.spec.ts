@@ -18,7 +18,7 @@ async function send(page: Page, text: string) {
   );
   await page.getByRole('button', { name: '发送任务', exact: true }).click();
   const body = (await sending).postDataJSON();
-  await expect(speed(page)).toBeDisabled();
+  await expect(speed(page)).toBeEnabled();
   await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
   await expect(speed(page)).toBeEnabled();
   return body;
