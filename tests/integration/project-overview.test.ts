@@ -6,6 +6,7 @@ import { ProjectRegistry } from '../../src/server/projects.js';
 import { createApp } from '../../src/server/http.js';
 import { parseConfig } from '../../src/server/config.js';
 import { toThreadSummary } from '../../src/shared/thread-summary.js';
+import { asyncQuestionId } from '../../src/shared/async-questions.js';
 import type { PendingAction, ServerMessage, ThreadPage } from '../../src/shared/types.js';
 import { databaseHarness } from './domain-db-helpers.js';
 import { deferred, DomainCodex, operationId, threadView } from './domain-helpers.js';
@@ -303,6 +304,7 @@ describe('project conversation overview', () => {
           managed: false,
           updatedAt: 123,
           pendingActionCount: 0,
+          pendingQuestionCount: 0,
           lastTurnId: 'turn',
           lastTurnStatus: 'completed',
           historyVisible: true,
@@ -317,6 +319,78 @@ describe('project conversation overview', () => {
     expect(list.mock.calls.map((call) => call[1])).toEqual([undefined, 'next-page']);
     expect(codex.resumes).toBe(0);
     expect(codex.starts).toBe(0);
+  });
+
+  it('broadcasts unanswered async groups independently of execution and approval status', async () => {
+    const { service, codex } = setup();
+    const overview: ServerMessage[] = [];
+    service.subscribeOverview((event) => overview.push(event));
+    const id = await create(service, 'first');
+    await service.startTurn(id, { clientOperationId: operationId(), text: 'Ask preferences' });
+    codex.emit({
+      type: 'item',
+      threadId: id,
+      turnId: 'turn-1',
+      item: {
+        id: 'question',
+        type: 'agentMessage',
+        delivery: 'async',
+        questions: [
+          { title: 'Private theme question', options: ['dark'] },
+          { title: 'Private project question', options: null },
+        ],
+      },
+    });
+    const latest = () =>
+      overview.filter((event) => event.type === 'event' && event.kind === 'threadSummary').at(-1);
+    expect(latest()).toMatchObject({
+      payload: { status: 'running', pendingQuestionCount: 1, pendingActionCount: 0 },
+    });
+    codex.emit({ type: 'action', action: approval(id, 'turn-1') });
+    expect(latest()).toMatchObject({
+      payload: { status: 'waitingApproval', pendingQuestionCount: 1, pendingActionCount: 1 },
+    });
+    codex.complete(id, 'turn-1');
+    expect(latest()).toMatchObject({
+      payload: { status: 'completed', pendingQuestionCount: 1, pendingActionCount: 0 },
+    });
+    expect((await service.listThreadSummaries('first')).data[0]).toMatchObject({
+      pendingQuestionCount: 1,
+    });
+    await service.startTurn(id, {
+      clientOperationId: operationId(),
+      text: 'An ordinary follow-up',
+    });
+    expect(toThreadSummary(service.projection.get(id)!).pendingQuestionCount).toBe(1);
+    for (const [index, question] of [
+      'Private theme question',
+      'Private project question',
+    ].entries()) {
+      codex.emit({
+        type: 'item',
+        threadId: id,
+        turnId: 'turn-2',
+        item: {
+          id: `answer-${index}`,
+          type: 'userMessage',
+          questionReplies: [
+            {
+              questionItemId: index === 0 ? asyncQuestionId('question', index) : 'question',
+              question,
+              answer: 'Private answer',
+            },
+          ],
+        },
+      });
+      expect(latest()).toMatchObject({
+        payload: { status: 'running', pendingQuestionCount: index === 0 ? 1 : 0 },
+      });
+    }
+    expect(
+      JSON.stringify(
+        overview.filter((event) => event.type === 'event' && event.kind === 'threadSummary'),
+      ),
+    ).not.toContain('Private');
   });
 
   it('counts unresolved controls without leaking their body and leaves detailed GET unchanged', async () => {

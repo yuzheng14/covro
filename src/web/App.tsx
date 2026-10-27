@@ -30,6 +30,7 @@ import { blocksTarget } from './lib/operations';
 import { createSlashCommands, type SlashCommandContext } from './lib/slash-commands';
 import { downloadThreadExport } from './lib/thread-export';
 import { encodeQuestionReplies } from '../shared/async-questions';
+import { pendingAttention } from '../shared/thread-attention';
 import { CompatibilityNotice } from './components/CompatibilityNotice';
 import { ProjectDialog } from './components/ProjectDialog';
 import { NotificationSettings } from './components/NotificationSettings';
@@ -116,6 +117,8 @@ export function App() {
     setProjectDialog({ kind: 'add' });
   };
   const { thread, system } = workspace;
+  const hasAsyncQuestions =
+    thread && pendingAttention(thread).some((request) => request.target.kind === 'question');
   const historyForbidden =
     workspace.authRequired ||
     Boolean(
@@ -601,6 +604,9 @@ export function App() {
                 </span>
               )}
             </Button>
+            {hasAsyncQuestions && thread.status !== 'waitingInput' && (
+              <Status status="waitingInput" offline={offline} />
+            )}
             {thread && <Status status={thread.status} offline={offline} />}
             <ConnectionBadge connection={workspace.connection} />
             {thread?.forkedFromId && (

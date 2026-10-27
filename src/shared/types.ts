@@ -237,6 +237,8 @@ export type ThreadSummary = Pick<
   | 'historyVisible'
 > & {
   pendingActionCount: number;
+  /** Unanswered async question groups in loaded history; independent of execution status. */
+  pendingQuestionCount?: number;
   /** Stable identity of the latest known turn; absent when history is not loaded. */
   lastTurnId?: string;
   lastTurnStatus?: RunStatus;

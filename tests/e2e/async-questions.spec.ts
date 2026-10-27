@@ -14,6 +14,8 @@ import {
 } from '../../src/shared/async-questions';
 import type { ThreadView } from '../../src/shared/types';
 
+const questionIndicator = (page: Page) =>
+  page.locator('.thread-row:has(.thread-selected) .thread-status-waitingInput');
 const card = (page: Page) => page.getByRole('region', { name: 'Codex 的提问' });
 const freeName = (page: Page) =>
   card(page).getByRole('textbox', { name: '项目名称是什么？：自由回答' });
@@ -38,11 +40,14 @@ test('async questions survive reload and send native answers after the turn ends
   await page.setViewportSize({ width: 1360, height: 1050 });
   await send(page, '[async-questions] 帮我确认项目偏好');
   await expect(page.locator('.turn-heading .status')).toHaveText('已完成');
+  await expect(questionIndicator(page)).toHaveAccessibleName('等待回答 · 1 项待处理');
+  await expect(page.locator('.topbar-status > .status-waitingInput')).toBeVisible();
   await expect(card(page).getByRole('radio', { name: '深色（推荐）', exact: true })).toBeChecked();
   await expect(card(page).getByRole('button', { name: '发送回答', exact: true })).toBeDisabled();
   await page.reload();
   await expect(card(page)).toBeVisible();
   await expect(page.locator('.pending-actions')).toHaveCount(0);
+  await expect(questionIndicator(page)).toBeVisible();
   // The form has its own draft; replying must preserve the ordinary composer draft.
   await page.getByRole('textbox', { name: '任务内容', exact: true }).fill('稍后要发送的另一条要求');
   await freeName(page).fill('我的项目');
@@ -51,6 +56,8 @@ test('async questions survive reload and send native answers after the turn ends
   await context.setOffline(false);
   await expect(card(page).getByRole('button', { name: '发送回答', exact: true })).toBeEnabled();
   await expect(freeName(page)).toHaveValue('我的项目');
+  await questionIndicator(page).hover();
+  await expect(page.getByRole('tooltip', { name: '等待回答 · 1 项待处理' })).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('questions-desktop.png'),
     fullPage: true,
@@ -72,6 +79,14 @@ test('async questions survive reload and send native answers after the turn ends
     fullPage: true,
     animations: 'disabled',
   });
+  await page.getByRole('button', { name: '打开项目与会话', exact: true }).click();
+  await expect(questionIndicator(page)).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('questions-mobile-sidebar.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+  await page.getByRole('button', { name: '关闭导航', exact: true }).click();
   const request = page.waitForRequest(
     (r) => r.method() === 'POST' && /\/api\/threads\/[^/]+\/turns$/.test(r.url()),
   );
@@ -82,6 +97,8 @@ test('async questions survive reload and send native answers after the turn ends
     { question: '项目名称是什么？', answer: '我的项目' },
   ]);
   await expect(card(page)).toContainText('已发送回答');
+  await expect(questionIndicator(page)).toHaveCount(0);
+  await expect(page.locator('.topbar-status > .status-waitingInput')).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: '追加要求', exact: true })).toHaveValue(
     '稍后要发送的另一条要求',
   );
@@ -114,9 +131,28 @@ test('async questions survive reload and send native answers after the turn ends
 
 test('running async questions use steer and allow a custom answer to an option question', async ({
   page,
-}) => {
+}, testInfo) => {
+  await page.setViewportSize({ width: 1360, height: 1050 });
   await send(page, '[async-questions-running] 执行时确认偏好');
   await expect(page.locator('.turn-heading .status')).toHaveText('执行中');
+  await expect(questionIndicator(page)).toHaveAccessibleName('等待回答 · 1 项待处理');
+  await expect(
+    page.locator('.thread-row:has(.thread-selected) .thread-status-running'),
+  ).toBeVisible();
+  await questionIndicator(page).hover();
+  await expect(page.getByRole('tooltip', { name: '等待回答 · 1 项待处理' })).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('questions-running.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+  const originalId = await page.locator('.thread-selected').getAttribute('data-thread-id');
+  await createEmptyThread(page);
+  const originalLink = page.locator(`[data-thread-id="${originalId}"]`);
+  await expect(originalLink).toContainText('等待回答 · 1 项待处理');
+  await originalLink.click();
+  await expect(card(page)).toBeVisible();
+  await expect(page.locator('.topbar-status > .status-waitingInput')).toBeVisible();
   await card(page).getByRole('radio', { name: '自由回答', exact: true }).check();
   await card(page)
     .getByRole('textbox', { name: '界面使用哪种主题？：自由回答' })
@@ -199,6 +235,7 @@ test('native answers from another client resolve only their individual question'
   await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
   await page.reload();
   await expect(card(page)).toContainText('来自 CLI 的浅色选择');
+  await expect(questionIndicator(page)).toHaveAccessibleName('等待回答 · 1 项待处理');
   const reply = page.locator('.user-message').last();
   await expect(reply.locator('blockquote')).toHaveJSProperty(
     'textContent',
@@ -231,9 +268,11 @@ test('answering one question group leaves another group available and ordinary m
 }) => {
   await send(page, '[async-questions-multiple] 多组问题');
   await expect(card(page)).toHaveCount(2);
+  await expect(questionIndicator(page)).toHaveAccessibleName('等待回答 · 2 项待处理');
   await freeName(page).fill('分组项目');
   await card(page).first().getByRole('button', { name: '发送回答', exact: true }).click();
   await expect(card(page).first()).toContainText('已发送回答');
+  await expect(questionIndicator(page)).toHaveAccessibleName('等待回答 · 1 项待处理');
   await expect(card(page).last().getByRole('textbox')).toBeVisible();
   await expect(page.getByText('模拟任务已完成。', { exact: true })).toBeVisible();
   await send(page, '先继续其他工作，这不是问题的回答');
@@ -241,4 +280,5 @@ test('answering one question group leaves another group available and ordinary m
   await page.reload();
   await expect(card(page).first()).toContainText('已发送回答');
   await expect(card(page).last()).not.toContainText('已发送回答');
+  await expect(questionIndicator(page)).toHaveAccessibleName('等待回答 · 1 项待处理');
 });
