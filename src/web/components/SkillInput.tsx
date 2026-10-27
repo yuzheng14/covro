@@ -47,6 +47,10 @@ export const SkillInput = forwardRef<HTMLTextAreaElement, SkillInputProps>(funct
     undefined,
   );
   const composing = useRef(false);
+  useLayoutEffect(() => {
+    composing.current = false;
+    pendingDeletion.current = undefined;
+  }, [draftKey]);
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   useImperativeHandle(ref, () => textarea.current!, []);
 
@@ -221,6 +225,11 @@ export const SkillInput = forwardRef<HTMLTextAreaElement, SkillInputProps>(funct
         onCompositionEnd={(event) => {
           composing.current = false;
           props.onCompositionEnd?.(event);
+        }}
+        onBlur={(event) => {
+          composing.current = false;
+          pendingDeletion.current = undefined;
+          props.onBlur?.(event);
         }}
       />
     </div>

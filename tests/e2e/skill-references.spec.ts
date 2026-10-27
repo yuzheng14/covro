@@ -421,3 +421,19 @@ test('undo after a project switch restores only that project’s selected identi
   await projectGroup(page).getByRole('button', { name: '新建会话', exact: true }).click();
   await expect(selectedSkills(page)).toHaveAttribute('data-skill-path', originalPath!);
 });
+
+test('cancelling composition by switching drafts does not disable atomic deletion', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await confirmCompatibility(page);
+  await choose(page);
+  await input(page).dispatchEvent('compositionstart', { data: '' });
+  await projectGroup(page, '另一个项目')
+    .getByRole('button', { name: '新建会话', exact: true })
+    .click();
+  await choose(page, 1);
+  await input(page).press('Backspace');
+  await expect(input(page)).toHaveValue('');
+  await expect(selectedSkills(page)).toHaveCount(0);
+});
