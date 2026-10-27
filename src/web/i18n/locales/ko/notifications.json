@@ -2,7 +2,7 @@
   "browser_notifications": "브라우저 알림",
   "send_test_notification": "테스트 알림 보내기",
   "background_notifications_and_sleeping_tabs": "백그라운드 알림 및 탭 절전",
-  "keep_this_page_and_browser_open_background_tabs": "페이지와 브라우저를 실행 상태로 유지하세요. 백그라운드에서도 알림을 받을 수 있지만 탭이 정지되거나 제거되면 지연될 수 있습니다. 복귀 시 결과와 읽지 않음 표시가 동기화됩니다.",
+  "keep_this_page_and_browser_open_background_tabs": "알림을 받으려면 페이지가 온라인 상태여야 합니다. 페이지와 브라우저를 계속 실행해 두세요. Web Push를 사용하지 않으므로 페이지가 동결, 삭제 또는 종료된 동안 알림이 누락될 수 있습니다. 돌아오면 결과와 읽지 않음 표시가 동기화되지만 이전 알림은 다시 보내지 않습니다.",
   "keep_this_site_active": "이 사이트를 활성 상태로 유지하는 방법",
   "chrome_settings_performance_always_keep_these_sites_active": "Chrome: 설정 → 성능 → 항상 활성 상태로 유지할 사이트에 이 사이트를 추가하세요.",
   "settings_instructions": "설정 안내",
@@ -19,7 +19,7 @@
   "enable_notifications": "알림 켜기",
   "allow_notifications_in_the_browser_s_site_settings": "브라우저 사이트 설정에서 알림을 허용한 후 여기에서 켜세요.",
   "use_https_localhost_or_127_0_0_1": "HTTPS로 접속하세요. 로컬 접속에는 localhost 또는 127.0.0.1을 사용할 수 있습니다.",
-  "use_a_desktop_browser_that_supports_system_notifications": "시스템 알림을 지원하는 데스크톱 브라우저를 사용하세요. 페이지 내 상태와 읽지 않음 표시는 계속 사용할 수 있습니다.",
+  "use_a_desktop_browser_that_supports_system_notifications": "시스템 알림을 지원하는 브라우저를 사용하세요. 페이지 내 상태와 읽지 않음 표시는 계속 사용할 수 있습니다.",
   "permission_is_requested_only_when_you_click_enable": "켜기를 눌러야 권한을 요청합니다. 이 설정은 현재 브라우저에서 이 사이트의 탭 간에 공유됩니다.",
   "cannot_save_notification_settings_allow_browser_storage_for": "알림 설정을 저장할 수 없습니다. 이 사이트의 브라우저 저장소 사용을 허용한 후 다시 시도하세요.",
   "cannot_enable_notifications_check_notification_permissions_and_site": "알림을 켤 수 없습니다. 알림 권한 및 사이트 저장소 설정을 확인하세요.",
@@ -34,5 +34,12 @@
   "events_description": "작업이 끝나거나 답변 또는 승인이 필요할 때 프로젝트와 대화를 표시합니다. 알림을 클릭하면 대화를 열고 대기 중인 요청으로 이동합니다.",
   "test_description": "에이전트 작업이 끝나거나 답변 또는 승인이 필요할 때 알려드립니다.",
   "answer_required": "Agent 답변 필요",
-  "approval_required": "Agent 승인 필요"
+  "approval_required": "Agent 승인 필요",
+  "preparing_delivery": "준비 중…",
+  "delivery_unavailable": "알림 전송 불가",
+  "delivery_error_initialization": "알림 서비스를 초기화하지 못했습니다. 페이지를 새로 고치거나 알림을 다시 켜세요.",
+  "delivery_error_unsupported": "이 브라우저에서는 알림 전송 API를 사용할 수 없습니다. 시스템 알림을 지원하는 브라우저를 사용하세요.",
+  "delivery_error_permission": "알림 권한이 취소되었습니다. 브라우저 사이트 설정에서 알림을 다시 허용하세요.",
+  "delivery_error_delivery": "알림을 보내지 못했습니다. 브라우저와 시스템 알림 설정을 확인한 후 다시 시도하세요. 페이지 내 상태와 읽지 않음 표시는 계속 사용할 수 있습니다.",
+  "test_submitted": "브라우저에 알림을 전달했습니다. 시스템 알림 센터를 확인하세요."
 }

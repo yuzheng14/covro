@@ -836,6 +836,7 @@ export function useWorkspace() {
   );
 
   const notifications = useBrowserNotifications({
+    navigationReady: projectsLoaded && !restoringSelection,
     projectName: (id) =>
       id === UNASSIGNED_SCOPE
         ? t('common:unassigned')

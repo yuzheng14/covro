@@ -18,6 +18,7 @@ for (const required of [
   'dist/shared/package.js',
   'dist/server/main.js',
   'dist/web/index.html',
+  'dist/web/notification-worker.js',
   'dist/update-worker.cjs',
   'dist/drizzle/meta/_journal.json',
 ]) {

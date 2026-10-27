@@ -2,12 +2,26 @@ import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type BrowserContext,
+  type Page,
+} from '@playwright/test';
 import type { Operation, ThreadView } from '../../src/shared/types';
 import { confirmCompatibility, controlRuntime, testOrigin, openSidebarSettings } from './helpers';
 
+test.use({ launchOptions: { args: ['--disable-blink-features=NotificationConstructor'] } });
+
 declare global {
   interface Window {
+    persistentNotificationTest: {
+      fail: boolean;
+      blocked: boolean;
+      permission: NotificationPermission;
+      shown: { title: string; options: NotificationOptions }[];
+    };
     notificationTest: {
       permission: NotificationPermission;
       requested: number;
@@ -17,6 +31,7 @@ declare global {
   }
 }
 const evidence = join(tmpdir(), 'covro-issue-248-evidence');
+const deliveryEvidence = join(tmpdir(), 'covro-issue-284-evidence');
 const dialog = (page: Page) => page.getByRole('dialog', { name: '浏览器通知' });
 async function openNotificationSettings(page: Page) {
   await openSidebarSettings(page);
@@ -30,6 +45,8 @@ const captured = (page: Page) =>
 
 async function mockNotifications(page: Page, permission: NotificationPermission = 'default') {
   await page.addInitScript((permission) => {
+    // Exercise the desktop fallback here; persistent delivery has separate real-worker coverage.
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: undefined });
     const state: Window['notificationTest'] = {
       permission:
         (sessionStorage.getItem('notification-test-permission') as NotificationPermission | null) ??
@@ -102,6 +119,206 @@ async function enable(page: Page) {
 
 test.beforeAll(async () => {
   await mkdir(evidence, { recursive: true });
+  await mkdir(deliveryEvidence, { recursive: true });
+});
+
+async function mockPersistentNotifications(page: Page) {
+  await page.addInitScript(() => {
+    const state: Window['persistentNotificationTest'] = {
+      fail: false,
+      blocked: false,
+      permission: 'granted',
+      shown: [],
+    };
+    window.persistentNotificationTest = state;
+    // Headless macOS can deny OS notifications despite granted browser permission.
+    // Keep the native Android-incompatible constructor and real worker lifecycle.
+    Object.defineProperty(Notification, 'permission', { get: () => state.permission });
+    ServiceWorkerRegistration.prototype.showNotification = async function (title, options = {}) {
+      if (state.fail) throw new Error('Notification rejected');
+      state.shown.push({ title, options });
+    };
+    const register = ServiceWorkerContainer.prototype.register;
+    ServiceWorkerContainer.prototype.register = function (...args) {
+      if (state.blocked) return Promise.reject(new Error('Worker blocked'));
+      return register.apply(this, args);
+    };
+  });
+}
+
+const persistent = (page: Page) => page.evaluate(() => window.persistentNotificationTest.shown);
+
+async function workerClick(context: BrowserContext, url: string) {
+  const worker = context.serviceWorkers()[0]!;
+  await worker.evaluate(async (url) => {
+    const scope = self as unknown as {
+      clients: {
+        matchAll(options: object): Promise<{ url: string; postMessage(value: unknown): void }[]>;
+      };
+    };
+    const pages = await scope.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    pages
+      .find((page) => new URL(page.url).pathname === '/')!
+      .postMessage({ type: 'covro-notification-click', url });
+  }, url);
+}
+
+test.describe('persistent notifications on browsers without the Notification constructor', () => {
+  test('registers a real worker, submits tests and completes work without using the constructor', async ({
+    page,
+    context,
+    request,
+  }) => {
+    await mockPersistentNotifications(page);
+    await open(page);
+    expect(
+      await page.evaluate(() => {
+        try {
+          new Notification('probe');
+          return '';
+        } catch (error) {
+          return String(error);
+        }
+      }),
+    ).toContain('ServiceWorkerRegistration.showNotification()');
+    expect(
+      await page.evaluate(() =>
+        navigator.serviceWorker.getRegistrations().then((entries) => entries.length),
+      ),
+    ).toBe(0);
+    await enable(page);
+    await page.setViewportSize({ width: 430, height: 932 });
+    await page.getByRole('button', { name: '发送测试通知' }).click();
+    await expect(dialog(page)).toContainText('通知已提交给浏览器');
+    await expect(dialog(page).getByRole('alert')).toHaveCount(0);
+    const worker = await page.evaluate(async () => {
+      const registration = (await navigator.serviceWorker.getRegistrations())[0]!;
+      const response = await fetch('/notification-worker.js');
+      return {
+        state: registration.active?.state,
+        cache: response.headers.get('cache-control'),
+        mime: response.headers.get('content-type'),
+      };
+    });
+    expect(worker).toMatchObject({ state: 'activated', cache: 'no-store' });
+    expect(worker.mime).toMatch(/javascript/);
+    await page.screenshot({
+      path: join(deliveryEvidence, 'mobile-test-submitted.png'),
+    });
+    await page.getByRole('button', { name: '关闭通知设置' }).click();
+    const id = await create(request, 'fixture-other', '手机通知兼容性');
+    await start(request, id);
+    await expect.poll(() => persistent(page)).toHaveLength(2);
+    const notification = (await persistent(page))[1]!;
+    expect(notification).toMatchObject({
+      title: 'Agent 已完成',
+      options: { body: '另一个项目 · 手机通知兼容性' },
+    });
+    await workerClick(context, notification.options.data.url);
+    await expect(page.locator(`[data-thread-id="${id}"]`)).toHaveAttribute('aria-current', 'page');
+  });
+
+  for (const [prompt, title, selector, cold] of [
+    ['[approval]', 'Agent 需要审批', '.action-card', false],
+    ['[async-questions-running]', 'Agent 需要回答', '.async-question-card', true],
+  ] as const) {
+    test(`preserves ${title} navigation with ${cold ? 'a new page' : 'an existing page'}`, async ({
+      page,
+      context,
+      request,
+    }) => {
+      await mockPersistentNotifications(page);
+      await open(page);
+      await enable(page);
+      await page.getByRole('button', { name: '关闭通知设置' }).click();
+      const id = await create(request, 'fixture-other', '手机上的待处理请求');
+      await start(request, id, prompt);
+      await expect.poll(() => persistent(page)).toHaveLength(1);
+      const notification = (await persistent(page))[0]!;
+      expect(notification.title).toBe(title);
+      const url = notification.options.data.url as string;
+      let target = page;
+      if (cold) {
+        await page.close();
+        target = await context.newPage();
+        await mockPersistentNotifications(target);
+        await target.goto(url);
+      } else {
+        await workerClick(context, url);
+      }
+      await expect(target.locator(selector).first()).toBeFocused();
+      await expect(target.locator(selector).first()).toBeInViewport();
+      expect(new URL(target.url()).hash).toBe('');
+    });
+  }
+
+  test('keeps initialization failures off and recovers on a later explicit attempt', async ({
+    page,
+  }) => {
+    await mockPersistentNotifications(page);
+    await open(page);
+    await page.evaluate(() => {
+      window.persistentNotificationTest.blocked = true;
+    });
+    await openNotificationSettings(page);
+    await toggle(page).click();
+    await expect(dialog(page).getByRole('alert')).toContainText('通知服务初始化失败');
+    await page.screenshot({ path: join(deliveryEvidence, 'desktop-initialization-failed.png') });
+    await expect(toggle(page)).toHaveAttribute('aria-checked', 'false');
+    expect(
+      await page.evaluate(() => localStorage.getItem('codex-web.notifications-enabled')),
+    ).not.toBe('1');
+    await page.evaluate(() => {
+      window.persistentNotificationTest.blocked = false;
+    });
+    await toggle(page).click();
+    await expect(toggle(page)).toHaveAttribute('aria-checked', 'true');
+    await page.getByRole('button', { name: '发送测试通知' }).click();
+    await expect(dialog(page)).toContainText('通知已提交给浏览器');
+  });
+
+  test('reports delivery rejection and still permits disabling after permission is revoked', async ({
+    page,
+  }) => {
+    await mockPersistentNotifications(page);
+    await open(page);
+    await enable(page);
+    await page.evaluate(() => {
+      window.persistentNotificationTest.fail = true;
+    });
+    await page.getByRole('button', { name: '发送测试通知' }).click();
+    await expect(dialog(page).getByRole('alert')).toContainText('通知发送失败');
+    await expect(dialog(page)).toContainText('发送不可用');
+    await page.setViewportSize({ width: 430, height: 932 });
+    await page.screenshot({ path: join(deliveryEvidence, 'mobile-delivery-failed.png') });
+    await page.evaluate(() => {
+      window.persistentNotificationTest.permission = 'denied';
+      window.dispatchEvent(new Event('focus'));
+    });
+    await expect(toggle(page)).toBeEnabled();
+    await toggle(page).click();
+    expect(await page.evaluate(() => localStorage.getItem('codex-web.notifications-enabled'))).toBe(
+      '0',
+    );
+    await expect(toggle(page)).toBeDisabled();
+  });
+
+  test('deduplicates persistent notifications across tabs', async ({ page, context, request }) => {
+    await mockPersistentNotifications(page);
+    await open(page);
+    await enable(page);
+    await page.getByRole('button', { name: '关闭通知设置' }).click();
+    const other = await context.newPage();
+    await mockPersistentNotifications(other);
+    await other.goto('/');
+    await expect(other.locator('.connection-badge')).toHaveText('实时连接正常');
+    const id = await create(request);
+    await start(request, id, '[approval]');
+    await waitStatus(request, id, 'waitingApproval');
+    await expect
+      .poll(async () => (await persistent(page)).length + (await persistent(other)).length)
+      .toBe(1);
+  });
 });
 test.beforeEach(async ({ request }) => {
   await controlRuntime(request, { reset: true });
@@ -326,6 +543,8 @@ for (const [prompt, title, selector, state] of [
     await expect(card).toBeFocused();
     await expect(card).toBeInViewport();
     if (selector === '.async-question-card') {
+      await submit(request, `/api/threads/${id}/rename`, { name: '聚焦时仍在更新的会话' });
+      await expect(page.locator(`[data-thread-id="${id}"]`)).toContainText('聚焦时仍在更新的会话');
       await expect(card.locator('.async-question-heading')).toBeInViewport();
       await expect
         .poll(async () => {
@@ -334,6 +553,7 @@ for (const [prompt, title, selector, state] of [
           return Boolean(heading && (!sticky || heading.y >= sticky.y + sticky.height));
         })
         .toBe(true);
+      await page.screenshot({ path: join(deliveryEvidence, 'request-focused-desktop.png') });
     }
     await page.screenshot({ path: join(evidence, `${prompt.slice(1, -1)}-focused.png`) });
     await context.setOffline(true);
@@ -472,7 +692,7 @@ for (const mode of ['disabled', 'denied', 'unsupported', 'failed'] as const) {
     await expect(card.getByRole('button').first()).toBeEnabled();
     if (mode === 'failed') {
       await openNotificationSettings(page);
-      await expect(dialog(page).getByRole('alert')).toContainText('去重记录');
+      await expect(dialog(page).getByRole('alert')).toContainText('通知发送失败');
       await page.getByRole('button', { name: '关闭通知设置' }).click();
     }
     await card.getByRole('button').first().click();

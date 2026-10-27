@@ -23,7 +23,8 @@ export function NotificationSettings({
     element?.showModal();
     return () => element?.close();
   }, []);
-  const { enabled, access, requesting, error } = notifications;
+  const { enabled, access, requesting, error, ready, initializing, testing, testResult } =
+    notifications;
   const active = enabled && access === 'granted';
   const status = {
     default: t('notifications:permission_not_granted'),
@@ -62,7 +63,14 @@ export function NotificationSettings({
         <div>
           <strong>{t('notifications:browser_notifications')}</strong>
           <span role="status">
-            {status} · {active ? t('common:on') : t('common:off')}
+            {status} ·{' '}
+            {active
+              ? error || (!ready && !initializing)
+                ? t('notifications:delivery_unavailable')
+                : initializing
+                  ? t('notifications:preparing_delivery')
+                  : t('common:on')
+              : t('common:off')}
           </span>
         </div>
         <Button
@@ -72,12 +80,12 @@ export function NotificationSettings({
           aria-describedby="notification-permission-help"
           variant={active ? 'secondary' : 'default'}
           size="sm"
-          disabled={requesting || unavailable}
+          disabled={requesting || (unavailable && !enabled)}
           onClick={() => void notifications.toggle()}
         >
           {requesting
             ? t('notifications:waiting_for_permission')
-            : active
+            : enabled
               ? t('notifications:disable_notifications')
               : t('notifications:enable_notifications')}
         </Button>
@@ -92,9 +100,19 @@ export function NotificationSettings({
               : t('notifications:permission_is_requested_only_when_you_click_enable')}
       </p>
       {enabled && access === 'granted' && (
-        <Button variant="secondary" size="sm" onClick={notifications.test}>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={!ready || initializing || testing}
+          onClick={() => void notifications.test()}
+        >
           {t('notifications:send_test_notification')}
         </Button>
+      )}
+      {testResult && !error && (
+        <p className="notification-help" role="status">
+          {displayMessage(testResult)}
+        </p>
       )}
       {error && (
         <p className="inline-error" role="alert">

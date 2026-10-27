@@ -24,9 +24,13 @@ test('long history stays complete across live updates, reconnect, reload, and ap
   await page.getByRole('button', { name: '发送任务', exact: true }).click();
   const ending = page.getByText('完整消息的末尾仍然可见。', { exact: true });
   await expect(ending).toBeVisible({ timeout: 30_000 });
-  const read = await request.get('/api/threads?projectId=fixture');
-  const id = (await read.json()).data[0].id as string;
+  // Earlier files share the fixture database; its first row need not be this conversation.
+  const selected = page.locator('[data-thread-id][aria-current="page"]');
+  await expect(selected).toHaveCount(1);
+  const id = await selected.getAttribute('data-thread-id');
+  expect(id).toBeTruthy();
   const snapshot = await request.get(`/api/threads/${id}/snapshot`);
+  expect(snapshot.ok()).toBe(true);
   expect((await snapshot.body()).length).toBeGreaterThan(2 * 1024 * 1024);
   updates.length = 0;
   await page
