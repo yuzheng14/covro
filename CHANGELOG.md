@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.0](https://github.com/yuzheng14/covro/compare/v0.5.0...v0.6.0) (2026-10-27)
+
+
+### Features
+
+* **approve:** authorize recorded guardian denials once ([#276](https://github.com/yuzheng14/covro/issues/276)) ([efe3e5d](https://github.com/yuzheng14/covro/commit/efe3e5df6bf4027fc2fbd059739c3b5469e0fbe2)), closes [#69](https://github.com/yuzheng14/covro/issues/69)
+* **composer:** add mobile image uploads and unified model settings ([#261](https://github.com/yuzheng14/covro/issues/261)) ([36949e7](https://github.com/yuzheng14/covro/commit/36949e793b9536e167ae4a1c9e40d19c1e100c4f))
+* **diff:** inspect bounded Git changes in the workspace ([#275](https://github.com/yuzheng14/covro/issues/275)) ([3ffaa20](https://github.com/yuzheng14/covro/commit/3ffaa20ade199351e4059f5bf42256dffbb3ff75)), closes [#69](https://github.com/yuzheng14/covro/issues/69)
+* **goal:** manage native goals and track automatic continuations ([#278](https://github.com/yuzheng14/covro/issues/278)) ([3b17ac1](https://github.com/yuzheng14/covro/commit/3b17ac18b601305009e207942b4b9c884d91863c)), closes [#69](https://github.com/yuzheng14/covro/issues/69)
+* **init:** generate project instructions through a guarded task ([#274](https://github.com/yuzheng14/covro/issues/274)) ([62afa98](https://github.com/yuzheng14/covro/commit/62afa98d7b9da41fc9d04e309db38135b42afbf5)), closes [#69](https://github.com/yuzheng14/covro/issues/69)
+* **plan:** add native Plan mode and composer controls ([#272](https://github.com/yuzheng14/covro/issues/272)) ([040256a](https://github.com/yuzheng14/covro/commit/040256ad885a9ead4c7a74d22db9bc069cd50f6b)), closes [#69](https://github.com/yuzheng14/covro/issues/69)
+* **recap:** summarize visible history in an isolated request ([#277](https://github.com/yuzheng14/covro/issues/277)) ([5f99254](https://github.com/yuzheng14/covro/commit/5f992547255dc2fa48bd6050d8cb75d8fb45aed1)), closes [#69](https://github.com/yuzheng14/covro/issues/69)
+* **retry:** expose native retry attempts and capacity errors ([#262](https://github.com/yuzheng14/covro/issues/262)) ([40493b7](https://github.com/yuzheng14/covro/commit/40493b753321dc81dee411533e6f48ab2654399d))
+* **retry:** recover safely from model capacity failures ([#268](https://github.com/yuzheng14/covro/issues/268)) ([d562008](https://github.com/yuzheng14/covro/commit/d562008b670dc783f50c2a56f649401796b4cca8)), closes [#256](https://github.com/yuzheng14/covro/issues/256)
+* **review:** support branch commit and custom review targets ([#273](https://github.com/yuzheng14/covro/issues/273)) ([1df653c](https://github.com/yuzheng14/covro/commit/1df653c02161a48ee642556fa16183535fe15c50)), closes [#69](https://github.com/yuzheng14/covro/issues/69)
+* **ui:** add keyboard submission for free-text answers ([#259](https://github.com/yuzheng14/covro/issues/259)) ([17c7564](https://github.com/yuzheng14/covro/commit/17c75640533469bd38e0a7200952c49bc3f5e0a9)), closes [#241](https://github.com/yuzheng14/covro/issues/241)
+* **workspace:** open the current GitHub repository ([#260](https://github.com/yuzheng14/covro/issues/260)) ([85ae264](https://github.com/yuzheng14/covro/commit/85ae264da7c5d55a40b2355dd6549715ea082518)), closes [#253](https://github.com/yuzheng14/covro/issues/253)
+
 ## [0.5.0](https://github.com/yuzheng14/covro/compare/v0.4.0...v0.5.0) (2026-10-24)
 
 
