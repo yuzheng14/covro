@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   confirmCompatibility,
   controlRuntime,
@@ -9,7 +11,7 @@ import {
 } from './helpers';
 import type { ThreadView } from '../../src/shared/types';
 
-const evidence = '/private/tmp/covro-live-settings-271';
+const evidence = join(tmpdir(), 'covro-live-settings-271');
 const mode = (page: Page) => page.getByRole('combobox', { name: '权限模式', exact: true });
 const fast = (page: Page) =>
   page.getByRole('button', { name: 'Fast 模式', exact: true, includeHidden: true });
