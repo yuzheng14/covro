@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import type { Operation, ThreadView } from '../../src/shared/types';
+import type { Operation, ServerMessage, ThreadView } from '../../src/shared/types';
 import {
   confirmCompatibility,
   controlRuntime,
@@ -50,12 +50,28 @@ test('checking refreshes unknown history even with no saved browser operations',
       json: { ...(await response.json()), ...(stale ? { status: 'unknown' } : {}) },
     });
   });
+  await page.route(`**/api/threads/${operation.target}/snapshot`, async (route) => {
+    const response = await route.fetch();
+    if (!stale) await gate;
+    const snapshot = await response.json();
+    await route.fulfill({
+      response,
+      json: {
+        ...snapshot,
+        data: { ...snapshot.data, ...(stale ? { status: 'unknown' } : {}) },
+      },
+    });
+  });
   // Keep the stale HTTP snapshot visible until the explicit history read.
   await page.routeWebSocket('**/ws?overview=1', (socket) => {
     const server = socket.connectToServer();
     server.onMessage((raw) => {
-      const message = JSON.parse(raw.toString());
-      if (message.type !== 'snapshot' && message.kind !== 'thread') socket.send(raw);
+      const message = JSON.parse(raw.toString()) as ServerMessage;
+      if (
+        message.type !== 'snapshot' &&
+        !(message.type === 'event' && ['thread', 'threadPatch'].includes(message.kind))
+      )
+        socket.send(raw);
     });
   });
   await page.evaluate(() => localStorage.removeItem('codex-web.operations.v1'));

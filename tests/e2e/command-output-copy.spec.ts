@@ -166,12 +166,12 @@ test('truncated output warns in the output area and copies only the loaded porti
   const item = thread.turns[0]!.items.find((entry) => entry.type === 'commandExecution')!;
   expect(item.truncated).toBe(true);
   const copied = await page.evaluate(() => navigator.clipboard.readText());
-  // The live transport can retain less than HTTP history. Copy exactly what this page loaded.
+  // HTTP recovery preserves all retained output, including its upstream truncation marker.
   const loaded = await card.locator('.tool-output code').textContent();
-  expect(copied === loaded).toBe(true);
-  expect(copied.length).toBeLessThan(item.output!.length);
-  expect(copied).toContain('[内容已截断；可通过 HTTP 历史读取完整的已保留内容]');
-  expect(item.output).toMatch(/\n\[输出已截断\]$/);
+  expect(copied).toBe(loaded);
+  expect(copied).toBe(item.output);
+  expect(copied).not.toContain('[内容已截断；可通过 HTTP 历史读取完整的已保留内容]');
+  expect(copied).toMatch(/\n\[输出已截断\]$/);
   expect(copied).not.toContain('not retained');
   await screenshot(page, 'truncated');
   await expect(feedback(card)).toHaveText('输出已截断，仅可复制已加载部分。');
