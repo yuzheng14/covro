@@ -19,6 +19,32 @@ pnpm test:e2e
 
 README 的 Features 只概括使用场景。新增按钮、命令、参数、快捷键和恢复细节应更新对应指南，避免逐次向 README 追加操作说明；面向使用者的事实、安装步骤和导航需同步维护中英文版本。
 
+## E2E 分片
+
+CI 在 8 个独立 runner 上运行 E2E，每片保持单 worker 和独立测试服务。先通过 Playwright `--list --reporter=json` 收集当前完整测试清单，再由 `scripts/plan-e2e-shard.ts` 按 `scripts/e2e-timings.json` 的文件耗时分配：先放耗时最长的文件，每次选择预计耗时最短的一片。同一文件不会拆开，`--test-list` 只筛选文件，不改变文件内部测试顺序。分配脚本还会调用 Playwright 重新收集所选文件，核对文件及用例数，防止路径错误导致空分片被误判为成功。普通 `pnpm test:e2e` 仍运行完整套件。
+
+新增或重命名文件会自动加入，按已有文件的平均单用例耗时估算；已删除文件的历史数据不会参与分配。分片数来自 workflow 的矩阵作业总数，调整矩阵时无需同步修改脚本。脚本会输出每片的文件数、用例数和预计耗时。E2E runner 固定为 `ubuntu-24.04`，避免 `ubuntu-latest` 的系统升级改变浏览器依赖安装；仍保留 Playwright 的完整依赖安装，不能据此保证消除镜像下载波动。
+
+在仓库根目录复现某一片（先按开发步骤安装依赖和 Chromium）：
+
+```sh
+mkdir -p .local
+pnpm exec playwright test --list --reporter=json > .local/e2e-tests.json
+node --import tsx scripts/plan-e2e-shard.ts .local/e2e-tests.json 1 8 .local/e2e-shard.txt
+pnpm test:e2e --test-list=.local/e2e-shard.txt
+```
+
+测试规模或耗时明显变化时，在与 CI 相同的 Linux 环境用 Playwright JSON reporter 记录执行结果，再更新基线。完整套件或文件互不重叠的 `--test-list` 分片报告都可以使用；多个完整运行中同一文件的耗时取平均。更新脚本拒绝收集失败、测试失败、重试后通过、未执行测试的报告，以及原生 `--shard` 报告，避免把部分文件或失败重试的耗时写成基线。
+
+```sh
+pnpm build
+pnpm exec playwright test --reporter=json > .local/e2e-report.json
+node --import tsx scripts/update-e2e-timings.ts '<CI run URL>' .local/e2e-report.json
+pnpm exec prettier --write scripts/e2e-timings.json
+```
+
+分片报告可在更新脚本的参数中逐个追加。基线只影响负载估算；是否执行某个测试始终由当前 Playwright 清单决定。刷新后检查预计耗时分布，并让真实 CI 验证实际耗时。排队等待和系统包下载时间不属于基线，增加分片不能消除它们。
+
 ## 格式检查
 
 项目复用已锁定的 Prettier 与 `.prettierrc.json`，使用以下命令检查或修复代码、文档和配置的格式：
