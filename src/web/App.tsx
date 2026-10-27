@@ -7,6 +7,7 @@ import { ArrowLeft, Pencil } from 'lucide-react';
 import type { Settings, ThreadSummary, ReviewTarget } from '../shared/types';
 import { useCommandPrompt } from './hooks/useCommandPrompt';
 import { ReviewTargetDialog } from './components/ReviewTargetDialog';
+import { WorkspaceDiffDialog } from './components/WorkspaceDiffDialog';
 import { useWorkspace } from './hooks/useWorkspace';
 import { useThreadReadState } from './hooks/useThreadReadState';
 import { useNewSessionShortcut } from './hooks/useNewSessionShortcut';
@@ -337,7 +338,16 @@ export function App() {
     system?.codexEpoch,
   ]);
   const reviewPrompt = useCommandPrompt<ReviewTarget>(commandScope);
+  const [diffDialog, setDiffDialog] = useState<{ scope: string; path: string }>();
+  useEffect(() => setDiffDialog(undefined), [commandScope]);
   const slashContext: SlashCommandContext = {
+    openDiff: () =>
+      setDiffDialog({
+        scope: commandScope,
+        path: thread
+          ? `/api/threads/${encode(thread.id)}/diff`
+          : `/api/projects/${encode(project!.id)}/diff`,
+      }),
     chooseReviewTarget: reviewPrompt.request,
     project,
     scopeId: workspace.projectId,
@@ -883,7 +893,7 @@ export function App() {
             </div>
           )}
           <ReviewTargetDialog
-            key={commandScope}
+            key={`review:${commandScope}`}
             open={reviewPrompt.open}
             onChoose={reviewPrompt.finish}
             disabled={
@@ -894,6 +904,13 @@ export function App() {
               Boolean(thread.archived)
             }
           />
+          {diffDialog?.scope === commandScope && (
+            <WorkspaceDiffDialog
+              key={`diff:${commandScope}`}
+              path={diffDialog.path}
+              onClose={() => setDiffDialog(undefined)}
+            />
+          )}
           <Composer
             focusRequest={composerFocusRequest}
             commands={slashCommands}

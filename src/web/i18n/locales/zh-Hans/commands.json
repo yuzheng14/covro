@@ -110,5 +110,14 @@
   "reviewUsage": "/review [自定义要求]",
   "initDescription": "生成项目 AGENTS.md，保留已有文件",
   "initSubmitted": "已提交 AGENTS.md 生成任务，请在会话查看实际结果。",
-  "initUnavailable": "请先恢复空闲会话或打开新工作区草稿，再初始化项目说明。"
+  "initUnavailable": "请先恢复空闲会话或打开新工作区草稿，再初始化项目说明。",
+  "workspaceDiff": "工作区 Git 变更",
+  "diffSection": "改动范围",
+  "diff_staged": "已暂存",
+  "diff_unstaged": "未暂存",
+  "diff_untracked": "未跟踪",
+  "diffPartial": "部分内容因文件变化、无法读取或超过快照限制而未包含。",
+  "diffDescription": "查看工作区已暂存、未暂存和未跟踪改动",
+  "diffUnavailable": "请先选择项目或已有会话，再查看 Git 变更。",
+  "diffOpened": "已打开工作区变更，可在预览中刷新快照。"
 }

@@ -40,6 +40,8 @@
 
 使用 `/review` 可选择未提交改动、基础分支、指定 commit 或自定义要求进行代码审查。使用 `/init` 可请求生成项目说明，已有 `AGENTS.md` 会保留。
 
+使用 `/diff` 可查看当前工作区已暂存、未暂存和未跟踪的 Git 改动，不创建模型任务。
+
 操作方式与使用细节见[使用指南](docs/usage.zh-CN.md)。
 
 在当前工作区新建会话：macOS 按 **⌘ + Option + N**，Windows/Linux 按 **Ctrl + Alt + N**。输入框会自动获得焦点，已有草稿继续保留。工作区有可识别的 GitHub remote 时，点击顶部 GitHub 图标即可在新标签页打开仓库；remote 选择规则见[工作区说明](docs/workspaces.md#快捷打开-github-仓库)。

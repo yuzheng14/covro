@@ -130,7 +130,13 @@ export function DiffPreview({
   );
 }
 
-function DiffContent({ target }: { target: DiffSnapshot }) {
+export function DiffContent({
+  target,
+  showScope = true,
+}: {
+  target: Pick<DiffSnapshot, 'text' | 'changes' | 'truncated' | 'scope' | 'selectedPath'>;
+  showScope?: boolean;
+}) {
   const locale = currentLocale();
   const files = useMemo(
     () =>
@@ -177,7 +183,7 @@ function DiffContent({ target }: { target: DiffSnapshot }) {
           <p>{t('preview:no_previewable_patch_received_in_this_scope_yet')}</p>
         </div>
       )}
-      <footer className="file-preview-path">{displayMessage(target.scope)}</footer>
+      {showScope && <footer className="file-preview-path">{displayMessage(target.scope)}</footer>}
     </>
   );
 }

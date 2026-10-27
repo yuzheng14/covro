@@ -110,5 +110,14 @@
   "reviewUsage": "/review [instructions]",
   "initDescription": "Generate a project AGENTS.md without replacing an existing entry",
   "initSubmitted": "Project initialization task submitted; follow its result in this session.",
-  "initUnavailable": "Resume an idle session or open a new workspace draft before initializing."
+  "initUnavailable": "Resume an idle session or open a new workspace draft before initializing.",
+  "workspaceDiff": "Workspace Git changes",
+  "diffSection": "Change scope",
+  "diff_staged": "Staged",
+  "diff_unstaged": "Unstaged",
+  "diff_untracked": "Untracked",
+  "diffPartial": "Some content is omitted because files changed, could not be read, or exceeded the snapshot limits.",
+  "diffDescription": "Inspect staged, unstaged and untracked workspace changes",
+  "diffUnavailable": "Choose a project or a saved session to inspect its Git changes.",
+  "diffOpened": "Workspace changes opened; refresh in the viewer to read a new snapshot."
 }

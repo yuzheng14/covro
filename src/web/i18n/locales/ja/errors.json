@@ -146,5 +146,8 @@
   "TEXT_CHANGED": "テキストファイルが変更されました。プレビューを開き直してください。",
   "TEXT_NOT_FILE": "テキストファイルのパスは通常のファイルではありません。",
   "AGENTS_EXISTS": "AGENTS.md は既に存在します。既存の内容を保持しました。",
-  "AGENTS_CHECK_FAILED": "AGENTS.md を確認できないため、初期化を送信しませんでした。"
+  "AGENTS_CHECK_FAILED": "AGENTS.md を確認できないため、初期化を送信しませんでした。",
+  "GIT_NOT_REPOSITORY": "現在の作業領域は Git リポジトリではありません。",
+  "GIT_UNAVAILABLE": "サーバーで Git を利用できません。",
+  "GIT_DIFF_FAILED": "変更を読み込めません。作業ディレクトリを確認して再試行してください。"
 }
