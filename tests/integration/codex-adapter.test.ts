@@ -1444,3 +1444,29 @@ it('maps native skills/list with the exact cwd and explicit cache refresh', asyn
     forceReload: true,
   });
 });
+
+it('preserves native skill items alongside text and images in turn starts', async () => {
+  const { adapter, requests } = await fixture();
+  const thread = await adapter.createThread('/test/project');
+  const skills = [
+    { name: 'review-code', path: '/test/project/repo/SKILL.md', cwd: '/test/project' },
+  ];
+  await adapter.startTurn(
+    thread.id,
+    '/test/project',
+    '$review-code [approval]',
+    undefined,
+    undefined,
+    skills,
+  );
+  const native = (await requests()).filter(
+    (entry) => entry.params?.threadId === thread.id && entry.method === 'turn/start',
+  );
+  expect(native.map((entry) => entry.method)).toEqual(['turn/start']);
+  for (const request of native)
+    expect(request.params.input).toContainEqual({
+      type: 'skill',
+      name: skills[0]!.name,
+      path: skills[0]!.path,
+    });
+});

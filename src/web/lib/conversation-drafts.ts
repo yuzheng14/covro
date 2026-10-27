@@ -4,6 +4,7 @@ export interface SentDraft {
   key: string;
   text: string;
   images?: string[];
+  skills?: import('../../shared/skills').SkillReference[];
 }
 
 export type DraftSubmission =

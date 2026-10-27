@@ -71,3 +71,33 @@ for (const [locale, title, search] of [
     await expect(dialog).toContainText('Review changes and report actionable findings.');
   });
 }
+
+test('read failures, Codex unavailability and offline catalogs expose accurate recovery states', async ({
+  page,
+  request,
+  context,
+}) => {
+  await page.goto('/');
+  await confirmCompatibility(page);
+  await page.route('**/api/skills/list', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: { code: 'SKILLS_READ_FAILED', message: 'fixture read failure' } },
+    }),
+  );
+  await page.getByRole('button', { name: '技能', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '技能', exact: true });
+  await expect(dialog.getByRole('alert')).toBeVisible();
+  await page.unroute('**/api/skills/list');
+  await dialog.getByRole('button', { name: '重新加载' }).click();
+  await expect(dialog.locator('.skills-list li')).toHaveCount(2);
+  await controlRuntime(request, { unavailable: true });
+  await expect(dialog).toContainText('Codex 尚未就绪');
+  await expect(dialog.locator('.skills-list li')).toHaveCount(0);
+  await controlRuntime(request, { unavailable: false });
+  await expect(dialog.locator('.skills-list li')).toHaveCount(2);
+  await context.setOffline(true);
+  await expect(dialog).toContainText('当前离线');
+  await context.setOffline(false);
+  await expect(dialog.locator('.skills-list li')).toHaveCount(2);
+});

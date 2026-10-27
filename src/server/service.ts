@@ -1,3 +1,4 @@
+import { hasSkillToken, type SkillReference } from '../shared/skills.js';
 import type { CodexClient, CodexDiagnostics, CodexEvent } from '../codex/types.js';
 import type { StreamedItem } from './thread-patch.js';
 import { CapacityRetries, type CapacityAttempt } from './capacity-retry.js';
@@ -402,6 +403,42 @@ export class GatewayService {
     if (resolveCwd() !== cwd || this.codex.epoch !== epoch || catalog.cwd !== cwd)
       throw new AppError('SKILLS_READ_FAILED', 'Skill workspace changed; refresh and retry', 409);
     return catalog;
+  }
+
+  private async validateSkills(
+    thread: ThreadView,
+    text: string,
+    references: SkillReference[] = [],
+  ) {
+    if (!references.length) return [];
+    const catalog = await this.listSkills({
+      projectId: thread.projectId,
+      threadId: thread.id,
+      forceReload: true,
+    });
+    const unique = new Map<string, SkillReference>();
+    for (const reference of references) {
+      const skill = catalog.skills.find(
+        (entry) => entry.name === reference.name && entry.path === reference.path && entry.enabled,
+      );
+      if (
+        !skill ||
+        reference.cwd !== catalog.cwd ||
+        catalog.errors.some((error) => error.path === reference.path) ||
+        !hasSkillToken(text, reference.name)
+      )
+        throw new AppError(
+          'SKILL_UNAVAILABLE',
+          'A selected skill is no longer available in this workspace. Refresh and select it again.',
+          409,
+        );
+      unique.set(JSON.stringify([skill.name, skill.path]), {
+        name: skill.name,
+        path: skill.path,
+        cwd: catalog.cwd,
+      });
+    }
+    return [...unique.values()];
   }
 
   async readRuntimeSettings(projectId: string | null) {
@@ -1080,6 +1117,14 @@ export class GatewayService {
         throw new AppError('THREAD_BUSY', '会话已有活动任务，请追加要求或中断', 409, { threadId });
       this.ensureCompatibilityConfirmed();
       if (input.taskKind === 'init') await assertProjectInstructionsMissing(ownership.cwd);
+      let skills: SkillReference[] = [];
+      if (input.skills?.length) {
+        skills = await this.validateSkills(thread, input.text, input.skills);
+        this.ensureManaged(thread);
+        this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+        if (isActive(this.projection.get(threadId)?.status ?? thread.status))
+          throw new AppError('THREAD_BUSY', 'Session already has an active task', 409);
+      }
       this.store.dispatch(input.clientOperationId, {
         threadId,
         workspaceKey: ownership.workspaceKey,
@@ -1111,6 +1156,7 @@ export class GatewayService {
         input.taskKind === 'init' ? PROJECT_INIT_PROMPT : input.text,
         input.settings,
         input.images,
+        ...(skills.length ? ([skills] as const) : ([] as const)),
       );
       this.store.attachTurn(input.clientOperationId, turn.id);
       this.turnBaselines.delete(input.clientOperationId);
@@ -1420,6 +1466,12 @@ export class GatewayService {
   async steer(threadId: string, input: SteerInput): Promise<Operation> {
     return this.perform('turn.steer', threadId, input, async () => {
       await this.requireActiveTurn(threadId, input.expectedTurnId);
+      if (input.skills?.length)
+        throw new AppError(
+          'SKILL_STEER_UNSUPPORTED',
+          'Codex 0.164.0 does not reliably inject skill instructions into an active turn. Wait for the current task to finish, then send the preserved draft.',
+          409,
+        );
       this.ensureCompatibilityConfirmed();
       this.store.dispatch(input.clientOperationId);
       const result = await this.codex.steerTurn(

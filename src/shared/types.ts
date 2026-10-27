@@ -348,6 +348,7 @@ export interface ResumeThreadInput extends CreateThreadInput {
   confirmExternalStopped?: boolean;
 }
 export interface TaskMessage {
+  skills?: import('./skills.js').SkillReference[];
   text: string;
   images?: string[];
 }

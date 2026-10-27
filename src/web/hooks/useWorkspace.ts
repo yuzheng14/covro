@@ -1191,7 +1191,12 @@ export function useWorkspace() {
     sentDrafts,
     restoringSelection,
     firstMessages,
-    sendFirstMessage: async (text: string, images?: string[], taskKind?: 'init') => {
+    sendFirstMessage: async (
+      text: string,
+      images?: string[],
+      taskKind?: 'init',
+      skills?: import('../../shared/skills').SkillReference[],
+    ) => {
       const project = projectRef.current;
       if (selectedRef.current || firstMessagesRef.current.has(project)) return false;
       const key = conversationDrafts.current.key(project);
@@ -1218,8 +1223,8 @@ export function useWorkspace() {
           'send',
           id,
           `/api/threads/${encodeURIComponent(id)}/turns`,
-          { text, images, settings, ...(taskKind ? { taskKind } : {}) },
-          { kind: 'send', key, text, images },
+          { text, images, skills, settings, ...(taskKind ? { taskKind } : {}) },
+          { kind: 'send', key, text, images, skills },
         );
         return sent?.status === 'acknowledged';
       } finally {

@@ -155,5 +155,8 @@
   "RECAP_FAILED": "The recap could not be completed. The source conversation is unchanged.",
   "GOAL_UNAVAILABLE": "Goals are unavailable or disabled in the current Codex runtime.",
   "GOAL_CONFLICT": "The goal changed. Reload its current state before editing.",
-  "GOAL_BUSY": "Another goal update is pending. Wait for its receipt."
+  "GOAL_BUSY": "Another goal update is pending. Wait for its receipt.",
+  "SKILL_UNAVAILABLE": "A selected skill is no longer available in this workspace. Refresh and select it again.",
+  "SKILLS_READ_FAILED": "Could not read skills. Refresh and try again.",
+  "SKILL_STEER_UNSUPPORTED": "Codex 0.164.0 cannot apply a selected skill during an active task. Wait for it to finish, then send this draft."
 }

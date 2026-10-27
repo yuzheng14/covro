@@ -1,10 +1,19 @@
+import { filterSkills, type SkillMetadata, type SkillReference } from '../../shared/skills';
+import {
+  skillTrigger,
+  editBindings,
+  selectedReferences,
+  removeSkillBinding,
+  replaceSkillRange,
+} from '../lib/skill-references';
+import { SkillReferenceMenu } from './SkillReferenceMenu';
 import { useSkills } from '../lib/skills';
 import { SkillsBrowser } from './SkillsBrowser';
 import { UNASSIGNED_SCOPE } from '../../shared/workspace-scope';
 import { errorMessage } from '../lib/error-message';
 import { message, displayMessage } from '../i18n/messages';
 import { t } from '../i18n';
-import { useEffect, useId, useRef, useState, type ClipboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useId, useRef, useState, type ClipboardEvent } from 'react';
 import { emptyDraft, imagePasteError, readImage, type MessageDraft } from '../lib/image-paste';
 import type {
   ModelDefaults,
@@ -50,7 +59,12 @@ interface Props {
   onSettings: (settings: Settings) => void;
   onSaveModelDefaults: (settings: ModelDefaults) => Promise<ModelDefaultsResult | undefined>;
   savingModelDefaults: boolean;
-  onSend: (text: string, steer: boolean, images?: string[]) => Promise<boolean>;
+  onSend: (
+    text: string,
+    steer: boolean,
+    images?: string[],
+    skills?: SkillReference[],
+  ) => Promise<boolean>;
   onInterrupt: () => void;
   onResume: () => void;
   canResume: boolean;
@@ -103,14 +117,34 @@ export function Composer(props: Props) {
   const [menu, setMenu] = useState({ key: '', text: '', selectedIndex: 0, dismissed: false });
   const [feedback, setFeedback] = useState<Record<string, SlashCommandResult>>({});
   const [commandPending, setCommandPending] = useState<string[]>([]);
+  const [caret, setCaret] = useState({ key: '', start: 0, end: 0 });
+  const [skillMenu, setSkillMenu] = useState({ identity: '', selected: 0, dismissed: false });
+  const skillMenuId = useId();
+  const skillCaret = useRef<{ key: string; text: string; position: number } | undefined>(undefined);
   const key = props.draftKey;
   const skillsScope = JSON.stringify([props.projectId, props.thread?.id, key]);
   const [skillsOpen, setSkillsOpen] = useState<string>();
   useEffect(() => {
     if (props.skillsRequest) setSkillsOpen(skillsScope);
   }, [props.skillsRequest]);
+  const draft = drafts[key] ?? emptyDraft;
+  useLayoutEffect(() => {
+    const pending = skillCaret.current;
+    if (!pending || pending.key !== key || pending.text !== draft.text) return;
+    skillCaret.current = undefined;
+    textareaRef.current?.focus();
+    textareaRef.current?.setSelectionRange(pending.position, pending.position);
+  }, [key, draft.text]);
+  const trigger = caret.key === key ? skillTrigger(draft.text, caret.start, caret.end) : undefined;
+  const skillIdentity = JSON.stringify([skillsScope, draft.text, caret.start, caret.end]);
+  const skillMenuOpen = Boolean(
+    trigger &&
+    focused &&
+    !parseSlashCommand(draft.text) &&
+    !(skillMenu.identity === skillIdentity && skillMenu.dismissed),
+  );
   const skills = useSkills(
-    skillsOpen === skillsScope && props.projectId && !props.threadLoading
+    (skillsOpen === skillsScope || skillMenuOpen) && props.projectId && !props.threadLoading
       ? {
           projectId: props.projectId === UNASSIGNED_SCOPE ? null : props.projectId,
           ...(props.thread ? { threadId: props.thread.id } : { draftId: props.draftCreationId }),
@@ -123,7 +157,11 @@ export function Composer(props: Props) {
     for (const sent of Object.values(props.sentDrafts)) {
       if (consumedReceipts.current.has(sent)) continue;
       consumedReceipts.current.add(sent);
-      if (submittedDrafts.current.get(sent.key)?.text.replace(/^(\s*)\/\//, '$1/') === sent.text)
+      if (
+        submittedDrafts.current.get(sent.key)?.text.replace(/^(\s*)\/\//, '$1/') === sent.text &&
+        JSON.stringify(selectedReferences(submittedDrafts.current.get(sent.key)?.skills)) ===
+          JSON.stringify(sent.skills ?? [])
+      )
         clearSubmittedDraft(sent.key);
     }
   }, [props.sentDrafts]);
@@ -132,7 +170,47 @@ export function Composer(props: Props) {
     compositionEndedAtRef.current = -Infinity;
     setMenu({ key: '', text: '', selectedIndex: 0, dismissed: false });
   }, [key]);
-  const draft = drafts[key] ?? emptyDraft;
+  const skillMatches = filterSkills(
+    skills.catalog?.skills.filter(
+      (skill) =>
+        skill.enabled && !skills.catalog?.errors.some((error) => error.path === skill.path),
+    ) ?? [],
+    trigger?.search ?? '',
+  );
+  const skillSelected = Math.min(
+    skillMenu.identity === skillIdentity ? skillMenu.selected : 0,
+    Math.max(0, skillMatches.length - 1),
+  );
+  function chooseSkill(skill: SkillMetadata) {
+    if (!trigger || !skills.catalog || composingRef.current) return;
+    const token = `$${skill.name}`;
+    const next = draft.text.slice(0, trigger.start) + token + ' ' + draft.text.slice(trigger.end);
+    if (next.length > 100000) return;
+    skillCaret.current = { key, text: next, position: trigger.start + token.length + 1 };
+    updateDraft(key, (previous) => ({
+      ...previous,
+      text: next,
+      skills: [
+        ...replaceSkillRange(
+          previous.text,
+          trigger.start,
+          trigger.end,
+          token + ' ',
+          previous.skills,
+        ).skills,
+        {
+          name: skill.name,
+          path: skill.path,
+          cwd: skills.catalog!.cwd,
+          start: trigger.start,
+          end: trigger.start + token.length,
+        },
+      ],
+    }));
+    const position = trigger.start + token.length + 1;
+    setCaret({ key, start: position, end: position });
+    setSkillMenu({ identity: skillIdentity, selected: 0, dismissed: true });
+  }
   const { text, images } = draft;
   const slash = parseSlashCommand(text);
   const matches = filterSlashCommands(props.commands, text);
@@ -165,9 +243,11 @@ export function Composer(props: Props) {
     const input = command
       ? `/${command.name}${parsed.arguments ? ` ${parsed.arguments}` : ''}`
       : current.text;
-    const problem = current.images.length
-      ? t('composer:slash_commands_cannot_include_images_remove_the_images')
-      : validateSlashCommand(input, props.commands);
+    const problem = current.skills?.length
+      ? t('composer:skills_slash')
+      : current.images.length
+        ? t('composer:slash_commands_cannot_include_images_remove_the_images')
+        : validateSlashCommand(input, props.commands);
     if (problem) {
       setFeedback((previous) => ({ ...previous, [key]: { message: problem, error: true } }));
       return;
@@ -221,7 +301,8 @@ export function Composer(props: Props) {
     submittedDrafts.current.delete(draftKey);
     sent.images.forEach((image) => imageFiles.current.delete(image.id));
     updateDraft(draftKey, (previous) => ({
-      text: previous.text === sent.text ? '' : previous.text,
+      text: previous.text === sent.text && previous.skills === sent.skills ? '' : previous.text,
+      skills: previous.text === sent.text && previous.skills === sent.skills ? [] : previous.skills,
       images: previous.images.filter(
         (image) => !sent.images.some((entry) => entry.id === image.id),
       ),
@@ -258,6 +339,19 @@ export function Composer(props: Props) {
       size: file.size,
     }));
     updateDraft(draftKey, (previous) => ({
+      ...previous,
+      skills: pasted?.text
+        ? editBindings(
+            previous.text,
+            (
+              previous.text.slice(0, pasted.start) +
+              pasted.text +
+              previous.text.slice(pasted.end)
+            ).slice(0, 100000),
+            previous.skills,
+            Math.min(pasted.start + pasted.text.length, 100000),
+          )
+        : previous.skills,
       text: pasted?.text
         ? (
             previous.text.slice(0, pasted.start) +
@@ -308,6 +402,7 @@ export function Composer(props: Props) {
     isActive(props.thread.status) &&
     props.thread.capacityRetry?.status !== 'waiting',
   );
+  const skillSteeringBlocked = active && Boolean(draft.skills?.length);
   const external = props.thread && !props.thread.managed && !props.thread.archived;
   const resumeError = external ? props.thread?.resumeError : undefined;
   const occupied = resumeError?.code === 'THREAD_IN_USE';
@@ -317,6 +412,7 @@ export function Composer(props: Props) {
     !external &&
     (text.trim() || images.length) &&
     !readingImages &&
+    !skillSteeringBlocked &&
     !props.disabled &&
     !props.submitting,
   );
@@ -341,6 +437,7 @@ export function Composer(props: Props) {
           sent.replace(/^(\s*)\/\//, '$1/'),
           active,
           sentImages.length ? sentImages.map((image) => image.dataUrl!) : undefined,
+          current.skills?.length ? selectedReferences(current.skills) : undefined,
         )
       )
         clearSubmittedDraft(key);
@@ -426,6 +523,50 @@ export function Composer(props: Props) {
             }}
           />
         )}
+        {skillMenuOpen && (
+          <SkillReferenceMenu
+            id={skillMenuId}
+            skills={skills}
+            matches={skillMatches}
+            selected={skillSelected}
+            unavailable={props.skillsUnavailable}
+            onSelect={(selected) =>
+              setSkillMenu({ identity: skillIdentity, selected, dismissed: false })
+            }
+            onChoose={chooseSkill}
+          />
+        )}
+        {!!draft.skills?.length && (
+          <ul className="composer-skills" aria-label={t('composer:skills_selected')}>
+            {selectedReferences(draft.skills).map((skill) => (
+              <li key={JSON.stringify([skill.name, skill.path])}>
+                <span title={skill.path}>
+                  <strong>${skill.name}</strong>
+                  <span className="skills-path">{skill.path}</span>
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={t('composer:skills_remove', { name: skill.name })}
+                  onClick={() =>
+                    updateDraft(key, (previous) => ({
+                      ...previous,
+                      ...removeSkillBinding(previous.text, previous.skills ?? [], skill),
+                    }))
+                  }
+                >
+                  <Icon name="close" size={13} />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {skillSteeringBlocked && (
+          <p className="slash-feedback" role="status">
+            {t('composer:skills_steer_unsupported')}
+          </p>
+        )}
         {images.length > 0 && (
           <ul className="composer-images" aria-label={t('composer:images_to_send')}>
             {images.map((image, index) => (
@@ -480,12 +621,14 @@ export function Composer(props: Props) {
           aria-describedby={shortcutId}
           aria-label={active ? t('composer:additional_instructions') : t('composer:task_content')}
           aria-haspopup="listbox"
-          aria-controls={menuOpen ? menuId : undefined}
+          aria-controls={skillMenuOpen ? skillMenuId : menuOpen ? menuId : undefined}
           aria-autocomplete="list"
           aria-activedescendant={
-            menuOpen && matches[selectedIndex]
-              ? `${menuId}-${matches[selectedIndex].name}`
-              : undefined
+            skillMenuOpen && skillMatches[skillSelected]
+              ? `${skillMenuId}-${skillSelected}`
+              : menuOpen && matches[selectedIndex]
+                ? `${menuId}-${matches[selectedIndex].name}`
+                : undefined
           }
           value={text}
           readOnly={Boolean(props.thread?.archived)}
@@ -498,7 +641,18 @@ export function Composer(props: Props) {
           }
           maxLength={100000}
           onChange={(event) => {
-            updateDraft(key, (previous) => ({ ...previous, text: event.target.value }));
+            updateDraft(key, (previous) => ({
+              ...previous,
+              text: event.target.value,
+              skills: editBindings(
+                previous.text,
+                event.target.value,
+                previous.skills,
+                event.target.selectionStart,
+              ),
+            }));
+            setCaret({ key, start: event.target.selectionStart, end: event.target.selectionEnd });
+            setSkillMenu({ identity: '', selected: 0, dismissed: false });
             setMenu({ key, text: event.target.value, selectedIndex: 0, dismissed: false });
             setFeedback((previous) => {
               const next = { ...previous };
@@ -506,6 +660,13 @@ export function Composer(props: Props) {
               return next;
             });
           }}
+          onSelect={(event) =>
+            setCaret({
+              key,
+              start: event.currentTarget.selectionStart,
+              end: event.currentTarget.selectionEnd,
+            })
+          }
           onPaste={paste}
           onFocus={() => setFocused(true)}
           onCompositionStart={() => {
@@ -523,7 +684,8 @@ export function Composer(props: Props) {
           onKeyDown={(event) => {
             // A hovered Tooltip consumes Escape during document capture. The
             // focused editor must still close its own Slash menu on that key.
-            if (event.defaultPrevented && !(menuOpen && event.key === 'Escape')) return;
+            if (event.defaultPrevented && !((menuOpen || skillMenuOpen) && event.key === 'Escape'))
+              return;
             // Let the browser insert newlines, including immediately after an IME
             // commit. Mobile Enter must never reach the submission dispatcher.
             if (mobileInput && event.key === 'Enter') return;
@@ -538,6 +700,35 @@ export function Composer(props: Props) {
             if (performance.now() - compositionEndedAtRef.current < 100) {
               if (event.key === 'Enter' && !event.shiftKey) event.preventDefault();
               return;
+            }
+            if (
+              skillMenuOpen &&
+              !event.shiftKey &&
+              !event.altKey &&
+              !event.metaKey &&
+              !event.ctrlKey
+            ) {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setSkillMenu({ identity: skillIdentity, selected: skillSelected, dismissed: true });
+                return;
+              }
+              if (skillMatches.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+                event.preventDefault();
+                setSkillMenu({
+                  identity: skillIdentity,
+                  selected:
+                    (skillSelected + (event.key === 'ArrowDown' ? 1 : -1) + skillMatches.length) %
+                    skillMatches.length,
+                  dismissed: false,
+                });
+                return;
+              }
+              if (skillMatches.length && (event.key === 'Enter' || event.key === 'Tab')) {
+                event.preventDefault();
+                if (!event.repeat) chooseSkill(skillMatches[skillSelected]!);
+                return;
+              }
             }
             if (menuOpen && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
               if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {

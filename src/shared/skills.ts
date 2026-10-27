@@ -10,6 +10,7 @@ export interface SkillQuery {
 export interface SkillReference {
   name: string;
   path: string;
+  cwd: string;
 }
 export function filterSkills(skills: SkillMetadata[], search: string) {
   const query = search.trim().toLocaleLowerCase();
@@ -18,4 +19,20 @@ export function filterSkills(skills: SkillMetadata[], search: string) {
       value.toLocaleLowerCase().includes(query),
     ),
   );
+}
+
+export function hasSkillToken(text: string, name: string) {
+  const token = `$${name}`;
+  let from = 0;
+  for (;;) {
+    const start = text.indexOf(token, from);
+    if (start < 0) return false;
+    const end = start + token.length;
+    if (
+      (start === 0 || /[\s([{]/u.test(text[start - 1]!)) &&
+      (end === text.length || /[\s.,!?;:)\]}]/u.test(text[end]!))
+    )
+      return true;
+    from = start + 1;
+  }
 }
