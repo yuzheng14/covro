@@ -4,7 +4,9 @@ import { t, useInterfaceLocale } from './i18n';
 import { BackupSettings } from './components/BackupSettings';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, Pencil } from 'lucide-react';
-import type { Settings, ThreadSummary } from '../shared/types';
+import type { Settings, ThreadSummary, ReviewTarget } from '../shared/types';
+import { useCommandPrompt } from './hooks/useCommandPrompt';
+import { ReviewTargetDialog } from './components/ReviewTargetDialog';
 import { useWorkspace } from './hooks/useWorkspace';
 import { useThreadReadState } from './hooks/useThreadReadState';
 import { useNewSessionShortcut } from './hooks/useNewSessionShortcut';
@@ -329,7 +331,14 @@ export function App() {
     }
   }
 
+  const commandScope = JSON.stringify([
+    workspace.projectId,
+    workspace.selectedId,
+    system?.codexEpoch,
+  ]);
+  const reviewPrompt = useCommandPrompt<ReviewTarget>(commandScope);
   const slashContext: SlashCommandContext = {
+    chooseReviewTarget: reviewPrompt.request,
     project,
     scopeId: workspace.projectId,
     selectedId: workspace.selectedId,
@@ -869,6 +878,18 @@ export function App() {
               )}
             </div>
           )}
+          <ReviewTargetDialog
+            key={commandScope}
+            open={reviewPrompt.open}
+            onChoose={reviewPrompt.finish}
+            disabled={
+              !canOperate ||
+              Boolean(activeTurn) ||
+              Boolean(waitingForConfirmation) ||
+              !thread?.managed ||
+              Boolean(thread.archived)
+            }
+          />
           <Composer
             focusRequest={composerFocusRequest}
             commands={slashCommands}

@@ -94,5 +94,18 @@
   "modeUnknown": "모드 미보고",
   "executeMode": "실행",
   "planMode": "Plan",
-  "modePending": "{{selected}} 적용 대기 · 현재: {{current}}"
+  "modePending": "{{selected}} 적용 대기 · 현재: {{current}}",
+  "reviewTarget": "코드 검토 대상",
+  "reviewUncommitted": "커밋하지 않은 변경",
+  "reviewBranch": "기준 브랜치와 비교",
+  "reviewCommit": "특정 커밋",
+  "reviewCustom": "사용자 지정 요구",
+  "branchName": "기준 브랜치",
+  "reviewInstructions": "검토 요구",
+  "startReview": "검토 시작",
+  "cancelDialog": "취소",
+  "closeDialog": "닫기",
+  "reviewCancelled": "검토를 취소했습니다. 명령 초안을 보관합니다.",
+  "reviewDescription": "변경, 브랜치, 커밋 또는 사용자 요구 검토",
+  "reviewUsage": "/review [요구]"
 }

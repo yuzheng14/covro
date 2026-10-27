@@ -130,3 +130,27 @@ describe('review/start protocol adapter', () => {
     });
   });
 });
+
+it('forwards every native review target including commit title null', async () => {
+  const { adapter, thread, events, requests } = await setup();
+  const targets = [
+    { type: 'baseBranch', branch: 'main' },
+    { type: 'commit', sha: 'abcdef123' },
+    { type: 'custom', instructions: 'Check authorization' },
+  ] as const;
+  for (const target of targets) {
+    const turn = await adapter.startReview(thread.id, target);
+    await vi.waitFor(() =>
+      expect(
+        events.some(
+          (e) => e.type === 'turn' && e.turn.id === turn.id && e.turn.status === 'completed',
+        ),
+      ).toBe(true),
+    );
+  }
+  expect(
+    (await requests())
+      .filter((r) => r.method === 'review/start')
+      .map((r) => (r.params as { target: unknown }).target),
+  ).toEqual([targets[0], { ...targets[1], title: null }, targets[2]]);
+});

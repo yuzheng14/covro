@@ -6,6 +6,7 @@ import type {
   PendingAction,
   RunStatus,
   Settings,
+  ReviewTarget,
   ModelDefaults,
   ModelDefaultsResult,
   SystemInfo,
@@ -82,8 +83,8 @@ export interface CodexClient {
     settings?: Settings,
     images?: string[],
   ): Promise<TurnView>;
-  /** Native inline review of the current checkout's uncommitted changes. */
-  startReview(id: string): Promise<TurnView>;
+  /** Native inline review scoped to this session's working directory. */
+  startReview(id: string, target?: ReviewTarget): Promise<TurnView>;
   steerTurn(
     id: string,
     turnId: string,

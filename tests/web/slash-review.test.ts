@@ -67,13 +67,15 @@ describe('/review in the composer', () => {
     expect(await review(state).run()).toEqual({
       message: '已提交代码审查，请在当前会话查看进度和结果。',
     });
-    expect(state.run).toHaveBeenCalledWith('review', 'thread', '/api/threads/thread/review');
+    expect(state.run).toHaveBeenCalledWith('review', 'thread', '/api/threads/thread/review', {
+      target: { type: 'uncommittedChanges' },
+    });
     expect(
       validateSlashCommand(
         '/review custom instructions',
         createSlashCommands(() => state),
       ),
-    ).toContain('不接受参数');
+    ).toBeUndefined();
   });
   it('guards unmanaged, archived, active, uncertain and unsupported contexts with specific reasons', async () => {
     const cases: [Partial<SlashCommandContext['thread']>, string][] = [
