@@ -314,6 +314,7 @@ export class Projection {
   }
 
   runtimeReset(): void {
+    for (const thread of this.values()) delete thread.goal;
     for (const action of this.actions.values())
       if (action.status === 'pending' || action.status === 'responding')
         this.resolveAction(action.actionId, 'expired');

@@ -5,7 +5,9 @@ import type { CommandExecTerminateResponse } from './generated/v2/CommandExecTer
 import { spawn, execFile, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
+import { readGoal } from './thread-goals.js';
 import { GuardianDenials } from './guardian-denials.js';
+import type { ThreadGoal, GoalMutation } from '../shared/thread-goal.js';
 import { ThreadTitles } from './thread-titles.js';
 import {
   collaborationSelection,
@@ -122,6 +124,9 @@ const CAPABILITIES = [
   'thread/items/list',
   'turn/start',
   'review/start',
+  'thread/goal/get',
+  'thread/goal/set',
+  'thread/goal/clear',
   'thread/approveGuardianDeniedAction',
   'turn/steer',
   'turn/interrupt',
@@ -156,6 +161,9 @@ type Responses = {
   'thread/items/list': ThreadItemsListResponse;
   'turn/start': TurnStartResponse;
   'review/start': ReviewStartResponse;
+  'thread/goal/get': { goal: ThreadGoal | null };
+  'thread/goal/set': { goal: ThreadGoal };
+  'thread/goal/clear': { cleared: boolean };
   'thread/approveGuardianDeniedAction': unknown;
   'turn/steer': TurnSteerResponse;
   'turn/interrupt': TurnInterruptResponse;
@@ -1127,6 +1135,26 @@ export class CodexAdapter implements CodexClient {
     await this.call('turn/interrupt', { threadId: id, turnId });
   }
 
+  async getGoal(id: string): Promise<ThreadGoal | null> {
+    try {
+      return readGoal((await this.call('thread/goal/get', { threadId: id })).goal, id);
+    } catch (error) {
+      if (error instanceof Error && /goals feature is disabled/i.test(error.message))
+        throw new AppError('GOAL_UNAVAILABLE', '当前 Codex 未启用 goals 功能', 409);
+      throw error;
+    }
+  }
+  async mutateGoal(id: string, mutation: GoalMutation): Promise<ThreadGoal | null> {
+    if (mutation.action === 'clear') {
+      await this.call('thread/goal/clear', { threadId: id, origin: 'user' });
+      return null;
+    }
+    const { action: _, ...fields } = mutation;
+    return readGoal(
+      (await this.call('thread/goal/set', { threadId: id, origin: 'user', ...fields })).goal,
+      id,
+    );
+  }
   async recapThread(id: string, prompt: string) {
     if (!this.titles) throw new CodexError('CODEX_UNAVAILABLE', 'Codex unavailable');
     return this.titles.recap(id, prompt);
@@ -1193,6 +1221,12 @@ export class CodexAdapter implements CodexClient {
         );
         break;
       }
+      case 'thread/goal/updated':
+        this.emit({ type: 'goal', threadId: event.params.threadId, goal: event.params.goal });
+        break;
+      case 'thread/goal/cleared':
+        this.emit({ type: 'goal', threadId: event.params.threadId, goal: null });
+        break;
       case 'thread/settings/updated':
         {
           const observed: RuntimeSettings = {

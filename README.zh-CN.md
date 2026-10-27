@@ -44,6 +44,8 @@
 
 使用 `/recap` 可通过独立模型请求总结近期可见消息，不改变会话上下文。
 
+使用 `/goal` 可查看和管理原生会话目标、Token 预算与实际进度。激活后 Codex 可自动继续工作，任务运行期间仍可暂停或清除目标。
+
 操作方式与使用细节见[使用指南](docs/usage.zh-CN.md)。
 
 在当前工作区新建会话：macOS 按 **⌘ + Option + N**，Windows/Linux 按 **Ctrl + Alt + N**。输入框会自动获得焦点，已有草稿继续保留。工作区有可识别的 GitHub remote 时，点击顶部 GitHub 图标即可在新标签页打开仓库；remote 选择规则见[工作区说明](docs/workspaces.md#快捷打开-github-仓库)。

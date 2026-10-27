@@ -41,6 +41,7 @@ export type SlashCommandName =
   | 'diff'
   | 'approve'
   | 'recap'
+  | 'goal'
   | 'review'
   | 'rename'
   | 'export';
@@ -64,7 +65,10 @@ export function parseSlashCommand(text: string): { name: string; arguments: stri
   const input = text.trimStart();
   if (!input.startsWith('/') || input.startsWith('//')) return null;
   const match = /^\/([^\s]*)(?:\s+([\s\S]*))?$/.exec(input)!;
-  return { name: match[1]!.toLowerCase(), arguments: (match[2] ?? '').trim() };
+  return {
+    name: /^go+al$/i.test(match[1]!) ? 'goal' : match[1]!.toLowerCase(),
+    arguments: (match[2] ?? '').trim(),
+  };
 }
 
 export function filterSlashCommands(commands: SlashCommand[], input: string): SlashCommand[] {
@@ -93,7 +97,12 @@ export function validateSlashCommand(input: string, commands: SlashCommand[]): s
   if (command.name === 'rename') {
     const problem = threadNameError(parsed.arguments);
     if (problem) return problem;
-  } else if (parsed.arguments && command.name !== 'plan' && command.name !== 'review')
+  } else if (
+    parsed.arguments &&
+    command.name !== 'plan' &&
+    command.name !== 'review' &&
+    command.name !== 'goal'
+  )
     return t('commands:does_not_accept_arguments_usage', { v0: command.name, v1: command.usage });
   return command.unavailableReason;
 }
@@ -123,6 +132,7 @@ export interface SlashCommandContext {
   selectPlan?: (task: string) => Promise<boolean>;
   initialize?: () => Promise<boolean>;
   openDiff?: () => void;
+  openGoal?: (argumentsText: string) => void;
   openRecap?: (value: { summary: string; partial: boolean; readAt: number }) => void;
   chooseDenial?: () => Promise<string | undefined>;
   chooseReviewTarget?: () => Promise<ReviewTarget | undefined>;
@@ -163,6 +173,12 @@ const definitions: { name: SlashCommandName; description: string }[] = [
     name: 'review',
     get description() {
       return t('commands:reviewDescription');
+    },
+  },
+  {
+    name: 'goal',
+    get description() {
+      return t('commands:goalDescription');
     },
   },
   {
@@ -251,6 +267,7 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
   if (name !== 'stop' && compatibilityConfirmationRequired(context.system))
     return t('commands:confirm_the_codex_version_compatibility_notice_first');
   const capabilities = {
+    goal: 'thread/goal/get',
     recap: 'turn/start',
     approve: 'thread/approveGuardianDeniedAction',
     init: 'turn/start',
@@ -307,6 +324,10 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
     return context.selectedId
       ? t('commands:session_loading_try_again_shortly')
       : t('commands:select_a_session_first');
+  if (name === 'goal') {
+    if (!context.openGoal) return t('commands:goalUnavailable');
+    return undefined;
+  }
   if (name === 'compact') {
     if (thread.archived) return t('commands:unarchive_before_compacting_context');
     if (!thread.managed) return t('commands:resume_this_session_before_compacting_context');
@@ -472,6 +493,7 @@ function operationResult(name: SlashCommandName, operation?: Operation): SlashCo
 
 function commandUsage(name: SlashCommandName): string {
   if (name === 'rename') return t('commands:rename_name');
+  if (name === 'goal') return t('commands:goalCommandUsage');
   if (name === 'plan') return t('commands:planUsage');
   if (name === 'review') return t('commands:reviewUsage');
   return t('commands:no_arguments', { v0: name });
@@ -546,6 +568,14 @@ export function createSlashCommands(getContext: () => SlashCommandContext): Slas
       const thread = context.thread;
       const path = `/api/threads/${encodeURIComponent(thread?.id ?? '')}`;
       try {
+        if (name === 'goal') {
+          context.openGoal!(argumentsText);
+          return {
+            get message() {
+              return t('commands:goalOpened');
+            },
+          };
+        }
         if (name === 'diff') {
           context.openDiff!();
           return {

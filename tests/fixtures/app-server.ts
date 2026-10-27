@@ -1645,6 +1645,7 @@ function stopShell(child: ChildProcess) {
 function stopShells() {
   for (const child of shellProcesses.values()) stopShell(child);
 }
+const fixtureGoals = new Map<string, import('../../src/shared/thread-goal.js').ThreadGoal>();
 function receive(request: ClientRequest): void {
   if (request.method === 'initialize') {
     if (options.initializeFailureOncePath && !existsSync(options.initializeFailureOncePath)) {
@@ -2101,6 +2102,37 @@ function receive(request: ClientRequest): void {
           }, options.turnDelayMs ?? 800),
         );
       }, options.compactStartDelayMs ?? 0);
+      break;
+    }
+    case 'thread/goal/get': {
+      reply(request.id, { goal: fixtureGoals.get(request.params.threadId) ?? null });
+      break;
+    }
+    case 'thread/goal/clear': {
+      const cleared = fixtureGoals.delete(request.params.threadId);
+      reply(request.id, { cleared });
+      notify({ method: 'thread/goal/cleared', params: { threadId: request.params.threadId } });
+      break;
+    }
+    case 'thread/goal/set': {
+      const p = request.params;
+      const before = fixtureGoals.get(p.threadId);
+      const goal = {
+        threadId: p.threadId,
+        objective: p.objective ?? before?.objective ?? '',
+        status: p.status ?? before?.status ?? 'active',
+        tokenBudget: p.tokenBudget ?? before?.tokenBudget ?? null,
+        tokensUsed: before?.tokensUsed ?? 0,
+        timeUsedSeconds: before?.timeUsedSeconds ?? 0,
+        createdAt: before?.createdAt ?? Date.now(),
+        updatedAt: Date.now(),
+      };
+      fixtureGoals.set(p.threadId, goal);
+      reply(request.id, { goal });
+      notify({
+        method: 'thread/goal/updated',
+        params: { threadId: p.threadId, turnId: null, goal },
+      });
       break;
     }
     case 'thread/approveGuardianDeniedAction': {

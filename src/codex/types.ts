@@ -18,6 +18,7 @@ import type {
 
 export type CodexDiagnostics = Omit<SystemInfo, 'authMode' | 'demo' | 'compatibilityConfirmation'>;
 export type CodexEvent =
+  | { type: 'goal'; threadId: string; goal: import('../shared/thread-goal.js').ThreadGoal | null }
   | { type: 'thread'; thread: ThreadView }
   | { type: 'threadSettings'; threadId: string; settings: RuntimeSettings }
   | { type: 'threadName'; threadId: string; name?: string }
@@ -94,6 +95,11 @@ export interface CodexClient {
   interruptTurn(id: string, turnId: string): Promise<void>;
   listGuardianDenials?(id: string): import('../shared/guardian-denials.js').GuardianDenial[];
   approveGuardianDenial?(id: string, denialId: string): Promise<void>;
+  getGoal?(id: string): Promise<import('../shared/thread-goal.js').ThreadGoal | null>;
+  mutateGoal?(
+    id: string,
+    mutation: import('../shared/thread-goal.js').GoalMutation,
+  ): Promise<import('../shared/thread-goal.js').ThreadGoal | null>;
   recapThread?(id: string, prompt: string): Promise<string>;
   compactThread(id: string): Promise<void>;
   respond(actionId: string, resolution: ActionResolution): Promise<void>;
