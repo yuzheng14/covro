@@ -34,21 +34,7 @@
 - 📖 **Read results while you chat.** Preview documents, diagrams, and code changes beside the conversation on desktop, or full-screen on mobile.
 - 🔔 **Know when your attention is needed.** Enable browser notifications for completed work, questions, and approvals; keep the page open in a supported desktop browser.
 
-Use **＋** in the message box to attach images from your phone or computer. Open the combined model control to choose the model, reasoning effort, Fast mode, and Plan/Execute mode. Use `/plan [task]` to select Plan mode or submit a planning task.
-
-When the selected model is at capacity, Covro shows native retry progress and can make up to three additional attempts after 5, 10, and 20 seconds when Codex does not retry and no output or tool work has started. You can cancel, or choose another model and retry manually. See [retry behavior](docs/capacity-retry.md) for recovery boundaries.
-
-Use `/review` to choose uncommitted changes, a base branch, a commit, or custom review instructions. Use `/init` to request a project contributor guide; an existing `AGENTS.md` is preserved.
-
-Use `/diff` to inspect staged, unstaged, and untracked Git changes in the current workspace without starting a model task. Use `/approve` to explicitly authorize a recorded automatic-review denial once, then ask Codex to continue.
-
-Use `/recap` to summarize recent visible messages in a separate model request without changing conversation context.
-
-Use `/goal` to view and manage a native session goal, its token budget and actual progress. Activating a goal can start automatic continuation; pausing and clearing remain available during a task.
-
-See the [usage guide · 中文](docs/usage.zh-CN.md) for workflow details and controls.
-
-Start a new conversation in the current workspace with **⌘ + Option + N** on macOS or **Ctrl + Alt + N** on Windows/Linux. The message box receives focus and existing drafts stay available. When the workspace has a recognized GitHub remote, the GitHub icon in the header opens its repository in a new tab. See [workspace details](docs/workspaces.md#open-the-github-repository) for remote selection rules.
+Find controls, shortcuts, and supported commands in the [usage guide · 中文](docs/usage.zh-CN.md) and [command guide](docs/slash-commands.md).
 
 <details>
   <summary><strong>📱 A workspace that fits your phone</strong></summary>
@@ -78,9 +64,9 @@ npm install -g @covro/covro
 covro
 ```
 
-`covro` starts in the background and prints the local address. Use `covro stop` to stop it. See [installation and service management](docs/distribution.md) for configuration, logs, login auto-start, macOS credential diagnostics, and release channels.
+`covro` runs in the background; stop it with `covro stop`. See the [installation guide](docs/distribution.md) for configuration, logs, and login auto-start.
 
-Open **<http://127.0.0.1:8787>** and click **＋** beside **Unassigned** to send your first task. Or use **Add project** to import a host directory or clone a Git repository. See [project setup](docs/project-clone.md) and [conversation workspaces](docs/workspaces.md) for directory options.
+Open **<http://127.0.0.1:8787>** and click **＋** beside **Unassigned** to start a task, or use **Add project** to [import a directory or clone a repository](docs/project-clone.md).
 
 <a id="run-from-source"></a>
 
@@ -109,11 +95,7 @@ The host computer must stay awake and online. When adding projects remotely, ent
 
 ## Updates and release channels
 
-Use the update panel to check versions and choose stable, beta, or dev. Beta and Dev also receive newer stable releases. **macOS and Linux npm global installations** support managed upgrades from this panel or `covro update`; other installations use their original update method.
-
-Automatic installation is off by default and requires a verified Codex combination. Unverified combinations need explicit confirmation; unknown versions, missing or invalid compatibility declarations, and explicitly unsupported combinations block managed upgrades. Covro does not upgrade Codex CLI. See [updates and recovery](docs/distribution.md) for commands, compatibility checks, and backups.
-
-DB Schema **7** is tracked separately from the application version; older applications cannot open newer databases. Backups cover Covro’s database and service configuration, excluding project files, Codex history, and credentials. Restore requires stopping the service; see [backups](docs/backups.md) and [database compatibility](docs/database.md).
+Choose stable, beta, or dev in the update panel or with `covro update`. Managed upgrades support **macOS and Linux npm global installations**; other installations use their original update method. Automatic installation is off by default and requires verified Codex compatibility; unverified combinations need explicit confirmation. Covro does not upgrade Codex CLI. See [updates and recovery](docs/distribution.md).
 
 ## Your computer, your workspace
 
@@ -121,42 +103,23 @@ Covro connects to your existing CLI through `codex app-server`. Tasks, projects,
 
 Covro is for a single user. The [Shell panel](docs/shell.md) runs non-interactive commands using Codex’s configured sandbox. An interactive terminal, file editor, Git GUI, and multi-user team management are outside the current scope.
 
+DB Schema **7** is independent of the application version; older applications cannot open newer databases. Backups cover only Covro’s database and service configuration, excluding project files, Codex history, and credentials. Restore requires stopping the service. See [backups](docs/backups.md) and [database compatibility](docs/database.md).
+
 ## Development and contribution
 
-```sh
-pnpm format:check
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
-pnpm test:e2e
-```
-
-Browser tests require the Chromium version used by the existing Playwright dependency. Tests and CI use explicit fixtures; they do not send real model requests.
-
-Use `pnpm format` to fix formatting; PR titles follow Conventional Commits. See [contribution and release conventions](docs/contributing.md).
-
-Found a problem or have an idea? [Open an issue](https://github.com/yuzheng14/covro/issues) with your OS, Node.js and Codex versions, installation method, and steps to reproduce. Small, focused PRs are welcome; update both READMEs when changing user-facing facts or setup instructions.
+See the [contribution guide](docs/contributing.md) for development setup, checks, and PR conventions. [Open an issue](https://github.com/yuzheng14/covro/issues) or send a focused PR; update both READMEs when changing user-facing facts.
 
 <a id="documentation"></a>
 
 ## 📚 Documentation
 
-| Guide                                                                  | Contents                                                                |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| [Detailed usage · 中文](docs/usage.zh-CN.md)                           | Projects, conversations, approvals, notifications, images, and recovery |
-| [Deployment](docs/deployment.md)                                       | Local access, Tailscale, and Cloudflare Access                          |
-| [Distribution](docs/distribution.md)                                   | CLI, services, data locations, upgrades, and repair                     |
-| [Compatibility](docs/compatibility.md)                                 | Verified Codex versions and behavior boundaries                         |
-| [Slash commands](docs/slash-commands.md)                               | Supported commands and usage                                            |
-| [Architecture](docs/architecture.md)                                   | How the gateway, Codex adapter, and browser fit together                |
-| [Verification](docs/verification.md)                                   | Test coverage and recorded live checks                                  |
-| [Projects](docs/project-clone.md) · [Workspaces](docs/workspaces.md)   | Importing, cloning, and conversation directories                        |
-| [Languages](docs/i18n.md) · [History loading](docs/session-history.md) | Interface language and conversation loading                             |
-| [Shell](docs/shell.md)                                                 | Command execution and sandbox limits                                    |
-| [Backups](docs/backups.md) · [Database](docs/database.md)              | Snapshot scope, compatibility, and offline recovery                     |
-| [Contributing](docs/contributing.md) · [Releases](docs/releases.md)    | Formatting, PRs, and publishing                                         |
-| [Brand assets](docs/brand.md)                                          | Editable SVG logo and wordmarks                                         |
+| Topic                      | Guides                                                                                                                                                                            |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Everyday use               | [Usage · 中文](docs/usage.zh-CN.md) · [Commands](docs/slash-commands.md) · [Shell](docs/shell.md) · [Capacity retries](docs/capacity-retry.md)                                    |
+| Projects and conversations | [Import and clone](docs/project-clone.md) · [Workspaces](docs/workspaces.md) · [History loading](docs/session-history.md)                                                         |
+| Setup and access           | [Install and update](docs/distribution.md) · [Deployment](docs/deployment.md) · [Interface languages](docs/i18n.md)                                                               |
+| Data and compatibility     | [Backups](docs/backups.md) · [Database](docs/database.md) · [Codex compatibility](docs/compatibility.md)                                                                          |
+| Development and releases   | [Contributing](docs/contributing.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md) · [Releases](docs/releases.md) · [Brand assets](docs/brand.md) |
 
 ## License
 

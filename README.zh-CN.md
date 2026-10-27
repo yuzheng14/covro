@@ -34,21 +34,7 @@
 - 📖 **一边看产出，一边讨论。** 电脑上将文档、图表和代码变更与会话并排阅读，手机上使用全屏阅读器。
 - 🔔 **及时收到待办提醒。** 开启浏览器通知，在工作结束、需要回答或审批时收到提醒；需在支持通知的桌面浏览器中保持页面运行。
 
-点击输入框中的 **＋**，可从手机或电脑选择图片附件。模型、推理强度、Fast 和 Plan/执行模式统一收进模型设置入口。使用 `/plan [任务]` 可选择 Plan 模式或直接提交规划任务。
-
-当前模型容量不足时，Covro 会展示原生重试进度；如果 Codex 没有自行重试，且本轮尚无输出或工具操作，会在 5、10、20 秒后最多补偿重试 3 次。可以取消，也可以选择其他模型后手动重试。恢复边界见[容量重试说明](docs/capacity-retry.md)。
-
-使用 `/review` 可选择未提交改动、基础分支、指定 commit 或自定义要求进行代码审查。使用 `/init` 可请求生成项目说明，已有 `AGENTS.md` 会保留。
-
-使用 `/diff` 可查看当前工作区已暂存、未暂存和未跟踪的 Git 改动，不创建模型任务。使用 `/approve` 可显式单次授权一条自动审核拒绝记录，再发送任务让 Codex 继续。
-
-使用 `/recap` 可通过独立模型请求总结近期可见消息，不改变会话上下文。
-
-使用 `/goal` 可查看和管理原生会话目标、Token 预算与实际进度。激活后 Codex 可自动继续工作，任务运行期间仍可暂停或清除目标。
-
-操作方式与使用细节见[使用指南](docs/usage.zh-CN.md)。
-
-在当前工作区新建会话：macOS 按 **⌘ + Option + N**，Windows/Linux 按 **Ctrl + Alt + N**。输入框会自动获得焦点，已有草稿继续保留。工作区有可识别的 GitHub remote 时，点击顶部 GitHub 图标即可在新标签页打开仓库；remote 选择规则见[工作区说明](docs/workspaces.md#快捷打开-github-仓库)。
+操作、快捷键和命令用法见[使用指南](docs/usage.zh-CN.md)与[Slash 命令说明](docs/slash-commands.md)。
 
 <details>
   <summary><strong>📱 手机上也能舒服地使用</strong></summary>
@@ -78,9 +64,9 @@ npm install -g @covro/covro
 covro
 ```
 
-`covro` 默认在后台启动并输出本机访问地址，使用 `covro stop` 停止。配置、日志、登录自启、macOS 凭证诊断和版本渠道见[安装与服务管理](docs/distribution.md)。
+`covro` 在后台启动，使用 `covro stop` 停止。配置、日志与登录自启见[安装指南](docs/distribution.md)。
 
-打开 **<http://127.0.0.1:8787>**，点击 **未关联项目** 右侧的 **＋** 即可发送第一条任务。也可通过 **添加项目** 导入主机目录或克隆 Git 仓库。目录选项见[项目配置](docs/project-clone.md)和[会话工作目录](docs/workspaces.md)。
+打开 **<http://127.0.0.1:8787>**，点击 **未关联项目** 旁的 **＋** 开始任务，或通过 **添加项目** [导入目录或克隆仓库](docs/project-clone.md)。
 
 <a id="从源码运行"></a>
 
@@ -109,11 +95,7 @@ pnpm start -- --config ./config.local.json
 
 ## 更新与版本渠道
 
-在更新面板检查版本，选择稳定版、预览版或开发版；预览版和开发版也会接收更新的稳定版本。**macOS 和 Linux 的 npm 全局安装**支持在此面板或通过 `covro update` 受管升级；其他安装方式沿用原更新方法。
-
-自动安装默认关闭，且只接受已验证的 Codex 组合。未验证组合需要明确确认；版本未知、兼容声明缺失或无效、明确不支持的组合会阻止受管升级。Covro 不会升级 Codex CLI。完整命令、兼容检查和备份说明见[更新与恢复](docs/distribution.md)。
-
-DB Schema **7** 独立于应用版本管理，旧应用不能打开更新的数据库。备份覆盖 Covro 数据库和服务配置，不包含项目文件、Codex 历史或凭据。恢复需要停服，详见[备份与恢复](docs/backups.md)和[数据库兼容规则](docs/database.md)。
+在更新面板或通过 `covro update` 选择稳定、预览或开发渠道。受管升级支持 **macOS 和 Linux 的 npm 全局安装**，其他安装方式沿用原更新方法。自动安装默认关闭，且只接受已验证的 Codex 组合；未验证组合需明确确认。Covro 不会升级 Codex CLI。详见[更新与恢复](docs/distribution.md)。
 
 ## 你的电脑，你的工作台
 
@@ -121,42 +103,23 @@ Covro 通过 `codex app-server` 连接已有 CLI，沿用你的 Codex 登录与�
 
 Covro 面向单用户。[Shell 面板](docs/shell.md)沿用 Codex 配置的沙箱执行非交互命令。交互终端、文件编辑器、Git 图形界面与多人团队管理不在当前范围内。
 
+DB Schema **7** 独立于应用版本，旧应用不能打开更新的数据库。备份只覆盖 Covro 数据库和服务配置，不包含项目文件、Codex 历史或凭据；恢复需停服。详见[备份](docs/backups.md)与[数据库兼容规则](docs/database.md)。
+
 ## 开发与参与
 
-```sh
-pnpm format:check
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
-pnpm test:e2e
-```
-
-浏览器测试需要现有 Playwright 依赖所对应的 Chromium。测试与 CI 使用明确的测试夹具，不发起真实模型请求。
-
-使用 `pnpm format` 修复格式，PR 标题遵循 Conventional Commits，详见[开发与发版约定](docs/contributing.md)。
-
-遇到问题或有想法，欢迎[提交 Issue](https://github.com/yuzheng14/covro/issues)，附上操作系统、Node.js 与 Codex 版本、安装方式和复现步骤。也欢迎范围明确的小 PR；修改面向使用者的事实或安装步骤时，请同步更新两份 README。
+开发环境、检查命令与 PR 约定见[贡献指南](docs/contributing.md)。欢迎[提交 Issue](https://github.com/yuzheng14/covro/issues) 或范围明确的 PR；面向使用者的变更需同步更新两份 README。
 
 <a id="文档导航"></a>
 
 ## 📚 文档导航
 
-| 指南                                                           | 内容                                 |
-| -------------------------------------------------------------- | ------------------------------------ |
-| [详细使用指南](docs/usage.zh-CN.md)                            | 项目、会话、审批、通知、图片和恢复   |
-| [部署](docs/deployment.md)                                     | 本机、Tailscale 与 Cloudflare Access |
-| [分发](docs/distribution.md)                                   | CLI、服务、数据位置、升级与修复      |
-| [兼容性](docs/compatibility.md)                                | 已验证的 Codex 版本与行为边界        |
-| [Slash 命令](docs/slash-commands.md)                           | 支持的命令和用法                     |
-| [架构](docs/architecture.md)                                   | 网关、Codex 适配器与浏览器的协作方式 |
-| [验证记录](docs/verification.md)                               | 测试范围与真实环境检查记录           |
-| [项目](docs/project-clone.md) · [工作目录](docs/workspaces.md) | 导入、克隆与会话目录                 |
-| [语言](docs/i18n.md) · [历史加载](docs/session-history.md)     | 界面语言与会话加载                   |
-| [Shell](docs/shell.md)                                         | 命令执行与沙箱限制                   |
-| [备份](docs/backups.md) · [数据库](docs/database.md)           | 快照范围、兼容性与停服恢复           |
-| [开发约定](docs/contributing.md) · [发版](docs/releases.md)    | 格式、PR 与发布流程                  |
-| [品牌素材](docs/brand.md)                                      | 可编辑的 SVG 图标与完整标识          |
+| 主题       | 指南                                                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 日常使用   | [使用指南](docs/usage.zh-CN.md) · [命令](docs/slash-commands.md) · [Shell](docs/shell.md) · [容量重试](docs/capacity-retry.md)                    |
+| 项目与会话 | [导入与克隆](docs/project-clone.md) · [工作目录](docs/workspaces.md) · [历史加载](docs/session-history.md)                                        |
+| 安装与访问 | [安装与更新](docs/distribution.md) · [部署](docs/deployment.md) · [界面语言](docs/i18n.md)                                                        |
+| 数据与兼容 | [备份](docs/backups.md) · [数据库](docs/database.md) · [Codex 兼容性](docs/compatibility.md)                                                      |
+| 开发与发布 | [贡献](docs/contributing.md) · [架构](docs/architecture.md) · [验证](docs/verification.md) · [发版](docs/releases.md) · [品牌素材](docs/brand.md) |
 
 ## 许可证
 
