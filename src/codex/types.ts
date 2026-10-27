@@ -64,6 +64,10 @@ export interface CodexClient {
   start(): Promise<void>;
   stop(): Promise<void>;
   diagnostics(): CodexDiagnostics;
+  listSkills?(
+    cwd: string,
+    forceReload?: boolean,
+  ): Promise<import('../shared/skills.js').SkillCatalog>;
   readRuntimeSettings(cwd: string): Promise<RuntimeSettings>;
   saveModelDefaults(settings: ModelDefaults): Promise<ModelDefaultsResult>;
   onEvent(listener: (event: CodexEvent) => void): () => void;

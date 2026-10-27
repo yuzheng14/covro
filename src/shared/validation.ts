@@ -200,3 +200,16 @@ export const archivedQuerySchema = z
   .enum(['true', 'false'])
   .optional()
   .transform((value) => value === 'true');
+
+export const skillsQuerySchema = z
+  .object({
+    projectId: idSchema.nullable(),
+    threadId: idSchema.optional(),
+    draftId: z.string().uuid().optional(),
+    forceReload: z.boolean().optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.projectId !== null || value.threadId || value.draftId,
+    'A session or draft is required',
+  );

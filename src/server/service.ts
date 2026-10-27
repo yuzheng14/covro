@@ -381,6 +381,29 @@ export class GatewayService {
     });
   }
 
+  async listSkills(input: import('../shared/skills.js').SkillQuery) {
+    this.ensureReady();
+    if (!this.codex.listSkills)
+      throw new AppError('METHOD_UNAVAILABLE', 'Codex does not support skills/list', 409);
+    const thread = input.threadId ? await this.loadThread(input.threadId) : undefined;
+    if (thread && thread.projectId !== input.projectId)
+      throw new AppError('PROJECT_OWNERSHIP', 'Session belongs to another workspace', 403);
+    const resolveCwd = () =>
+      thread
+        ? this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id).cwd
+        : input.projectId === null
+          ? this.workspaces.draft(input.draftId!).cwd
+          : this.projects.get(input.projectId).canonicalRoot;
+    const cwd = resolveCwd();
+    if (input.projectId !== null) this.workspaces.assertProjectDirectory(cwd);
+    const epoch = this.codex.epoch;
+    const catalog = await this.codex.listSkills(cwd, input.forceReload);
+    this.ensureReady();
+    if (resolveCwd() !== cwd || this.codex.epoch !== epoch || catalog.cwd !== cwd)
+      throw new AppError('SKILLS_READ_FAILED', 'Skill workspace changed; refresh and retry', 409);
+    return catalog;
+  }
+
   async readRuntimeSettings(projectId: string | null) {
     const cwd =
       projectId === null

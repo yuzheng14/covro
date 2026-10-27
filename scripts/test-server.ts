@@ -70,6 +70,7 @@ class ControlledFixture implements CodexClient {
   unarchiveThread: CodexClient['unarchiveThread'] = (...args) =>
     this.inner.unarchiveThread(...args);
   listThreads: CodexClient['listThreads'] = (...args) => this.inner.listThreads(...args);
+  listSkills: NonNullable<CodexClient['listSkills']> = (...args) => this.inner.listSkills!(...args);
   readRuntimeSettings: CodexClient['readRuntimeSettings'] = (...args) =>
     this.inner.readRuntimeSettings(...args);
   saveModelDefaults: CodexClient['saveModelDefaults'] = (...args) =>

@@ -1430,3 +1430,17 @@ it('maps Fast defaults, confirmed tiers and explicit clearing across native life
     'serviceTier',
   );
 });
+
+it('maps native skills/list with the exact cwd and explicit cache refresh', async () => {
+  const { adapter, requests } = await fixture();
+  const catalog = await adapter.listSkills('/server/project', true);
+  expect(catalog.cwd).toBe('/server/project');
+  expect(catalog.skills.map((skill) => skill.path)).toEqual([
+    '/server/project/repo/SKILL.md',
+    '/server/project/user/SKILL.md',
+  ]);
+  expect((await requests()).find((entry) => entry.method === 'skills/list')?.params).toEqual({
+    cwds: ['/server/project'],
+    forceReload: true,
+  });
+});

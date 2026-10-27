@@ -1,3 +1,6 @@
+import { useSkills } from '../lib/skills';
+import { SkillsBrowser } from './SkillsBrowser';
+import { UNASSIGNED_SCOPE } from '../../shared/workspace-scope';
 import { errorMessage } from '../lib/error-message';
 import { message, displayMessage } from '../i18n/messages';
 import { t } from '../i18n';
@@ -31,10 +34,13 @@ import { IMAGE_TYPES } from '../../shared/images';
 
 interface Props {
   focusRequest?: number;
+  skillsRequest?: number;
   commands: SlashCommand[];
   thread?: ThreadView;
   threadLoading?: boolean;
   draftKey: string;
+  draftCreationId: string;
+  skillsUnavailable?: string;
   sentDrafts: Record<string, SentDraft>;
   projectName?: string;
   projectId?: string;
@@ -98,6 +104,20 @@ export function Composer(props: Props) {
   const [feedback, setFeedback] = useState<Record<string, SlashCommandResult>>({});
   const [commandPending, setCommandPending] = useState<string[]>([]);
   const key = props.draftKey;
+  const skillsScope = JSON.stringify([props.projectId, props.thread?.id, key]);
+  const [skillsOpen, setSkillsOpen] = useState<string>();
+  useEffect(() => {
+    if (props.skillsRequest) setSkillsOpen(skillsScope);
+  }, [props.skillsRequest]);
+  const skills = useSkills(
+    skillsOpen === skillsScope && props.projectId && !props.threadLoading
+      ? {
+          projectId: props.projectId === UNASSIGNED_SCOPE ? null : props.projectId,
+          ...(props.thread ? { threadId: props.thread.id } : { draftId: props.draftCreationId }),
+        }
+      : undefined,
+    props.runtimeKey,
+  );
   const consumedReceipts = useRef(new WeakSet<SentDraft>());
   useEffect(() => {
     for (const sent of Object.values(props.sentDrafts)) {
@@ -330,6 +350,14 @@ export function Composer(props: Props) {
   }
   return (
     <div className="composer-region" data-mobile-input={mobileInput || undefined}>
+      {skillsOpen === skillsScope && (
+        <SkillsBrowser
+          key={skillsScope}
+          skills={skills}
+          unavailable={props.skillsUnavailable}
+          onClose={() => setSkillsOpen(undefined)}
+        />
+      )}
       {props.submitting && (
         <p className="composer-resume-status" role="status">
           <Icon name="refresh" size={14} />

@@ -978,7 +978,8 @@ export function useWorkspace() {
       setBusy([...busyRef.current]);
       setError(undefined);
       setErrorDetails(undefined);
-      const clientOperationId = crypto.randomUUID();
+      const clientOperationId =
+        draft?.kind === 'create' && draft.creationId ? draft.creationId : crypto.randomUUID();
       if (draft) conversationDrafts.current.track(clientOperationId, draft);
       const source =
         selectedThreadRef.current?.id === target
@@ -1184,6 +1185,9 @@ export function useWorkspace() {
     },
     projectId,
     draftKey: conversationDrafts.current.key(projectId, selectedId),
+    draftCreationId: conversationDrafts.current.creationId(
+      conversationDrafts.current.key(projectId, selectedId),
+    ),
     sentDrafts,
     restoringSelection,
     firstMessages,
@@ -1200,7 +1204,13 @@ export function useWorkspace() {
           project,
           `${scopeApi(project)}/threads`,
           { settings },
-          { kind: 'create', key, projectId: project, settings },
+          {
+            kind: 'create',
+            key,
+            projectId: project,
+            settings,
+            creationId: conversationDrafts.current.creationId(key),
+          },
         );
         const id = (created?.result as { threadId?: string } | undefined)?.threadId;
         if (created?.status !== 'acknowledged' || !id) return false;

@@ -86,6 +86,13 @@ export class WorkspaceRegistry {
     }
   }
 
+  draft(operationId: string): WorkspaceOwnership {
+    const scope = this.allocate(operationId);
+    const row = this.allocations().find((entry) => entry.operationId === operationId);
+    if (row?.threadId) throw this.unavailable();
+    return scope;
+  }
+
   allocate(operationId: string): WorkspaceOwnership {
     const existing = this.database
       .select()

@@ -85,6 +85,7 @@ export function App() {
   const { isUnreadCompletion, markCompletedRead } = useThreadReadState();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [composerFocusRequest, setComposerFocusRequest] = useState(0);
+  const [skillsRequest, setSkillsRequest] = useState(0);
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
   const [gatewaySettingsOpen, setGatewaySettingsOpen] = useState(false);
   useEffect(() => {
@@ -582,28 +583,43 @@ export function App() {
             />
           </div>
           <div className="topbar-status">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="shell-entry"
-              aria-label={t('workspace:open_shell_panel')}
-              aria-expanded={shellOpen && !shellCollapsed}
-              onClick={() => {
-                setShellOpen(true);
-                setShellCollapsed(false);
-              }}
-            >
-              <Icon name="terminal" size={16} />
-              <span>Shell</span>
-              {shell.commands.some(shellActive) && (
-                <span
-                  className="shell-entry-count"
-                  aria-label={t('workspace:running_shell_commands')}
-                >
-                  {shell.commands.filter(shellActive).length}
-                </span>
-              )}
-            </Button>
+            <div className="topbar-tools">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={
+                  workspace.restoringSelection ||
+                  Boolean(workspace.selectedId && !thread) ||
+                  !(workspace.projectId === UNASSIGNED_SCOPE || project?.available)
+                }
+                onClick={() => setSkillsRequest((value) => value + 1)}
+              >
+                {t('composer:skills_title')}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shell-entry"
+                aria-label={t('workspace:open_shell_panel')}
+                aria-expanded={shellOpen && !shellCollapsed}
+                onClick={() => {
+                  setShellOpen(true);
+                  setShellCollapsed(false);
+                }}
+              >
+                <Icon name="terminal" size={16} />
+                <span>Shell</span>
+                {shell.commands.some(shellActive) && (
+                  <span
+                    className="shell-entry-count"
+                    aria-label={t('workspace:running_shell_commands')}
+                  >
+                    {shell.commands.filter(shellActive).length}
+                  </span>
+                )}
+              </Button>
+            </div>
             {hasAsyncQuestions && thread.status !== 'waitingInput' && (
               <Status status="waitingInput" offline={offline} />
             )}
@@ -994,10 +1010,19 @@ export function App() {
           )}
           <Composer
             focusRequest={composerFocusRequest}
+            skillsRequest={skillsRequest}
             commands={slashCommands}
             thread={thread}
             threadLoading={workspace.restoringSelection || Boolean(workspace.selectedId && !thread)}
             draftKey={workspace.draftKey}
+            draftCreationId={workspace.draftCreationId}
+            skillsUnavailable={
+              !system?.ready
+                ? t('composer:skills_not_ready')
+                : workspace.connection !== 'connected'
+                  ? t('composer:skills_offline')
+                  : undefined
+            }
             sentDrafts={workspace.sentDrafts}
             projectName={project?.name}
             projectId={

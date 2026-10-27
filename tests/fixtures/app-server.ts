@@ -2577,6 +2577,23 @@ function receive(request: ClientRequest): void {
       else execute(thread, turn);
       break;
     }
+    case 'skills/list': {
+      reply(request.id, {
+        data: (request.params.cwds ?? []).map((cwd) => ({
+          cwd,
+          skills: ['repo', 'user'].map((scope) => ({
+            name: 'review-code',
+            description: 'Review changes and report actionable findings.',
+            path: `${cwd}/${scope}/SKILL.md`,
+            scope,
+            enabled: true,
+            pluginId: null,
+          })),
+          errors: [],
+        })),
+      });
+      break;
+    }
     case 'turn/steer': {
       const thread = threads.get(request.params.threadId);
       const turn = thread?.turns.find((entry) => entry.id === request.params.expectedTurnId);

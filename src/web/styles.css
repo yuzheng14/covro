@@ -5363,3 +5363,55 @@ dd {
 .account-limit-reached {
   color: #a94a26;
 }
+
+.skills-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+.skills-toolbar input {
+  min-width: 0;
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+}
+.skills-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow: auto;
+  max-height: 55dvh;
+}
+.skills-list li {
+  border-top: 1px solid var(--border);
+  padding: 0.7rem 0;
+}
+.skills-list summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.skills-list summary span {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+.skills-path,
+.skills-description,
+.skills-errors {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.skills-path {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.topbar-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

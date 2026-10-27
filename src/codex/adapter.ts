@@ -133,6 +133,7 @@ const CAPABILITIES = [
   'turn/steer',
   'turn/interrupt',
   'model/list',
+  'skills/list',
   'config/read',
   'config/batchWrite',
   'configRequirements/read',
@@ -148,6 +149,7 @@ type Responses = {
   'account/read': GetAccountResponse;
   'account/rateLimits/read': GetAccountRateLimitsResponse;
   'model/list': ModelListResponse;
+  'skills/list': import('./generated/v2/SkillsListResponse.js').SkillsListResponse;
   'config/read': ConfigReadResponse;
   'config/batchWrite': ConfigWriteResponse;
   'configRequirements/read': ConfigRequirementsReadResponse;
@@ -1102,6 +1104,17 @@ export class CodexAdapter implements CodexClient {
         failure.rpcCode,
       );
     }
+  }
+  async listSkills(cwd: string, forceReload = false) {
+    const result = await this.call('skills/list', { cwds: [cwd], forceReload });
+    const entries = result.data.filter((entry) => entry.cwd === cwd);
+    if (entries.length !== 1)
+      throw new AppError(
+        'SKILLS_READ_FAILED',
+        'Codex returned no unambiguous skill catalog for this directory',
+        502,
+      );
+    return entries[0]!;
   }
   async startTurn(
     id: string,
