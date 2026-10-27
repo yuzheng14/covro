@@ -16,6 +16,7 @@ import { PermissionDetails, PermissionModeSelect } from './PermissionModeSelect'
 import { permissionModes } from '../lib/permissions';
 import { permissionLabel } from '../lib/settings';
 import { ModelSettingsPopover } from './ModelSettingsPopover';
+import { CollaborationModeSelect } from './CollaborationModeSelect';
 import { ReasoningGauge } from './ReasoningGauge';
 import { ControlHint } from './ControlHint';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -93,6 +94,7 @@ export function SettingsPanel({
   const effortTierLabel = effort === 'max' ? 'Max' : effort === 'ultra' ? 'Ultra' : null;
   const tier = settings.serviceTier !== undefined ? settings.serviceTier : current?.serviceTier;
   const fast = tier === 'fast';
+  const mode = settings.collaborationMode ?? current?.collaborationMode;
   const selectedModel = models.find((entry) => entry.id === model);
   const fastAvailable = selectedModel?.serviceTiers?.includes('fast');
   const changes = pendingSettings(settings, current);
@@ -147,6 +149,22 @@ export function SettingsPanel({
                 }),
             })}
           </span>
+          {changes.collaborationMode && (
+            <span>
+              {t('commands:modePending', {
+                selected:
+                  changes.collaborationMode === 'plan'
+                    ? t('commands:planMode')
+                    : t('commands:executeMode'),
+                current:
+                  current?.collaborationMode === 'plan'
+                    ? t('commands:planMode')
+                    : current?.collaborationMode === 'default'
+                      ? t('commands:executeMode')
+                      : t('common:not_reported'),
+              })}
+            </span>
+          )}
           <button
             type="button"
             disabled={disabled || saving}
@@ -248,9 +266,16 @@ export function SettingsPanel({
                 <span className="settings-summary-effort reasoning-tier" data-effort={effort}>
                   {effort || unknown}
                 </span>
+                {mode === 'plan' && <span className="settings-plan-badge">Plan</span>}
               </>
             }
           >
+            <CollaborationModeSelect
+              settings={settings}
+              current={current}
+              disabled={disabled || saving || Boolean(threadLoading)}
+              onChange={onChange}
+            />
             <Select
               value={model}
               disabled={disabled || !models.length}

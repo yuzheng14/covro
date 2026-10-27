@@ -71,7 +71,7 @@
   "selected_session_resumed": "已恢复当前选中的会话。",
   "rename_name": "/rename <名称>",
   "no_arguments": "/{{v0}}（无需参数）",
-  "rename_requires_a_name_other_commands_take_no": "{{v0}}\n/rename 必须提供名称，其他命令无需参数。输入 // 可发送以 / 开头的普通消息。",
+  "rename_requires_a_name_other_commands_take_no": "命令与用法：\n{{v0}}\n仅接受用法中列出的参数。\n输入 // 可发送以 / 开头的普通消息。",
   "name": " <名称>",
   "diagnostics_opened_refresh_status_or_reconcile_submissions_in": "已打开状态诊断；可在面板中刷新或核对提交。",
   "the_project_or_session_changed_select_the_command": "当前项目或会话已切换，请重新选择命令。",
@@ -82,5 +82,17 @@
   "renameLong": "会话名称最多 {{max}} 个字符。",
   "renameControls": "会话名称不能包含换行或控制字符。",
   "commandLine": "/{{name}}{{arguments}}：{{description}}",
-  "review_uncommitted_working_directory_changes": "审查当前工作目录的未提交改动（使用会话当前配置）"
+  "review_uncommitted_working_directory_changes": "审查当前工作目录的未提交改动（使用会话当前配置）",
+  "planDescription": "进入 Plan 模式，可同时提交任务",
+  "planUsage": "/plan [任务]",
+  "optionalTask": " [任务]",
+  "planSelected": "已为下一次任务选择 Plan 模式，等待 Codex 确认。",
+  "planSubmitted": "已提交 Plan 任务，请在会话查看实际模式和结果。",
+  "planNotSubmitted": "尚未确认任务提交，请先核对诊断再重试。",
+  "planUnavailable": "请先恢复空闲会话，或打开新工作区草稿，再选择 Plan 模式。",
+  "mode": "协作模式",
+  "modeUnknown": "模式未报告",
+  "executeMode": "执行",
+  "planMode": "Plan",
+  "modePending": "{{selected}} 待生效 · 当前：{{current}}"
 }

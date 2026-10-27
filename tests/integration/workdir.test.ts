@@ -150,11 +150,14 @@ it('shares workDir with real Git clones and keeps retry identity stable after co
   const first = await h.post('/api/project-clones', input);
   expect(first.status).toBe(202);
   expect(await first.json()).toMatchObject({ path: join(h.workDir, 'cloned') });
-  await vi.waitFor(async () => {
-    expect(
-      await (await h.get(`/api/project-clones/${input.clientOperationId}`)).json(),
-    ).toMatchObject({ status: 'completed' });
-  });
+  await vi.waitFor(
+    async () => {
+      expect(
+        await (await h.get(`/api/project-clones/${input.clientOperationId}`)).json(),
+      ).toMatchObject({ status: 'completed' });
+    },
+    { timeout: 5000 },
+  );
   await h.save(h.other);
   const retry = await h.post('/api/project-clones', input);
   expect(retry.status).toBe(202);

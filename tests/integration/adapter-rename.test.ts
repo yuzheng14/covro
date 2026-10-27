@@ -111,7 +111,8 @@ it('waits for an already dispatched automatic name write before writing the expl
 });
 
 it('does not issue a manual write after an uncertain automatic write and reports unsupported methods', async () => {
-  const { adapter, requests } = await setup({ nameWriteDelayMs: 2000 }, 300);
+  // Leave room for the fixture process to start; the 2s write still exceeds the RPC deadline.
+  const { adapter, requests } = await setup({ nameWriteDelayMs: 2000 }, 1000);
   const thread = await adapter.createThread('/tmp');
   await adapter.startTurn(thread.id, thread.cwd, 'Trigger a slow title write');
   await vi.waitFor(async () =>
@@ -119,10 +120,12 @@ it('does not issue a manual write after an uncertain automatic write and reports
       1,
     ),
   );
-  await vi.waitFor(async () =>
-    expect(
-      (await requests()).filter((entry) => entry.method === 'thread/unsubscribe'),
-    ).toHaveLength(1),
+  await vi.waitFor(
+    async () =>
+      expect(
+        (await requests()).filter((entry) => entry.method === 'thread/unsubscribe'),
+      ).toHaveLength(1),
+    { timeout: 2500 },
   );
   await adapter.startTurn(thread.id, thread.cwd, 'Do not retry an uncertain automatic write');
   await vi.waitFor(async () =>

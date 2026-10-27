@@ -437,6 +437,9 @@ test('the combined control opens a keyboard-accessible popover and Escape dismis
   const close = popup.getByRole('button', { name: '关闭模型设置', exact: true });
   await close.focus();
   await close.press('Tab');
+  const mode = popup.getByRole('combobox', { name: '协作模式', exact: true });
+  await expect(mode).toBeFocused();
+  await mode.press('Tab');
   const model = popup.getByRole('combobox', { name: '模型', exact: true });
   await expect(model).toBeFocused();
   await model.press('ArrowDown');

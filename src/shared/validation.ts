@@ -20,6 +20,7 @@ export const reorderProjectsSchema = z
 export const settingsSchema = z
   .object({
     model: z.string().min(1).max(200).optional(),
+    collaborationMode: z.enum(['plan', 'default']).optional(),
     reasoningEffort: z.string().min(1).max(40).optional(),
     serviceTier: z.literal('fast').nullable().optional(),
     permissionMode: z.enum(['ask', 'auto-review', 'full-access', 'read-only']).optional(),

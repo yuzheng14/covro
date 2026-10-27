@@ -29,6 +29,7 @@ export type SlashCommandName =
   | 'stop'
   | 'status'
   | 'compact'
+  | 'plan'
   | 'review'
   | 'rename'
   | 'export';
@@ -81,7 +82,7 @@ export function validateSlashCommand(input: string, commands: SlashCommand[]): s
   if (command.name === 'rename') {
     const problem = threadNameError(parsed.arguments);
     if (problem) return problem;
-  } else if (parsed.arguments)
+  } else if (parsed.arguments && command.name !== 'plan')
     return t('commands:does_not_accept_arguments_usage', { v0: command.name, v1: command.usage });
   return command.unavailableReason;
 }
@@ -108,6 +109,7 @@ export interface SlashCommandContext {
   refreshThread: () => Promise<unknown>;
   openStatus: () => void;
   exportThread: (threadId: string) => Promise<{ partial: boolean }>;
+  selectPlan?: (task: string) => Promise<boolean>;
 }
 
 const definitions: { name: SlashCommandName; description: string }[] = [
@@ -133,6 +135,12 @@ const definitions: { name: SlashCommandName; description: string }[] = [
     name: 'resume',
     get description() {
       return t('commands:resume_the_selected_session_not_the_cli_session');
+    },
+  },
+  {
+    name: 'plan',
+    get description() {
+      return t('commands:planDescription');
     },
   },
   {
@@ -194,6 +202,7 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
   if (name !== 'stop' && compatibilityConfirmationRequired(context.system))
     return t('commands:confirm_the_codex_version_compatibility_notice_first');
   const capabilities = {
+    plan: 'turn/start',
     fork: 'thread/fork',
     resume: 'thread/resume',
     review: 'review/start',
@@ -222,6 +231,25 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
     return undefined;
   }
   const thread = context.thread;
+  if (name === 'plan') {
+    if (!context.selectPlan) return t('commands:planUnavailable');
+    if (context.busy.some((entry) => entry.startsWith('saveModelDefaults:')))
+      return t('commands:planUnavailable');
+    if (busy('create', scope!) || unsettled(scope!)) return t('commands:planUnavailable');
+    if (!thread)
+      return context.selectedId ? t('commands:session_loading_try_again_shortly') : undefined;
+    if (
+      thread.archived ||
+      !thread.managed ||
+      thread.status === 'unknown' ||
+      unsettled(thread.id) ||
+      isActive(thread.status) ||
+      thread.turns.some((turn) => isActive(turn.status)) ||
+      (thread.execution && !thread.execution.ended)
+    )
+      return t('commands:planUnavailable');
+    return undefined;
+  }
   if (!thread)
     return context.selectedId
       ? t('commands:session_loading_try_again_shortly')
@@ -386,7 +414,12 @@ export function createSlashCommands(getContext: () => SlashCommandContext): Slas
   return definitions.map(({ name, description }) => ({
     name,
     description,
-    usage: name === 'rename' ? t('commands:rename_name') : t('commands:no_arguments', { v0: name }),
+    usage:
+      name === 'rename'
+        ? t('commands:rename_name')
+        : name === 'plan'
+          ? t('commands:planUsage')
+          : t('commands:no_arguments', { v0: name }),
     unavailableReason: unavailableReason(name, initial),
     run: async (argumentsText = '') => {
       const context = getContext();
@@ -399,7 +432,12 @@ export function createSlashCommands(getContext: () => SlashCommandContext): Slas
                   .map((entry) =>
                     t('commands:commandLine', {
                       name: entry.name,
-                      arguments: entry.name === 'rename' ? t('commands:name') : '',
+                      arguments:
+                        entry.name === 'rename'
+                          ? t('commands:name')
+                          : entry.name === 'plan'
+                            ? t('commands:optionalTask')
+                            : '',
                       description: entry.description,
                     }),
                   )
@@ -449,6 +487,23 @@ export function createSlashCommands(getContext: () => SlashCommandContext): Slas
       const thread = context.thread;
       const path = `/api/threads/${encodeURIComponent(thread?.id ?? '')}`;
       try {
+        if (name === 'plan') {
+          const selected = await context.selectPlan!(argumentsText);
+          return {
+            error: !selected,
+            get message() {
+              return displayMessage(
+                t(
+                  !selected
+                    ? 'commands:planNotSubmitted'
+                    : argumentsText
+                      ? 'commands:planSubmitted'
+                      : 'commands:planSelected',
+                ),
+              );
+            },
+          };
+        }
         if (name === 'export') {
           const { partial } = await context.exportThread(thread!.id);
           return {
