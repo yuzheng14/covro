@@ -1,5 +1,5 @@
 /** Explicit fixture-backed browser test entry. Production never imports this module. */
-import { mkdtemp, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, rename } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -11,6 +11,7 @@ import { AppError } from '../src/shared/errors.js';
 
 /** Test-only diagnostics controls; the production adapter has no hook. */
 class ControlledFixture implements CodexClient {
+  refreshAccountUsage = () => this.inner.refreshAccountUsage!();
   executeCommand: NonNullable<CodexClient['executeCommand']> = (...args) =>
     this.inner.executeCommand!(...args);
   terminateCommand: NonNullable<CodexClient['terminateCommand']> = (...args) =>
@@ -144,6 +145,7 @@ const root = await mkdtemp(join(tmpdir(), 'codex-web-e2e-'));
 const project = join(root, 'project');
 const otherProject = join(root, 'other-project');
 const historyPath = join(root, 'history.json');
+const accountUsagePath = join(root, 'account-usage.json');
 const port = Number(process.env.E2E_PORT ?? 8788);
 const origin = `http://127.0.0.1:${port}`;
 await mkdir(project);
@@ -172,6 +174,7 @@ const codex = new ControlledFixture(
         turnDelayMs: 800,
         titleDelayMs: 1500,
         historyPath,
+        accountUsagePath,
         models: ['simulated-model', 'simulated-alternative'],
       }),
     ],
@@ -209,6 +212,7 @@ const control = createServer((request, response) => {
       unavailable?: boolean;
       external?: 'free' | 'occupied' | 'error';
       releaseThreadId?: string;
+      accountUsage?: object;
     };
     if (
       input.version !== undefined &&
@@ -223,6 +227,11 @@ const control = createServer((request, response) => {
     }
     let externalThreadId: string | undefined;
     const work = controlling.then(async () => {
+      if (input.reset === true) await rm(accountUsagePath, { force: true });
+      if (input.accountUsage) {
+        await writeFile(`${accountUsagePath}.tmp`, JSON.stringify(input.accountUsage));
+        await rename(`${accountUsagePath}.tmp`, accountUsagePath);
+      }
       if (input.restart === true) {
         await runtime.close();
         runtime = await startGateway(config, { codex, staticDir: resolve('dist/web') });

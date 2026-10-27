@@ -174,3 +174,7 @@ node --import tsx scripts/live-browser-smoke.ts --inference  # 真实 Chromium +
 输出默认每 item 2 MiB，事件缓存 16 MiB，连接发送缓冲 4 MiB，可通过 `limits.itemBytes/eventBytes/wsBytes` 修改。单条输出超出保留上限时有截断标记。完整历史页通过 HTTP 读取，WebSocket 推送增量；历史总大小超过连接预算不会截短已加载正文。慢连接关闭后按游标补发，无法重放或替换数据过大时通过 HTTP 重新同步。Codex stderr 仅保留有界内存尾部，不输出凭据或完整环境。外部进程管理器的 stdout 日志需单独轮转。
 
 首版不包含通用文件上传、交互终端、文件编辑器、Git 操作面板、队列、多用户及自动管理 worktree。电脑休眠或停机时无法保证运行状态；不提供唤醒功能。
+
+## 账户额度
+
+打开左侧「设置 → 账户额度」，查看当前 Codex 实例报告的额度分组、限制窗口、credits 和重置时间；可手动刷新。账户额度与会话 token 分开统计，重置时间经过不代表额度已恢复。未登录、不支持、离线与刷新失败会单独显示。完整范围与协议依据见[账户额度](account-usage.md)。不新增 `/usage`。

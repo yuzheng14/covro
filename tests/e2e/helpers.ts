@@ -59,6 +59,7 @@ export async function controlRuntime(
     unavailable?: boolean;
     external?: 'free' | 'occupied' | 'error';
     releaseThreadId?: string;
+    accountUsage?: Record<string, unknown>;
   },
 ): Promise<SystemInfo & { externalThreadId?: string }> {
   const response = await request.post(

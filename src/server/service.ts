@@ -320,6 +320,20 @@ export class GatewayService {
       demo: this.options.demo ?? false,
     };
   }
+
+  async refreshAccountUsage() {
+    return (
+      this.codex.refreshAccountUsage?.() ?? {
+        scope: this.codex.epoch,
+        status: 'unsupported' as const,
+        refreshing: false,
+        updatedAt: null,
+        groups: [],
+        ordinaryUsageAllowed: null,
+        resetCreditsAvailable: null,
+      }
+    );
+  }
   subscribeRuntime(listener: (message: ServerMessage) => void): () => void {
     return this.events.subscribeRuntime(listener);
   }

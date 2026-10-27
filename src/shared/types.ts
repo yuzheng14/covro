@@ -428,6 +428,7 @@ export interface ModelInfo {
   serviceTiers?: string[];
 }
 export interface SystemInfo {
+  accountUsage?: import('./account-usage.js').AccountUsage;
   ready: boolean;
   connection: 'starting' | 'ready' | 'unavailable';
   codexVersion: string | null;

@@ -50,6 +50,7 @@ export type CodexEvent =
   | { type: 'actionResolved'; actionId: string }
   | { type: 'runtime'; diagnostics: CodexDiagnostics };
 export interface CodexClient {
+  refreshAccountUsage?(): Promise<import('../shared/account-usage.js').AccountUsage>;
   executeCommand?(
     processId: string,
     cwd: string,

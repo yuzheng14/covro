@@ -1,12 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronRight, DatabaseBackup, Languages, Server, Settings } from 'lucide-react';
+import {
+  Bell,
+  Gauge,
+  ChevronRight,
+  DatabaseBackup,
+  Languages,
+  Server,
+  Settings,
+} from 'lucide-react';
 import { changeLocale, currentLocale, t } from '../i18n';
 import { localeNames, supportedLocales, type Locale } from '../i18n/locales';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import type { SystemInfo } from '../../shared/types';
+import { AccountUsage } from './AccountUsage';
 import { Icon } from './Icon';
 
 interface Props {
+  system?: SystemInfo;
+  offline?: boolean;
   notificationStatus: string;
   onNotificationSettings: () => void;
   onGatewaySettings: () => void;
@@ -15,6 +27,7 @@ interface Props {
 
 export function SidebarSettings(props: Props) {
   const [open, setOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   return (
     <>
       <Button
@@ -28,12 +41,29 @@ export function SidebarSettings(props: Props) {
         <Settings size={16} aria-hidden="true" />
         {t('sidebar:settings')}
       </Button>
-      {open && <SettingsDialog {...props} onClose={() => setOpen(false)} />}
+      {open && (
+        <SettingsDialog
+          {...props}
+          onAccountUsage={() => setAccountOpen(true)}
+          onClose={() => setOpen(false)}
+        />
+      )}
+      {accountOpen && (
+        <AccountUsage
+          system={props.system}
+          offline={props.offline ?? false}
+          onClose={() => setAccountOpen(false)}
+        />
+      )}
     </>
   );
 }
 
-function SettingsDialog({ onClose, ...props }: Props & { onClose: () => void }) {
+function SettingsDialog({
+  onClose,
+  onAccountUsage,
+  ...props
+}: Props & { onClose: () => void; onAccountUsage: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const { onBackups } = props;
   useEffect(() => {
@@ -90,6 +120,11 @@ function SettingsDialog({ onClose, ...props }: Props & { onClose: () => void }) 
         </Select>
       </label>
       <div className="sidebar-settings-links">
+        <Button variant="ghost" onClick={() => navigate(onAccountUsage)}>
+          <Gauge size={18} aria-hidden="true" />
+          <span className="sidebar-settings-label">{t('account:title')}</span>
+          <ChevronRight size={16} aria-hidden="true" />
+        </Button>
         <Button
           variant="ghost"
           aria-label={t('sidebar:browser_notifications_status', { v0: props.notificationStatus })}

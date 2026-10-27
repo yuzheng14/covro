@@ -1,4 +1,6 @@
 import { CODEX_COMPATIBILITY } from './compatibility.js';
+import { AccountUsageReader } from './account-usage.js';
+import type { GetAccountRateLimitsResponse } from './generated/v2/GetAccountRateLimitsResponse.js';
 import { SHELL_TIMEOUT_MS, SHELL_OUTPUT_BYTES } from '../shared/shell.js';
 import type { CommandExecResponse } from './generated/v2/CommandExecResponse.js';
 import type { CommandExecTerminateResponse } from './generated/v2/CommandExecTerminateResponse.js';
@@ -136,6 +138,7 @@ const CAPABILITIES = [
   'configRequirements/read',
   'experimentalFeature/list',
   'account/read',
+  'account/rateLimits/read',
 ];
 type Responses = {
   'command/exec': CommandExecResponse;
@@ -143,6 +146,7 @@ type Responses = {
   'thread/name/set': ThreadSetNameResponse;
   initialize: InitializeResponse;
   'account/read': GetAccountResponse;
+  'account/rateLimits/read': GetAccountRateLimitsResponse;
   'model/list': ModelListResponse;
   'config/read': ConfigReadResponse;
   'config/batchWrite': ConfigWriteResponse;
@@ -208,6 +212,21 @@ function permissionPathLabel(path: FileSystemPath): string {
 }
 
 export class CodexAdapter implements CodexClient {
+  private readonly accountUsage = new AccountUsageReader({
+    account: () => this.call('account/read', { refreshToken: false }),
+    limits: () => this.call('account/rateLimits/read', { excludeResetCreditDetails: true }),
+    changed: () => this.publishRuntime(),
+    authenticated: (value) => {
+      this.state.authenticated = value;
+    },
+  });
+  async refreshAccountUsage() {
+    if (!this.ready) {
+      this.accountUsage.invalidate('offline');
+      return this.accountUsage.snapshot();
+    }
+    return this.accountUsage.refresh();
+  }
   private readonly commandOutputs = new Map<
     string,
     Parameters<NonNullable<CodexClient['executeCommand']>>[3]
@@ -251,7 +270,7 @@ export class CodexAdapter implements CodexClient {
     return this.state.ready;
   }
   diagnostics(): CodexDiagnostics {
-    return structuredClone(this.state);
+    return { ...structuredClone(this.state), accountUsage: this.accountUsage.snapshot() };
   }
   onEvent(listener: (event: CodexEvent) => void): () => void {
     this.listeners.add(listener);
@@ -287,6 +306,7 @@ export class CodexAdapter implements CodexClient {
       error: undefined,
       capabilities: [],
     };
+    this.accountUsage.invalidate('loading');
     this.publishRuntime();
     try {
       const env = {
@@ -351,6 +371,7 @@ export class CodexAdapter implements CodexClient {
         this.tokenUsage.clear();
         this.denials.clear();
         this.state.connection = 'unavailable';
+        this.accountUsage.invalidate('offline');
         this.state.error = error.message;
         this.expireActions();
         this.publishRuntime();
@@ -444,6 +465,8 @@ export class CodexAdapter implements CodexClient {
       this.state.connection = 'ready';
       this.state.capabilities = CAPABILITIES.filter((method) => !this.disabled.has(method));
       this.publishRuntime();
+      // Quota service latency must not hold up the gateway or normal Codex work.
+      void this.refreshAccountUsage();
     } catch (error) {
       const failure = asCodexError(error);
       this.state.ready = false;
@@ -457,6 +480,7 @@ export class CodexAdapter implements CodexClient {
   }
   async stop(): Promise<void> {
     this.stopped = true;
+    this.accountUsage.invalidate('offline');
     clearTimeout(this.restartTimer);
     this.restartTimer = undefined;
     await this.starting?.catch(() => {});
@@ -1212,6 +1236,15 @@ export class CodexAdapter implements CodexClient {
     const event = message as ServerNotification;
     const p = event.params;
     switch (event.method) {
+      case 'account/updated':
+        this.state.authenticated = null;
+        this.accountUsage.invalidate('loading');
+        if (this.ready) void this.refreshAccountUsage();
+        break;
+      case 'account/rateLimits/updated':
+        // This notification is sparse; a full read preserves all buckets and metadata.
+        if (this.ready) void this.refreshAccountUsage();
+        break;
       case 'command/exec/outputDelta': {
         const { processId, stream, deltaBase64, capReached } = event.params;
         this.commandOutputs.get(processId)?.(
