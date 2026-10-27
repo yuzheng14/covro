@@ -98,7 +98,7 @@ export function SkillsBrowser({
                   <details>
                     <summary>
                       <span className="skill-mark">
-                        <Icon name="code" size={18} />
+                        <Icon name="skill" size={18} />
                       </span>
                       <span className="skills-summary">
                         <span className="skills-name">

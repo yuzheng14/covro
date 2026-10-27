@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { Puzzle } from 'lucide-react';
 
 const paths = {
   github:
@@ -37,10 +38,12 @@ export function Icon({
   size = 18,
   style,
 }: {
-  name: keyof typeof paths;
+  name: keyof typeof paths | 'skill';
   size?: number;
   style?: CSSProperties;
 }) {
+  if (name === 'skill')
+    return <Puzzle size={size} strokeWidth={1.7} aria-hidden="true" style={style} />;
   return (
     <svg
       width={size}
