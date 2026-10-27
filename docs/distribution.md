@@ -74,6 +74,18 @@ covro update repair
 
 后台工作进程不依赖浏览器连接，升级进度与最终结果在重启后可读取。使用了登录自启的实例由原系统服务重新启动，普通后台实例由升级进程启动。若进程异常失联，等待陈旧锁释放后使用 `covro update repair`；备份不会被失败重试自动删除。数据库历史不兼容时拒绝降级，改用兼容版本或独立测试配置，不重建数据库。
 
+### 切换默认 Node 环境
+
+先在新的终端确认默认 Node 受支持，并在该环境用 npm 全局安装 Covro，再从仍运行的实例执行 `covro update` 或在更新面板检查更新。Covro 版本相同时，按钮显示“切换 Node 并重启”，仍执行兼容性、空闲等待、备份和维护状态下的启动验证。自动更新不会单独触发同版本 Node 迁移。若新环境已有更高的 Covro 版本，优先采用该安装，避免被较旧的渠道标签覆盖；降级仍需明确允许且通过数据库检查。目标安装必须包含运行身份报告能力，旧发行版缺少报告时会拒绝激活并恢复。
+
+目标环境取自用户登录 shell 在 HOME 中启动后的 `node` 和 `PATH`，支持 bash、zsh、sh/dash 和 fish。检查清除旧进程的 nvm/fnm 活跃版本路径，解析 Node、npm 和 Covro 符号链接，并用目标 Node 显式执行同安装中的 npm CLI，记录 npm 版本、全局 prefix 和安装目录。支持标准 npm Unix 全局布局及在登录 shell 中正确初始化的 nvm/fnm；这些管理器的配置文件、HOME 中的版本文件和 shell 初始化会影响选中的默认版本。探测有 15 秒超时。它不修改默认 Node 或版本管理器配置。
+
+无法解析到实际 npm CLI 的 shim、Node/npm 混用、缺失 Covro、源码链接、只读目录及不受支持的 Node 会阻止切换。Volta/asdf/mise 等 shim 只有解析后符合相同 Node/npm 安装与标准 npm 布局时才可使用，不保证覆盖各管理器的全部配置。此时在新终端检查 `node --version`、`npm --version`、`npm prefix -g` 与 `npm root -g`，修复默认环境并执行 `npm install -g @covro/covro` 后重新检查；不必先停止旧服务。诊断失败不会退回旧进程的 PATH 猜测目标。
+
+普通后台实例将新 Node、入口和 PATH 保存在该配置的实例状态中，即使用旧 CLI 再次执行 stop/start，也继续使用新环境。Covro 安装的 launchd 登录服务与 systemd 用户服务会先核对启动来源，切换时只更新 Node、入口和 PATH，保留其他服务设置；失败时恢复原文件。自定义 systemd drop-in、来源不匹配以及检测到的 PM2/Supervisor 等外部管理器会拒绝受管切换，应在原管理器中修改实际启动命令并重启。外部管理器没有统一识别协议，未登记为 Covro 登录服务的自定义部署仍应使用原部署方式更新。不要在验证完成前删除旧 Node 或旧 Covro 安装，它们是回滚来源。
+
+`covro status` 的 `runtime` 报告当前进程实际的 Node 版本、可执行文件和 Covro 入口。`covro update status` 和面板的安装来源/技术详情还报告目标 npm 与全局安装来源，以及成功激活后的实际运行身份。更新记录随实例保留，不随 npm 安装目录切换而丢失。启动验证失败时先查看实例日志与升级日志；需要恢复失联事务时，在原 Node 环境运行 `covro update repair --config ...`，或用下方独立工作进程。修复仍拒绝覆盖已重新开放业务写入的数据。
+
 若系统恰好在两次目录切换之间中断，npm 的 `covro` 入口可能暂时不可用。保留在应用管理目录中的独立工作进程仍可恢复；根据该安装的 `context.json` 确认目录后执行（自定义 `COVRO_HOME` 时替换路径）：
 
 ```sh

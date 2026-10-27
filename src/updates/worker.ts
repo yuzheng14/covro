@@ -18,13 +18,25 @@ import { dirname, join } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import lockfile from 'proper-lockfile';
 import type Database from 'better-sqlite3';
-import type { UpdateRun } from '../shared/updates.js';
+import type { UpdateRun, RuntimeIdentity } from '../shared/updates.js';
 import type { UpdateContext } from './manager.js';
 import { control, isNotRunning } from '../cli/control.js';
 import { startBackground, stopBackground } from '../cli/background.js';
 import { copyDurable, readJson, saveJson } from './files.js';
 import { activateUpdate, transactionPaths } from './transaction.js';
 import { inspectInstallation, registry } from './registry.js';
+import {
+  assertRuntime,
+  resolveRuntimeTarget,
+  targetNpmEnvironment,
+  verifyRuntimeExecutable,
+} from './runtime.js';
+import {
+  snapshotLaunch,
+  switchLaunch,
+  restoreLaunch,
+  type LaunchSnapshot,
+} from '../cli/runtime-launch.js';
 
 const exec = promisify(execFile);
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -34,12 +46,18 @@ type DaemonStatus = {
   maintenance?: boolean;
   codexVersion?: string | null;
   codexReady?: boolean;
+  runtime?: RuntimeIdentity;
 };
 
-async function startService(context: UpdateContext) {
+async function startService(context: UpdateContext, candidate = false) {
   // Shared with `covro start`: never inherit a Background security session on macOS.
   // Activation is checked from the durable update record by the daemon.
-  await startBackground(context.location, join(context.root, 'bin/covro.mjs'));
+  const target = candidate ? context.target : undefined;
+  await startBackground(
+    context.location,
+    join(context.root, 'bin/covro.mjs'),
+    target ? { node: target.node, entry: target.entry, path: target.path } : context.source,
+  );
 }
 async function stopService(context: UpdateContext) {
   await stopBackground(context.location);
@@ -51,6 +69,8 @@ async function verifyRestoredService(context: UpdateContext, version: string) {
       const restored = await control<DaemonStatus>(context.location, 'status');
       if (restored.version !== version || restored.maintenance)
         throw new Error('旧版恢复身份不匹配');
+      const record = await readJson<UpdateRun>(join(context.directory, 'run.json'));
+      if (record?.runtime) assertRuntime(restored.runtime, record.runtime.from);
       return;
     } catch (error) {
       if (attempt === 239) throw error;
@@ -103,7 +123,7 @@ async function worker(directory: string) {
     await saveJson(join(directory, 'run.json'), record);
   };
   const paths = transactionPaths(
-    context.root,
+    context.target?.root ?? context.root,
     record.id,
     context.dataDir,
     context.location.config,
@@ -111,36 +131,39 @@ async function worker(directory: string) {
   );
   let releaseMaintenance: (() => Promise<void>) | undefined;
   let releaseData: (() => Promise<void>) | undefined;
-  const previousMetadata = await readJson<{ version: string }>(
-    join(paths.previous, 'package.json'),
-  );
-  const originalRoot = previousMetadata?.version === record.from ? paths.previous : context.root;
-  const originalMetadata = await readJson<{
-    version: string;
-    covroCommit?: string;
-    covroDatabase?: unknown;
-  }>(join(originalRoot, 'package.json'));
-  const Sqlite = createRequire(join(originalRoot, 'package.json'))(
-    'better-sqlite3',
-  ) as typeof Database;
-  const migrations = readMigrations(join(originalRoot, 'dist/drizzle'));
-  const backups = new BackupStore({
-    directory: backupDirectory(context.location.home, context.dataDir),
-    config: paths.config,
-    dataDir: paths.dataDir,
-    appVersion: record.from,
-    commit: originalMetadata?.covroCommit,
-    contract: databaseCompatibilitySchema.parse(
-      originalMetadata?.covroDatabase ?? {
-        schemaVersion: migrations.length,
-        minRestorableSchemaVersion: 1,
-        backupFormatVersion: 1,
-      },
-    ),
-    Sqlite,
-    migrations,
-  });
   try {
+    if (record.runtime) await verifyRuntimeExecutable(record.runtime.from);
+    const previousMetadata = await readJson<{ version: string }>(
+      join(paths.previous, 'package.json'),
+    );
+    const sameRoot = paths.root.replace(/\/$/, '') === context.root.replace(/\/$/, '');
+    const originalRoot =
+      sameRoot && previousMetadata?.version === record.from ? paths.previous : context.root;
+    const originalMetadata = await readJson<{
+      version: string;
+      covroCommit?: string;
+      covroDatabase?: unknown;
+    }>(join(originalRoot, 'package.json'));
+    const Sqlite = createRequire(join(originalRoot, 'package.json'))(
+      'better-sqlite3',
+    ) as typeof Database;
+    const migrations = readMigrations(join(originalRoot, 'dist/drizzle'));
+    const backups = new BackupStore({
+      directory: backupDirectory(context.location.home, context.dataDir),
+      config: paths.config,
+      dataDir: paths.dataDir,
+      appVersion: record.from,
+      commit: originalMetadata?.covroCommit,
+      contract: databaseCompatibilitySchema.parse(
+        originalMetadata?.covroDatabase ?? {
+          schemaVersion: migrations.length,
+          minRestorableSchemaVersion: 1,
+          backupFormatVersion: 1,
+        },
+      ),
+      Sqlite,
+      migrations,
+    });
     if (process.argv[3] === '--repair') {
       releaseMaintenance = await acquireMaintenanceLock(context.dataDir);
       if (!(await readJson(join(paths.backup, 'snapshot.json'))))
@@ -157,10 +180,14 @@ async function worker(directory: string) {
       const previous = await readJson<{ version: string; name: string }>(
         join(paths.previous, 'package.json'),
       );
-      if (previous) {
+      if (previous || context.reuseTarget) {
         if (active && !active.maintenance)
           throw new Error('旧服务已恢复业务写入；拒绝用升级前快照覆盖现有数据，请保留现场检查。');
-        if (previous.name !== npmPackageName || previous.version !== record.from)
+        if (
+          previous &&
+          (previous.name !== npmPackageName ||
+            previous.version !== (context.target?.version ?? record.from))
+        )
           throw new Error('旧版备份身份不匹配');
         const snapshot = await readJson<{ complete: boolean; formatVersion?: number }>(
           join(paths.backup, 'snapshot.json'),
@@ -175,7 +202,7 @@ async function worker(directory: string) {
           )
             throw new Error('备份身份不匹配');
         } else await verifyLegacySnapshot(paths.backup, Sqlite, join(originalRoot, 'dist/drizzle'));
-      } else {
+      } else if (sameRoot) {
         const original = await readJson<{ name: string; version: string }>(
           join(paths.root, 'package.json'),
         );
@@ -191,6 +218,8 @@ async function worker(directory: string) {
       if (previous) {
         await rm(paths.root, { recursive: true, force: true });
         await rename(paths.previous, paths.root);
+      }
+      if (previous || context.reuseTarget) {
         for (const name of ['app.sqlite', 'app.sqlite-wal', 'app.sqlite-shm']) {
           await rm(join(paths.dataDir, name), { force: true });
           try {
@@ -201,8 +230,10 @@ async function worker(directory: string) {
         }
         await copyDurable(join(paths.backup, 'config.json'), paths.config);
       }
+      const launch = await readJson<LaunchSnapshot>(join(directory, `launch-${record.id}.json`));
+      if (launch) await restoreLaunch(context.location, launch);
       const restored = await readJson<{ name: string; version: string }>(
-        join(paths.root, 'package.json'),
+        join(context.root, 'package.json'),
       );
       if (restored?.name !== npmPackageName || restored.version !== record.from)
         throw new Error('未找到完整的上一版本安装');
@@ -227,7 +258,11 @@ async function worker(directory: string) {
       const instance = await readJson<{ root: string; config: string; socket: string }>(
         join(context.location.home, 'instances', key, 'instance.json'),
       );
-      if (instance?.root !== context.root) continue;
+      if (
+        !instance ||
+        ![context.root.replace(/\/$/, ''), paths.root].includes(instance.root.replace(/\/$/, ''))
+      )
+        continue;
       try {
         await control({ ...context.location, socket: instance.socket }, 'status');
         throw new Error('同一 npm 安装还有其他 Covro 实例，请先停止其他实例再升级。');
@@ -236,30 +271,51 @@ async function worker(directory: string) {
       }
     }
     await access(dirname(context.root), constants.W_OK);
-    // npm global layout keeps production dependencies nested in the package being swapped.
-    await exec(
-      'npm',
-      [
-        'install',
-        '--global',
-        '--prefix',
-        paths.prefix,
-        '--omit=dev',
-        '--no-audit',
-        '--no-fund',
-        `--registry=${registry}`,
-        '--allow-scripts=better-sqlite3',
-        `${npmPackageName}@${record.target}`,
-      ],
-      { timeout: 10 * 60_000, maxBuffer: 2 * 1024 * 1024 },
+    await access(dirname(paths.root), constants.W_OK);
+    if (context.target) {
+      const target = await resolveRuntimeTarget();
+      assertRuntime(target, context.target);
+      if (
+        target.npm !== context.target.npm ||
+        target.npmVersion !== context.target.npmVersion ||
+        target.prefix !== context.target.prefix ||
+        target.path !== context.target.path ||
+        target.version !== context.target.version
+      )
+        throw new Error('目标 Node/npm 环境在检查后变化，请重新检查更新。');
+    }
+    const candidateRoot = context.reuseTarget ? paths.root : paths.candidate;
+    const node = context.target?.node ?? process.execPath;
+    const env = targetNpmEnvironment(
+      context.target?.path ?? process.env.PATH ?? '/usr/bin:/bin',
+      context.target?.npmConfig,
     );
+    // npm global layout keeps production dependencies nested in the package being swapped.
+    if (!context.reuseTarget)
+      await exec(
+        context.target?.node ?? 'npm',
+        [
+          ...(context.target ? [context.target.npm] : []),
+          'install',
+          '--global',
+          '--prefix',
+          paths.prefix,
+          '--omit=dev',
+          '--no-audit',
+          '--no-fund',
+          `--registry=${registry}`,
+          '--allow-scripts=better-sqlite3',
+          `${npmPackageName}@${record.target}`,
+        ],
+        { env, timeout: 10 * 60_000, maxBuffer: 2 * 1024 * 1024 },
+      );
     const candidate = await readJson<{
       name: string;
       version: string;
       covroCodex?: unknown;
       covroCommit?: string;
       gitHead?: string;
-    }>(join(paths.candidate, 'package.json'));
+    }>(join(candidateRoot, 'package.json'));
     if (candidate?.name !== npmPackageName || candidate.version !== record.target)
       throw new Error('候选包身份或版本不匹配');
     if (record.commit && (candidate.covroCommit ?? candidate.gitHead) !== record.commit)
@@ -279,82 +335,110 @@ async function worker(directory: string) {
       );
     };
     await checkCodex();
-    await exec(process.execPath, [join(paths.candidate, 'bin/covro.mjs'), '--version'], {
+    const versionProbe = await exec(node, [join(candidateRoot, 'bin/covro.mjs'), '--version'], {
       timeout: 30_000,
+      env,
     });
+    if (versionProbe.stdout.trim() !== record.target)
+      throw new Error('目标 Node 执行 Covro 入口后返回的版本不匹配');
     const nativeProbe =
       'const {createRequire}=await import("node:module"); const r=createRequire(process.argv[1]); const DB=r("better-sqlite3"); const db=new DB(":memory:"); db.close();';
     await exec(
-      process.execPath,
-      ['--input-type=module', '-e', nativeProbe, join(paths.candidate, 'package.json')],
-      { timeout: 30_000 },
+      node,
+      ['--input-type=module', '-e', nativeProbe, join(candidateRoot, 'package.json')],
+      { env, timeout: 30_000 },
     );
-    await verifyMigrations(context, paths.candidate);
+    await verifyMigrations(context, candidateRoot);
+    const launch: LaunchSnapshot = await snapshotLaunch(
+      context.location,
+      context.source ?? {
+        node: process.execPath,
+        entry: join(context.root, 'bin/covro.mjs'),
+        path: process.env.PATH ?? '/usr/bin:/bin',
+      },
+    );
+    if (context.target)
+      launch.target = { node, entry: context.target.entry, path: context.target.path };
+    await saveJson(join(directory, `launch-${record.id}.json`), launch);
     releaseMaintenance = await acquireMaintenanceLock(context.dataDir);
-    await activateUpdate(paths, {
-      backup: async () => {
-        releaseData = await acquireInstanceLock(context.dataDir);
-        await backups.create({ id: record!.id, trigger: 'preUpgrade', protectedBy: record!.id });
-      },
-      restore: async () => {
-        releaseData ??= await acquireInstanceLock(context.dataDir);
-        await backups.restoreFiles(record!.id);
-      },
-      phase: update,
-      waitForIdle: async () => {
-        // Queue without blocking normal work; admission closes atomically only after all blockers clear.
-        for (;;) {
-          await checkCodex();
-          const result = await control<{ ready: boolean; reason?: string }>(
-            context.location,
-            'prepare-update',
-          );
-          if (result.ready) {
+    await activateUpdate(
+      paths,
+      {
+        backup: async () => {
+          releaseData = await acquireInstanceLock(context.dataDir);
+          await backups.create({ id: record!.id, trigger: 'preUpgrade', protectedBy: record!.id });
+        },
+        restore: async () => {
+          releaseData ??= await acquireInstanceLock(context.dataDir);
+          await backups.restoreFiles(record!.id);
+        },
+        switchLaunch: context.target
+          ? () =>
+              switchLaunch(
+                context.location,
+                { node, entry: context.target!.entry, path: context.target!.path },
+                launch,
+              )
+          : undefined,
+        restoreLaunch: () => restoreLaunch(context.location, launch),
+        phase: update,
+        waitForIdle: async () => {
+          // Queue without blocking normal work; admission closes atomically only after all blockers clear.
+          for (;;) {
             await checkCodex();
-            return;
+            const result = await control<{ ready: boolean; reason?: string }>(
+              context.location,
+              'prepare-update',
+            );
+            if (result.ready) {
+              await checkCodex();
+              return;
+            }
+            await update('waiting', result.reason ?? '等待所有任务结束');
+            await setTimeout(2_000);
           }
-          await update('waiting', result.reason ?? '等待所有任务结束');
-          await setTimeout(2_000);
-        }
-      },
-      stop: () => stopService(context),
-      start: async (candidate) => {
-        await releaseData?.();
-        releaseData = undefined;
-        await startService(context);
-        if (!candidate) await verifyRestoredService(context, record!.from);
-      },
-      verify: async () => {
-        for (let attempt = 0; attempt < 240; attempt++) {
-          const current = await control<DaemonStatus>(context.location, 'status').catch(
-            () => undefined,
-          );
-          if (current) {
-            if (current.version !== record!.target || !current.maintenance)
-              throw new Error('新版服务身份或维护状态不匹配');
-            await checkCodex(current);
-            if (current.codexReady) return;
+        },
+        stop: () => stopService(context),
+        start: async (candidate) => {
+          await releaseData?.();
+          releaseData = undefined;
+          await startService(context, candidate);
+          if (!candidate) await verifyRestoredService(context, record!.from);
+        },
+        verify: async () => {
+          for (let attempt = 0; attempt < 240; attempt++) {
+            const current = await control<DaemonStatus>(context.location, 'status').catch(
+              () => undefined,
+            );
+            if (current) {
+              if (current.version !== record!.target || !current.maintenance)
+                throw new Error('新版服务身份或维护状态不匹配');
+              if (record!.runtime) assertRuntime(current.runtime, record!.runtime.target);
+              await checkCodex(current);
+              if (current.codexReady) return;
+            }
+            await setTimeout(250);
           }
-          await setTimeout(250);
-        }
-        throw new Error('新版服务或 Codex 连接未就绪，拒绝激活');
+          throw new Error('新版服务或 Codex 连接未就绪，拒绝激活');
+        },
+        commit: async () => {
+          // Gateway commits the durable result before reopening task admission.
+          await control(context.location, 'activate-update', {
+            id: record!.id,
+            channel: record!.channel,
+          });
+          const final = await readJson<UpdateRun>(join(directory, 'run.json'));
+          if (!final?.committed) throw new Error('新版尚未确认升级提交');
+          record = final;
+        },
+        hasCommitted: async () =>
+          Boolean((await readJson<UpdateRun>(join(directory, 'run.json')))?.committed),
+        resume: async () => {
+          await control(context.location, 'cancel-update').catch(() => {});
+        },
       },
-      commit: async () => {
-        // Gateway commits the durable result before reopening task admission.
-        await control(context.location, 'activate-update', {
-          id: record!.id,
-          channel: record!.channel,
-        });
-        const final = await readJson<UpdateRun>(join(directory, 'run.json'));
-        if (!final?.committed) throw new Error('新版尚未确认升级提交');
-        record = final;
-      },
-      hasCommitted: async () =>
-        Boolean((await readJson<UpdateRun>(join(directory, 'run.json')))?.committed),
-      resume: async () => {
-        await control(context.location, 'cancel-update').catch(() => {});
-      },
-    });
+      context.reuseTarget,
+    );
   } catch (error) {
     const latest = await readJson<UpdateRun>(join(directory, 'run.json'));
     if (latest?.committed) {

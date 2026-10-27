@@ -66,5 +66,9 @@
   "releaseNotesMissing": "此版本暂无发布说明，部分 Beta / Dev 版本没有对应的 GitHub Release。你仍可继续更新。",
   "releaseNotesEmpty": "此 Release 尚未填写说明，你仍可继续更新。",
   "releaseNotesRateLimited": "GitHub 请求已被限流，请稍后重试；你仍可继续更新。",
-  "releaseNotesFailed": "发布说明加载失败，请检查网络后重试；你仍可继续更新。"
+  "releaseNotesFailed": "发布说明加载失败，请检查网络后重试；你仍可继续更新。",
+  "runtime": "Node 环境",
+  "installation_source": "安装来源",
+  "runtime_unavailable": "无法确认目标 Node 环境，请查看详情后重新检查。",
+  "migrate_and_restart": "切换 Node 并重启"
 }

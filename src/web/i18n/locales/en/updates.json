@@ -66,5 +66,9 @@
   "releaseNotesMissing": "No release notes are available for this version. Some Beta / Dev versions have no GitHub Release. You can still update.",
   "releaseNotesEmpty": "This release has no description yet. You can still update.",
   "releaseNotesRateLimited": "GitHub is limiting requests. Retry later; you can still update.",
-  "releaseNotesFailed": "Could not load release notes. Check the connection and retry; you can still update."
+  "releaseNotesFailed": "Could not load release notes. Check the connection and retry; you can still update.",
+  "runtime": "Node environment",
+  "installation_source": "Installation source",
+  "runtime_unavailable": "Cannot confirm the target Node environment. Review details and check again.",
+  "migrate_and_restart": "Switch Node and restart"
 }

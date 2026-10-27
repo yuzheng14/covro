@@ -10,6 +10,8 @@ import {
 } from '../../src/shared/codex-compatibility.js';
 import { UpdateManager } from '../../src/updates/manager.js';
 import * as registry from '../../src/updates/registry.js';
+import * as runtime from '../../src/updates/runtime.js';
+import { runningRuntime } from '../../src/cli/runtime.js';
 import { paths, packageInfo } from '../../src/cli/paths.js';
 import { releaseCompatibilityNotes } from '../../scripts/release-compatibility.js';
 import * as updateFiles from '../../src/updates/files.js';
@@ -48,6 +50,15 @@ async function managerFixture(metadata: unknown = manifest) {
   const directory = await mkdtemp(join(tmpdir(), 'covro-codex-gate-'));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   vi.spyOn(registry, 'inspectInstallation').mockResolvedValue(undefined);
+  vi.spyOn(runtime, 'resolveRuntimeTarget').mockResolvedValue({
+    ...runningRuntime(),
+    npm: '/npm/bin/npm-cli.js',
+    npmVersion: '11.0.0',
+    prefix: '/npm',
+    globalRoot: '/npm/lib/node_modules',
+    path: process.env.PATH!,
+    version: packageInfo.version,
+  });
   vi.spyOn(registry, 'lookupRelease').mockResolvedValue({
     name: '@covro/covro',
     channel: 'stable',
@@ -56,7 +67,7 @@ async function managerFixture(metadata: unknown = manifest) {
   });
   let version: string | null = '0.163.0';
   const manager = new UpdateManager(
-    { ...paths(join(directory, 'config.json')), home: directory },
+    { ...paths(join(directory, 'config.json')), home: directory, state: join(directory, 'state') },
     directory,
     () => version,
   );

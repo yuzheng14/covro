@@ -5,7 +5,12 @@ import { mkdir } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ReleaseChannel, UpdateStatus } from '../../src/shared/updates';
-import { chooseSelectOption, confirmCompatibility, controlRuntime } from './helpers';
+import {
+  chooseSelectOption,
+  confirmCompatibility,
+  controlRuntime,
+  selectInterfaceLocale,
+} from './helpers';
 const currentVersion = (
   JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
     version: string;
@@ -491,3 +496,90 @@ test('channel and same-channel target changes discard late release-note response
   expect(requested).toEqual([nextVersion, developmentVersion, changed]);
   await screenshot(page, 'release-notes-changed-target.png');
 });
+
+for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
+  for (const viewport of [
+    { name: 'desktop', width: 1440, height: 1100 },
+    { name: 'mobile', width: 390, height: 844 },
+  ]) {
+    test(`${viewport.name}: ${locale} same-version Node migration, actual source and diagnostics`, async ({
+      page,
+    }) => {
+      const strings = JSON.parse(
+        readFileSync(
+          new URL(`../../src/web/i18n/locales/${locale}/updates.json`, import.meta.url),
+          'utf8',
+        ),
+      ) as Record<string, string>;
+      const common = JSON.parse(
+        readFileSync(
+          new URL(`../../src/web/i18n/locales/${locale}/common.json`, import.meta.url),
+          'utf8',
+        ),
+      ) as Record<string, string>;
+      const fixture = await updatesFixture(page);
+      fixture.setRelease({ version: currentVersion, channel: 'stable' });
+      const current = {
+        node: '/opt/node-a/bin/node',
+        nodeVersion: '24.19.0',
+        root: '/opt/node-a/lib/node_modules/@covro/covro',
+        entry: '/opt/node-a/lib/node_modules/@covro/covro/bin/covro.mjs',
+      };
+      const target = {
+        node: '/opt/node-b/bin/node',
+        nodeVersion: '24.22.1',
+        root: '/opt/node-b/lib/node_modules/@covro/covro',
+        entry: '/opt/node-b/lib/node_modules/@covro/covro/bin/covro.mjs',
+      };
+      fixture.state.runtime = { current, target, migration: true };
+      await page.setViewportSize(viewport);
+      await page.goto('/');
+      await confirmCompatibility(page);
+      await selectInterfaceLocale(page, locale);
+      await page.getByRole('button', { name: common.covro_updates, exact: true }).click();
+      const dialog = page.locator('.update-dialog');
+      await dialog.getByRole('button', { name: strings.check_for_updates, exact: true }).click();
+      const migrate = dialog.getByRole('button', {
+        name: strings.migrate_and_restart,
+        exact: true,
+      });
+      await expect(migrate).toBeEnabled();
+      await dialog.getByText(strings.installation_source!, { exact: true }).click();
+      await expect(dialog.locator('.update-runtime')).toContainText(target.entry);
+      await screenshot(page, `node-${locale}-${viewport.name}-migration.png`);
+      expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        true,
+      );
+      await migrate.scrollIntoViewIfNeeded();
+      await screenshot(page, `node-${locale}-${viewport.name}-action.png`);
+      await migrate.click();
+      expect(fixture.requests.filter((request) => request.path.endsWith('/run'))).toHaveLength(1);
+      fixture.state.run = {
+        ...fixture.state.run!,
+        phase: 'succeeded',
+        committed: true,
+        runtime: { from: current, target, actual: target },
+      };
+      fixture.state.runtime = { current: target, migration: false };
+      await expect(dialog.locator('.update-progress')).toContainText(strings.update_successful!, {
+        timeout: 10_000,
+      });
+      await expect(dialog.locator('.update-runtime')).toContainText('24.22.1');
+      await dialog.locator('.update-progress').scrollIntoViewIfNeeded();
+      await screenshot(page, `node-${locale}-${viewport.name}-succeeded.png`);
+      fixture.state.runtime.error =
+        '目标 npm 的全局 Covro 入口缺失；请在目标终端执行 npm install -g @covro/covro。';
+      await expect(dialog.getByRole('alert')).toContainText(strings.runtime_unavailable!, {
+        timeout: 10_000,
+      });
+      await expect(
+        dialog.getByRole('button', { name: strings.use_this_channel, exact: true }),
+      ).toBeDisabled();
+      await dialog.locator('.update-runtime').scrollIntoViewIfNeeded();
+      await screenshot(page, `node-${locale}-${viewport.name}-diagnostic.png`);
+      expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        true,
+      );
+    });
+  }
+}

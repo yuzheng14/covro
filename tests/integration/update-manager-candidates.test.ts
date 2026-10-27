@@ -4,10 +4,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
+import lockfile from 'proper-lockfile';
 import { CODEX_COMPATIBILITY } from '../../src/codex/compatibility.js';
 import { paths, packageInfo } from '../../src/cli/paths.js';
 import { UpdateManager } from '../../src/updates/manager.js';
 import * as registry from '../../src/updates/registry.js';
+import * as runtime from '../../src/updates/runtime.js';
+import { runningRuntime } from '../../src/cli/runtime.js';
 import { readJson, saveJson } from '../../src/updates/files.js';
 import type { ReleaseChannel, UpdateRun, UpdateSettings } from '../../src/shared/updates.js';
 
@@ -33,6 +36,15 @@ async function fixture(channel: ReleaseChannel, version = '0.2.0', automatic = f
   const directory = await mkdtemp(join(tmpdir(), 'covro-candidates-'));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   vi.spyOn(registry, 'inspectInstallation').mockResolvedValue(undefined);
+  vi.spyOn(runtime, 'resolveRuntimeTarget').mockResolvedValue({
+    ...runningRuntime(),
+    npm: '/npm/bin/npm-cli.js',
+    npmVersion: '11.0.0',
+    prefix: '/npm',
+    globalRoot: '/npm/lib/node_modules',
+    path: process.env.PATH!,
+    version: packageInfo.version,
+  });
   let tags: Record<string, string | number> = {
     latest: version,
     beta: '0.2.0-beta.1',
@@ -57,7 +69,11 @@ async function fixture(channel: ReleaseChannel, version = '0.2.0', automatic = f
     queueMicrotask(() => child.emit('spawn'));
     return child as unknown as ReturnType<typeof spawn>;
   });
-  const location = { ...paths(join(directory, 'config.json')), home: directory };
+  const location = {
+    ...paths(join(directory, 'config.json')),
+    home: directory,
+    state: join(directory, 'state'),
+  };
   const manager = new UpdateManager(location, directory, () => CODEX_COMPATIBILITY.recommended);
   cleanup.push(() => manager.close());
   await saveJson(join(manager.context!.directory, 'settings.json'), { channel, automatic });
@@ -67,6 +83,10 @@ async function fixture(channel: ReleaseChannel, version = '0.2.0', automatic = f
   await vi.waitFor(async () =>
     expect((await manager.status()).run?.phase ?? 'idle').toBe(automatic ? 'installing' : 'idle'),
   );
+  if (automatic)
+    await vi.waitFor(async () =>
+      expect(await lockfile.check(manager.context!.directory)).toBe(false),
+    );
   return {
     manager,
     fetch,
@@ -191,4 +211,54 @@ it('clears a stale candidate and blocks installation after a partial registry fa
   });
   expect(spawn).not.toHaveBeenCalled();
   expect(await readJson<UpdateRun>(join(manager.context!.directory, 'run.json'))).toBeUndefined();
+});
+
+it('migrates an equal version while retaining Codex activation checks and the durable update directory', async () => {
+  packageInfo.version = '0.2.0';
+  const { manager, location, directory } = await fixture('stable');
+  const target = {
+    ...(await runtime.resolveRuntimeTarget()),
+    node: '/new/node',
+    nodeVersion: '24.22.1',
+    root: '/new/lib/node_modules/@covro/covro',
+    entry: '/new/lib/node_modules/@covro/covro/bin/covro.mjs',
+    covroCodex: CODEX_COMPATIBILITY,
+  };
+  vi.mocked(runtime.resolveRuntimeTarget).mockResolvedValue(target);
+  const started = await manager.start({ clientOperationId: crypto.randomUUID() });
+  expect(started.run).toMatchObject({ from: '0.2.0', target: '0.2.0', runtime: { target } });
+  expect(spawn).toHaveBeenCalledOnce();
+  expect(await readJson(join(location.state, 'updates.json'))).toEqual({
+    directory: manager.context!.directory,
+  });
+  expect(await readJson(join(manager.context!.directory, 'context.json'))).toMatchObject({
+    reuseTarget: true,
+    target,
+  });
+  await saveJson(join(manager.context!.directory, 'run.json'), {
+    ...started.run,
+    phase: 'verifying',
+  });
+  // Matching Covro versions alone cannot authorize an old Node process to commit the new runtime.
+  await expect(manager.commitActivation(started.run!.id)).rejects.toThrow('Node');
+  const restarted = new UpdateManager(location, directory, () => CODEX_COMPATIBILITY.recommended);
+  cleanup.push(() => restarted.close());
+  await restarted.initialize();
+  expect(restarted.context!.directory).toBe(manager.context!.directory);
+});
+
+it('selects a newer preinstalled target without silently downgrading it to the channel tag', async () => {
+  packageInfo.version = '0.3.0';
+  const { manager } = await fixture('stable', '0.2.0');
+  const target = {
+    ...(await runtime.resolveRuntimeTarget()),
+    node: '/new/node',
+    version: '0.4.0',
+    covroCodex: CODEX_COMPATIBILITY,
+  };
+  vi.mocked(runtime.resolveRuntimeTarget).mockResolvedValue(target);
+  expect((await manager.check()).available).toMatchObject({ version: '0.4.0', downgrade: false });
+  expect((await manager.start({ clientOperationId: crypto.randomUUID() })).run?.target).toBe(
+    '0.4.0',
+  );
 });
