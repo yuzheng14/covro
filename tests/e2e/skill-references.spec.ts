@@ -48,6 +48,7 @@ test('submits exact skill identity on first and existing messages while preservi
   await input(page).press('Enter');
   expect((await continued).postDataJSON().skills[0].path).toContain('/repo/SKILL.md');
   await expect(input(page)).toHaveValue('');
+  await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
 });
 test('isolates project and conversation drafts and removes both marker and identity', async ({
   page,
@@ -85,6 +86,7 @@ test('uses the reserved unassigned cwd for first-message references', async ({ p
   expect(request.postDataJSON().skills[0].path).toBe(selected);
   await expect(input(page)).toHaveValue('');
   await expect(page.locator('.user-text')).toContainText('$review-code check');
+  await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
 });
 test('literal dollars, cancellation, token edits and a failed send retain editable drafts', async ({
   page,
@@ -146,6 +148,7 @@ test.describe('touch', () => {
     await page.getByRole('button', { name: '发送任务', exact: true }).tap();
     expect((await started).postDataJSON().skills[0].path).toContain('/user/SKILL.md');
     await expect(input(page)).toHaveValue('');
+    await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
   });
 });
 
@@ -222,6 +225,7 @@ test('skill identity survives image attachments and IME confirmation', async ({ 
   await page.getByRole('button', { name: '发送任务', exact: true }).click();
   await expect(input(page)).toHaveValue('');
   expect(sent).toHaveLength(1);
+  await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
   expect(sent[0]).toMatchObject({
     text: '$review-code check',
     skills: [{ name: 'review-code' }],
@@ -277,4 +281,21 @@ test('a late catalog from another workspace cannot supply reference candidates',
   await expect(options).toHaveCount(2);
   await expect(options.first()).toContainText('/other-project/');
   await expect(page.locator('.skill-reference-menu')).not.toContainText('review-old');
+});
+
+test('fixture reset isolates active native skill submissions from subsequent test cases', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/');
+  await confirmCompatibility(page);
+  await choose(page);
+  await input(page).pressSequentially('[approval] reset isolation');
+  await input(page).press('Enter');
+  await expect(page.locator('.action-card')).toBeVisible();
+  await controlRuntime(request, { reset: true });
+  const projects = await request.get('/api/threads?projectId=fixture');
+  expect((await projects.json()).data).toEqual([]);
+  const unassigned = await request.get('/api/unassigned/threads');
+  expect((await unassigned.json()).data).toEqual([]);
 });
