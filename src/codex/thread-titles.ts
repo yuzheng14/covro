@@ -191,6 +191,150 @@ export class ThreadTitles {
     return this.rpc.request<Responses[M]>(method, params);
   }
 
+  private async startTemporary(
+    source: { cwd: string; modelProvider: string },
+    model: string,
+    threadSource: string,
+    permissions?: string,
+  ) {
+    // Config reads may redact values to empty strings. Override only enabled flags,
+    // never round-trip the returned server definitions (timeouts/credentials/etc.).
+    // The filesystem sandbox does not constrain MCP tools.
+    const { config } = await this.call('config/read', {
+      cwd: source.cwd,
+      includeLayers: false,
+    });
+    const overrides: Record<string, JsonValue> = {
+      web_search: 'disabled',
+      'cloud.skills.enabled': false,
+      'skills.include_instructions': false,
+      'tools.experimental_request_user_input.enabled': false,
+      'tools.update_plan.enabled': false,
+      mcp_servers: Object.fromEntries(
+        Object.keys(isRecord(config.mcp_servers) ? config.mcp_servers : {}).map((name) => [
+          name,
+          { enabled: false },
+        ]),
+      ) as JsonValue,
+    };
+    for (const feature of [
+      'shell_tool',
+      'shell_snapshot',
+      'apps',
+      'plugins',
+      'hooks',
+      'multi_agent',
+      'goals',
+      'memories',
+      'browser_use',
+      'browser_use_external',
+      'computer_use',
+      'image_generation',
+      'code_mode',
+      'code_mode_only',
+      'context_management',
+      'current_time_reminder',
+      'deferred_executor',
+      'enable_fanout',
+      'multi_agent_v2',
+      'request_permissions_tool',
+      'standalone_web_search',
+      'token_budget',
+      'tool_suggest',
+      'unified_exec',
+      'view_image',
+    ])
+      overrides[`features.${feature}`] = false;
+    if (!permissions) overrides.default_permissions = ':read-only';
+    const params: TemporaryThreadParams = {
+      cwd: source.cwd,
+      model,
+      modelProvider: source.modelProvider,
+      ephemeral: true,
+      threadSource,
+      ...(permissions ? { permissions } : { sandbox: 'read-only' }),
+      runtimeWorkspaceRoots: [],
+      environments: [],
+      dynamicTools: [],
+      selectedCapabilityRoots: [],
+      config: overrides,
+    };
+    return this.call('thread/start', params);
+  }
+
+  /** Explicit user-requested recap. Separate inference; no writes to the source thread. */
+  async recap(id: string, prompt: string): Promise<string> {
+    const key = `recap:${id}`;
+    if (this.closed || this.jobs.has(key))
+      throw new CodexError('RECAP_BUSY', 'Recap is already running');
+    let finish!: Job['finish'];
+    const completed = new Promise<Turn | null>((resolve) => {
+      finish = resolve;
+    });
+    const job: Job = { cancelled: false, terminal: false, finish };
+    this.jobs.set(key, job);
+    this.armTimeout(job);
+    try {
+      const source = await this.call('thread/read', { threadId: id, includeTurns: false });
+      if (job.cancelled || source.thread.id !== id)
+        throw new CodexError('RECAP_FAILED', 'Recap was interrupted');
+      const generated = await this.startTemporary(
+        source.thread,
+        source.thread.model ?? '',
+        'recap',
+      );
+      job.threadId = generated.thread.id;
+      this.internal.set(job.threadId, job);
+      if (job.cancelled || generated.sandbox.type !== 'readOnly')
+        throw new CodexError('RECAP_FAILED', 'Recap isolation could not be confirmed');
+      const { turn } = await this.call('turn/start', {
+        threadId: job.threadId,
+        input: [{ type: 'text', text: prompt, text_elements: [] }],
+        outputSchema: {
+          type: 'object',
+          properties: { summary: { type: 'string' } },
+          required: ['summary'],
+          additionalProperties: false,
+        },
+      });
+      job.turnId = turn.id;
+      if (turn.status !== 'inProgress') {
+        job.terminal = true;
+        job.finish(turn);
+      }
+      const result = await completed;
+      if (job.cancelled || result?.status !== 'completed')
+        throw new CodexError('RECAP_FAILED', 'Recap did not complete');
+      const output =
+        result.items.filter((item) => item.type === 'agentMessage').at(-1)?.text ?? job.output;
+      let value: unknown;
+      try {
+        value = JSON.parse(output ?? '');
+      } catch {
+        throw new CodexError('RECAP_FAILED', 'Recap returned an invalid response');
+      }
+      if (
+        !isRecord(value) ||
+        typeof value.summary !== 'string' ||
+        !value.summary.trim() ||
+        Buffer.byteLength(value.summary) > TITLE_RESPONSE_MAX_BYTES
+      )
+        throw new CodexError('RECAP_FAILED', 'Recap returned an invalid response');
+      return value.summary.trim();
+    } finally {
+      clearTimeout(job.timer);
+      this.jobs.delete(key);
+      if (job.threadId && !this.closed) {
+        if (job.turnId && !job.terminal)
+          await this.call('turn/interrupt', { threadId: job.threadId, turnId: job.turnId }).catch(
+            () => {},
+          );
+        await this.call('thread/unsubscribe', { threadId: job.threadId }).catch(() => {});
+        this.internal.set(job.threadId, undefined);
+      }
+    }
+  }
+
   private async generate(
     id: string,
     text: string,
@@ -213,70 +357,12 @@ export class ThreadTitles {
       );
       const profile = source.activePermissionProfile?.id;
       const permissions = profile && !profile.startsWith(':') ? profile : undefined;
-      // Config reads may redact values to empty strings. Override only enabled flags,
-      // never round-trip the returned server definitions (timeouts/credentials/etc.).
-      // The filesystem sandbox does not constrain MCP tools.
-      const { config } = await this.call('config/read', {
-        cwd: before.thread.cwd,
-        includeLayers: false,
-      });
-      if (job.cancelled) return;
-      const overrides: Record<string, JsonValue> = {
-        web_search: 'disabled',
-        'cloud.skills.enabled': false,
-        'skills.include_instructions': false,
-        'tools.experimental_request_user_input.enabled': false,
-        'tools.update_plan.enabled': false,
-        mcp_servers: Object.fromEntries(
-          Object.keys(isRecord(config.mcp_servers) ? config.mcp_servers : {}).map((name) => [
-            name,
-            { enabled: false },
-          ]),
-        ) as JsonValue,
-      };
-      for (const feature of [
-        'shell_tool',
-        'shell_snapshot',
-        'apps',
-        'plugins',
-        'hooks',
-        'multi_agent',
-        'goals',
-        'memories',
-        'browser_use',
-        'browser_use_external',
-        'computer_use',
-        'image_generation',
-        'code_mode',
-        'code_mode_only',
-        'context_management',
-        'current_time_reminder',
-        'deferred_executor',
-        'enable_fanout',
-        'multi_agent_v2',
-        'request_permissions_tool',
-        'standalone_web_search',
-        'token_budget',
-        'tool_suggest',
-        'unified_exec',
-        'view_image',
-      ])
-        overrides[`features.${feature}`] = false;
-      if (!permissions) overrides.default_permissions = ':read-only';
-      const params: TemporaryThreadParams = {
-        cwd: before.thread.cwd,
+      const generated = await this.startTemporary(
+        before.thread,
         model,
-        modelProvider: before.thread.modelProvider,
-        ephemeral: true,
-        threadSource: 'thread_title',
-        ...(permissions ? { permissions } : { sandbox: 'read-only' }),
-        runtimeWorkspaceRoots: [],
-        environments: [],
-        dynamicTools: [],
-        selectedCapabilityRoots: [],
-        config: overrides,
-      };
-      const generated = await this.call('thread/start', params);
+        'thread_title',
+        permissions,
+      );
       job.threadId = generated.thread.id;
       this.internal.set(job.threadId, job);
       if (job.cancelled) return;

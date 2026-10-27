@@ -149,5 +149,8 @@
   "AGENTS_CHECK_FAILED": "无法核对 AGENTS.md，未提交初始化任务。",
   "GIT_NOT_REPOSITORY": "当前工作目录不是 Git 工作区。",
   "GIT_UNAVAILABLE": "服务器上的 Git 不可用。",
-  "GIT_DIFF_FAILED": "无法读取工作区变更，请核对工作目录后重试。"
+  "GIT_DIFF_FAILED": "无法读取工作区变更，请核对工作目录后重试。",
+  "DENIAL_EXPIRED": "拒绝记录已失效，请重新打开当前会话的拒绝列表。",
+  "RECAP_BUSY": "当前会话已有摘要请求正在处理。",
+  "RECAP_FAILED": "未能完成摘要，原会话保持不变。"
 }

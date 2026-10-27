@@ -128,6 +128,9 @@ export const steerSchema = operationSchema
     ...taskFields,
   })
   .refine(hasContent, 'Text or an image is required');
+export const recapSchema = operationSchema.extend({
+  language: z.enum(['en', 'zh-Hans', 'ja', 'ko']),
+});
 export const approveDenialSchema = operationSchema.extend({
   denialId: idSchema,
   confirm: z.literal(true),

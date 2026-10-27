@@ -4,6 +4,7 @@ import { isModelCapacityError } from '../shared/turn-errors.js';
 import { attentionKey, pendingAttention } from '../shared/thread-attention.js';
 import { ShellService } from './shell.js';
 import { assertProjectInstructionsMissing, PROJECT_INIT_PROMPT } from './project-init.js';
+import { recapInput } from './thread-recap.js';
 import { readGithubRepository } from './github-repository.js';
 import { readWorkspaceDiff } from './workspace-diff.js';
 import type { StartShellInput } from '../shared/shell.js';
@@ -1139,6 +1140,42 @@ export class GatewayService {
     return this.dispatchTurn(threadId, { ...input, text: '' }, undefined, input.expectedTurnId);
   }
 
+  async recapThread(
+    threadId: string,
+    input: OperationInput & { language: string },
+  ): Promise<Operation> {
+    return this.perform('thread.recap', threadId, input, async () => {
+      const thread = await this.loadThread(threadId);
+      this.ensureManaged(thread);
+      this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+      if (
+        thread.status === 'unknown' ||
+        isActive(thread.status) ||
+        thread.turns.some((turn) => isActive(turn.status))
+      )
+        throw new AppError('THREAD_BUSY', '请等待任务结束并核对状态后再生成摘要', 409);
+      this.ensureCompatibilityConfirmed();
+      if (!this.codex.recapThread)
+        throw new AppError('METHOD_UNAVAILABLE', 'Codex 不支持会话摘要', 409);
+      const history = await (this.codex.readThreadPage?.(threadId) ??
+        this.codex.readThread(threadId));
+      this.workspaces.assertOwnership(thread.projectId, history.cwd, history.id);
+      const { prompt, partial } = recapInput(history, input.language);
+      if (
+        !history.turns.some((turn) =>
+          turn.items.some(
+            (item) =>
+              (item.type === 'userMessage' || item.type === 'agentMessage') && item.text?.trim(),
+          ),
+        )
+      )
+        throw new AppError('EMPTY_THREAD', '当前会话没有可生成摘要的消息', 409);
+      this.store.dispatch(input.clientOperationId);
+      const summary = await this.codex.recapThread(threadId, prompt);
+      this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+      return { result: { summary, partial, readAt: Date.now() } };
+    });
+  }
   async getGuardianDenials(threadId: string) {
     const thread = await this.loadThread(threadId);
     this.ensureManaged(thread);

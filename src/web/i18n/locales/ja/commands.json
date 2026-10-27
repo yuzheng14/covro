@@ -127,5 +127,12 @@
   "approveConfirm": "この操作を一度だけ許可します。既定の権限は変更されません。",
   "approveOnce": "一度だけ許可",
   "approveSubmitted": "再試行の許可を記録しました。続行するタスクを送信してください。",
-  "approveCancelled": "許可をキャンセルしました。"
+  "approveCancelled": "許可をキャンセルしました。",
+  "recapDescription": "最近の会話を別途要約",
+  "recapTitle": "会話の要約",
+  "recapNotice": "最近の可視メッセージを別のモデルリクエストで要約します。元のコンテキストは変わりません。",
+  "recapPartial": "保存された会話の一部のみを含みます。",
+  "recapEmpty": "先にメッセージを送信してください。",
+  "recapFailed": "要約結果を確認できませんでした。",
+  "recapOpened": "会話の要約を開きました。"
 }

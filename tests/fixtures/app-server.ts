@@ -2313,7 +2313,13 @@ function receive(request: ClientRequest): void {
                 memoryCitation: null,
                 delivery: null,
                 questions: null,
-                text: titleOutput ?? JSON.stringify({ title: 'Codex 配置继承与运行设置' }),
+                text: (request.params.outputSchema as { properties?: { summary?: unknown } } | null)
+                  ?.properties?.summary
+                  ? JSON.stringify({
+                      summary:
+                        '目标：检查当前项目。\n已完成：读取现有配置。\n下一步：验证边界与错误处理。',
+                    })
+                  : (titleOutput ?? JSON.stringify({ title: 'Codex 配置继承与运行设置' })),
               };
               notify({
                 method: 'item/completed',

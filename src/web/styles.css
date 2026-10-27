@@ -5243,3 +5243,10 @@ dd {
   overflow-wrap: anywhere;
   font-size: 12px;
 }
+
+.recap-content {
+  max-height: 60vh;
+  font: inherit;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
