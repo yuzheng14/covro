@@ -1,5 +1,24 @@
 # 开发与 PR 约定
 
+## 本地开发与验证
+
+环境要求和完整启动步骤见[从源码运行](../README.zh-CN.md#从源码运行)。配置完成后，在仓库根目录运行 `pnpm dev`，打开 <http://127.0.0.1:5173>；提交前执行以下检查：
+
+```sh
+pnpm format:check
+node --import tsx scripts/verify-database-contract.ts
+node --import tsx scripts/sync-compatibility.ts --check
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
+pnpm test:e2e
+```
+
+浏览器测试需要现有 Playwright 依赖所对应的 Chromium。测试与 CI 使用明确的测试夹具，不发起真实模型请求。提交问题时请附上操作系统、Node.js 与 Codex 版本、安装方式和复现步骤。
+
+README 的 Features 只概括使用场景。新增按钮、命令、参数、快捷键和恢复细节应更新对应指南，避免逐次向 README 追加操作说明；面向使用者的事实、安装步骤和导航需同步维护中英文版本。
+
 ## 格式检查
 
 项目复用已锁定的 Prettier 与 `.prettierrc.json`，使用以下命令检查或修复代码、文档和配置的格式：
