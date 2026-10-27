@@ -11,7 +11,7 @@ test('browses and searches duplicate names, raw descriptions and paths on deskto
   await page.getByRole('button', { name: '技能', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '技能', exact: true });
   await expect(dialog.locator('.skills-list li')).toHaveCount(2);
-  await dialog.locator('summary').first().click();
+  await dialog.locator('.skills-list summary').first().click();
   await expect(dialog).toContainText('Review changes and report actionable findings.');
   await dialog.getByRole('searchbox').fill('/repo/');
   await expect(dialog.locator('.skills-list li')).toHaveCount(1);
@@ -20,7 +20,7 @@ test('browses and searches duplicate names, raw descriptions and paths on deskto
   await dialog.getByRole('searchbox').fill('');
   await dialog.getByRole('button', { name: '重新加载' }).click();
   await expect(dialog.locator('.skills-list li')).toHaveCount(2);
-  await dialog.locator('summary').first().click();
+  await dialog.locator('.skills-list summary').first().click();
   await page.screenshot({ path: 'test-results/skills-browser-desktop.png' });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(dialog).toBeInViewport();
@@ -67,7 +67,7 @@ for (const [locale, title, search] of [
     const dialog = page.getByRole('dialog', { name: title!, exact: true });
     await expect(dialog.getByRole('searchbox', { name: search! })).toBeVisible();
     await expect(dialog.locator('.skills-list li')).toHaveCount(2);
-    await dialog.locator('summary').first().click();
+    await dialog.locator('.skills-list summary').first().click();
     await expect(dialog).toContainText('Review changes and report actionable findings.');
   });
 }

@@ -23,6 +23,7 @@ const paths = {
   terminal: 'm4 6 6 6-6 6M13 18h7',
   down: 'm6 9 6 6 6-6',
   refresh: 'M20 7v5h-5M4 17v-5h5M5 8a8 8 0 0 1 13-3l2 3M4 16l2 3a8 8 0 0 0 13-3',
+  search: 'M21 21l-6-6M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0',
   shield: 'M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6ZM8 12l3 3 5-6',
   settings: 'M4 7h16M4 17h16M8 4v6M16 14v6',
   check: 'm5 12 4 4L19 6',
