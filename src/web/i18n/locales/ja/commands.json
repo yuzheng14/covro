@@ -107,5 +107,8 @@
   "closeDialog": "閉じる",
   "reviewCancelled": "レビューをキャンセルしました。下書きは保持されます。",
   "reviewDescription": "変更・ブランチ・コミット・カスタム指示をレビュー",
-  "reviewUsage": "/review [指示]"
+  "reviewUsage": "/review [指示]",
+  "initDescription": "既存ファイルを保持してプロジェクトの AGENTS.md を生成",
+  "initSubmitted": "AGENTS.md 生成タスクを送信しました。結果は会話で確認してください。",
+  "initUnavailable": "アイドル状態の会話を再開するか新しい下書きを開いてください。"
 }

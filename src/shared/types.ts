@@ -347,7 +347,10 @@ export interface TaskMessage {
   text: string;
   images?: string[];
 }
-export interface StartTurnInput extends CreateThreadInput, TaskMessage {}
+export interface StartTurnInput extends CreateThreadInput, TaskMessage {
+  /** Server-owned task prompt; ordinary messages never execute a preset. */
+  taskKind?: 'init';
+}
 export type ReviewTarget =
   | { type: 'uncommittedChanges' }
   | { type: 'baseBranch'; branch: string }

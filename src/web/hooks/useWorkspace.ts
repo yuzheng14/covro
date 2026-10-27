@@ -1186,7 +1186,7 @@ export function useWorkspace() {
     sentDrafts,
     restoringSelection,
     firstMessages,
-    sendFirstMessage: async (text: string, images?: string[]) => {
+    sendFirstMessage: async (text: string, images?: string[], taskKind?: 'init') => {
       const project = projectRef.current;
       if (selectedRef.current || firstMessagesRef.current.has(project)) return false;
       const key = conversationDrafts.current.key(project);
@@ -1207,7 +1207,7 @@ export function useWorkspace() {
           'send',
           id,
           `/api/threads/${encodeURIComponent(id)}/turns`,
-          { text, images, settings },
+          { text, images, settings, ...(taskKind ? { taskKind } : {}) },
           { kind: 'send', key, text, images },
         );
         return sent?.status === 'acknowledged';

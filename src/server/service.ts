@@ -3,6 +3,7 @@ import { CapacityRetries, type CapacityAttempt } from './capacity-retry.js';
 import { isModelCapacityError } from '../shared/turn-errors.js';
 import { attentionKey, pendingAttention } from '../shared/thread-attention.js';
 import { ShellService } from './shell.js';
+import { assertProjectInstructionsMissing, PROJECT_INIT_PROMPT } from './project-init.js';
 import { readGithubRepository } from './github-repository.js';
 import type { StartShellInput } from '../shared/shell.js';
 import { realpathSync } from 'node:fs';
@@ -980,6 +981,7 @@ export class GatewayService {
       if (isActive(this.projection.get(threadId)?.status ?? thread.status))
         throw new AppError('THREAD_BUSY', '会话已有活动任务，请追加要求或中断', 409, { threadId });
       this.ensureCompatibilityConfirmed();
+      if (input.taskKind === 'init') await assertProjectInstructionsMissing(ownership.cwd);
       this.store.dispatch(input.clientOperationId, {
         threadId,
         workspaceKey: ownership.workspaceKey,
@@ -1008,7 +1010,7 @@ export class GatewayService {
       const turn = await this.codex.startTurn(
         threadId,
         ownership.cwd,
-        input.text,
+        input.taskKind === 'init' ? PROJECT_INIT_PROMPT : input.text,
         input.settings,
         input.images,
       );

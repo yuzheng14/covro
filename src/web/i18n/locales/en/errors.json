@@ -144,5 +144,7 @@
   "INVALID_TEXT_PATH": "The text file path is invalid.",
   "TEXT_OUTSIDE_PROJECT": "Only files in this session’s project or server temporary directories can be previewed.",
   "TEXT_CHANGED": "The text file changed. Reopen the preview.",
-  "TEXT_NOT_FILE": "The text file path is not a regular file."
+  "TEXT_NOT_FILE": "The text file path is not a regular file.",
+  "AGENTS_EXISTS": "AGENTS.md already exists. The existing entry was preserved.",
+  "AGENTS_CHECK_FAILED": "Could not verify AGENTS.md. Initialization was not submitted."
 }

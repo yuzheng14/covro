@@ -107,5 +107,8 @@
   "closeDialog": "닫기",
   "reviewCancelled": "검토를 취소했습니다. 명령 초안을 보관합니다.",
   "reviewDescription": "변경, 브랜치, 커밋 또는 사용자 요구 검토",
-  "reviewUsage": "/review [요구]"
+  "reviewUsage": "/review [요구]",
+  "initDescription": "기존 파일을 유지하며 프로젝트 AGENTS.md 생성",
+  "initSubmitted": "AGENTS.md 생성 작업을 제출했습니다. 대화에서 결과를 확인하세요.",
+  "initUnavailable": "유휴 대화를 재개하거나 새 작업 공간 초안을 여세요."
 }

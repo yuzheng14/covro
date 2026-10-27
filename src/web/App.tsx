@@ -362,6 +362,7 @@ export function App() {
       workspace.setSettings(settings);
       return !task || sendMessage(task, false, undefined, settings);
     },
+    initialize: () => sendMessage('/init', false, undefined, workspace.settings, 'init'),
   };
   const slashContextRef = useRef(slashContext);
   slashContextRef.current = slashContext;
@@ -373,18 +374,21 @@ export function App() {
     steer: boolean,
     images?: string[],
     settings = workspace.settings,
+    taskKind?: 'init',
   ) {
     if (!canOperate || workspace.restoringSelection || workspace.savingModelDefaults) return false;
     if (!thread) {
       if (workspace.selectedId) return false;
-      return workspace.sendFirstMessage(text, images);
+      return workspace.sendFirstMessage(text, images, taskKind);
     }
     if (steer && !activeTurn) return false;
     const operation = await workspace.run(
       steer ? 'steer' : 'send',
       thread.id,
       `/api/threads/${encode(thread.id)}/${steer ? 'steer' : 'turns'}`,
-      steer ? { text, images, expectedTurnId: activeTurn!.id } : { text, images, settings },
+      steer
+        ? { text, images, expectedTurnId: activeTurn!.id }
+        : { text, images, settings, ...(taskKind ? { taskKind } : {}) },
       { kind: 'send', key: workspace.draftKey, text, images },
     );
     return operation?.status === 'acknowledged';

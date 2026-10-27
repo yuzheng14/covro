@@ -115,8 +115,13 @@ const hasContent = (input: TaskMessage) => Boolean(input.text.trim() || input.im
 export const startTurnSchema = createThreadSchema
   .extend({
     ...taskFields,
+    taskKind: z.literal('init').optional(),
   })
-  .refine(hasContent, 'Text or an image is required');
+  .refine(hasContent, 'Text or an image is required')
+  .refine(
+    (input) => input.taskKind !== 'init' || !input.images?.length,
+    'Project initialization cannot include images',
+  );
 export const steerSchema = operationSchema
   .extend({
     expectedTurnId: idSchema,

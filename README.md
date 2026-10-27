@@ -38,7 +38,7 @@ Use **＋** in the message box to attach images from your phone or computer. Ope
 
 When the selected model is at capacity, Covro shows native retry progress and can make up to three additional attempts after 5, 10, and 20 seconds when Codex does not retry and no output or tool work has started. You can cancel, or choose another model and retry manually. See [retry behavior](docs/capacity-retry.md) for recovery boundaries.
 
-Use `/review` to choose uncommitted changes, a base branch, a commit, or custom review instructions.
+Use `/review` to choose uncommitted changes, a base branch, a commit, or custom review instructions. Use `/init` to request a project contributor guide; an existing `AGENTS.md` is preserved.
 
 See the [usage guide · 中文](docs/usage.zh-CN.md) for workflow details and controls.
 

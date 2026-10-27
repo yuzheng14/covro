@@ -107,5 +107,8 @@
   "closeDialog": "关闭",
   "reviewCancelled": "已取消审查，命令草稿已保留。",
   "reviewDescription": "审查工作目录、分支、Commit 或自定义要求",
-  "reviewUsage": "/review [自定义要求]"
+  "reviewUsage": "/review [自定义要求]",
+  "initDescription": "生成项目 AGENTS.md，保留已有文件",
+  "initSubmitted": "已提交 AGENTS.md 生成任务，请在会话查看实际结果。",
+  "initUnavailable": "请先恢复空闲会话或打开新工作区草稿，再初始化项目说明。"
 }
