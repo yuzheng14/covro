@@ -10,13 +10,13 @@ Discovery uses native `skills/list` from Codex 0.164.0. The gateway resolves the
 
 ## Explicit references / 显式引用
 
-Type `$` at the start of the input or after whitespace/an opening bracket to search available skills. Arrow keys choose an entry; Enter or Tab selects it. Escape closes the suggestions without changing text. Touch users select an entry and use the send button; mobile Enter inserts a newline. Candidates show original names, descriptions, scopes and compact source paths; hover for the full path. Same-name sources remain distinct. Selected references are compact chips; expand one to inspect its actual path.
+Type `$` at the start of the input or after whitespace/an opening bracket to search available skills. Arrow keys choose an entry; Enter or Tab selects it. Escape closes the suggestions without changing text. Touch users select an entry and use the send button; mobile Enter inserts a newline. Candidates show original names, descriptions, scopes and compact source paths; hover for the full path. Same-name sources remain distinct. Selected references are highlighted inside the input. Backspace immediately after one removes the whole reference; arrow keys move across it as a unit. Full selected paths remain available to assistive technology and in the focused reference tooltip.
 
-在输入开头、空白或左括号后输入 `$` 搜索可用技能。方向键切换，Enter 或 Tab 选择，Escape 取消且保留原文。触屏点击候选后使用发送按钮，手机 Enter 保持换行。候选展示原始名称、说明、作用域及精简来源路径，悬停可查看完整路径，同名来源保持区分。已选引用收为紧凑标签，展开可查看实际路径。
+在输入开头、空白或左括号后输入 `$` 搜索可用技能。方向键切换，Enter 或 Tab 选择，Escape 取消且保留原文。触屏点击候选后使用发送按钮，手机 Enter 保持换行。候选展示原始名称、说明、作用域及精简来源路径，悬停可查看完整路径，同名来源保持区分。已选引用直接在输入框文字中高亮；紧接引用后按一次退格键可整体删除，方向键将其作为整体跨过。完整路径保留在辅助技术说明及选中引用的悬停提示中。
 
-Selection binds the original name, path and server cwd to that token in the existing project/conversation draft. Editing a token removes its binding; removing a selected reference removes its marker too. Other edits, images and draft switching preserve intact references. Confirmed sends clear the submitted references; failed or uncertain sends retain them without automatically resubmitting. Drafts follow the existing in-memory lifetime and planned-update recovery; ordinary page reloads do not persist composer drafts.
+Selection binds the original name, path and server cwd to that token in the existing project/conversation draft. Native selection and deletion keep a reference whole; replacing its text removes the old binding. Other edits, images and draft switching preserve intact references. Confirmed sends clear the submitted references; failed or uncertain sends retain them without automatically resubmitting. Drafts follow the existing in-memory lifetime and planned-update recovery; ordinary page reloads do not persist composer drafts.
 
-选择后，引用以真实 name、path 和服务器 cwd 绑定到文本标记，并保存在现有项目/会话草稿中。修改标记会解除绑定，移除引用也会删除标记；其他编辑、图片及草稿切换保留完整引用。确认发送后清理已提交引用，失败或回执未知时保留且不自动重发。草稿沿用现有内存生命周期及计划更新恢复机制，普通页面刷新不持久化输入框草稿。
+选择后，引用以真实 name、path 和服务器 cwd 绑定到文本标记，并保存在现有项目/会话草稿中。原生选区和删除保持引用完整，替换其文字会解除原绑定；其他编辑、图片及草稿切换保留完整引用。确认发送后清理已提交引用，失败或回执未知时保留且不自动重发。草稿沿用现有内存生命周期及计划更新恢复机制，普通页面刷新不持久化输入框草稿。
 
 First messages and subsequent idle-conversation messages send `$<name>` text plus native `{ type: "skill", name, path }` inputs. The gateway refreshes the same native discovery source and rejects unavailable/disabled identities, changed cwd, absent markers and arbitrary host paths before dispatch. Literal dollars and unmatched/dismissed suggestions remain ordinary editable text. Slash commands cannot carry selected references.
 

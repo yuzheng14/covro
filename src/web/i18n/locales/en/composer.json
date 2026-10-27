@@ -58,7 +58,6 @@
   "skills_not_ready": "Codex is not ready. Retry when it reconnects.",
   "skills_offline": "Offline. Reconnect to load skills.",
   "skills_selected": "Selected skills",
-  "skills_remove": "Remove {{name}}",
   "skills_slash": "Remove skill references before running a slash command.",
   "skills_steer_unsupported": "Codex 0.164.0 cannot apply a selected skill during an active task. Wait for it to finish, then send this draft."
 }

@@ -85,7 +85,7 @@ export function SkillReferenceMenu({
                 onClick={() => onChoose(skill)}
               >
                 <span className="skill-mark">
-                  <Icon name="code" size={16} />
+                  <Icon name="skill" size={16} />
                 </span>
                 <span className="skill-option-content">
                   <span className="skills-name">

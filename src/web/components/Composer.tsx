@@ -3,10 +3,9 @@ import {
   skillTrigger,
   editBindings,
   selectedReferences,
-  removeSkillBinding,
   replaceSkillRange,
-  skillSourceLabel,
 } from '../lib/skill-references';
+import { SkillInput } from './SkillInput';
 import { SkillReferenceMenu } from './SkillReferenceMenu';
 import { useSkills } from '../lib/skills';
 import { SkillsBrowser } from './SkillsBrowser';
@@ -537,39 +536,6 @@ export function Composer(props: Props) {
             onChoose={chooseSkill}
           />
         )}
-        {!!draft.skills?.length && (
-          <ul className="composer-skills" aria-label={t('composer:skills_selected')}>
-            {selectedReferences(draft.skills).map((skill) => (
-              <li key={JSON.stringify([skill.name, skill.path])}>
-                <details>
-                  <summary title={skill.path} aria-label={`$${skill.name} · ${skill.path}`}>
-                    <Icon name="code" size={14} />
-                    <strong>${skill.name}</strong>
-                    <span className="skill-chip-source">
-                      {skillSourceLabel(skill, skill.cwd, selectedReferences(draft.skills))}
-                    </span>
-                    <Icon name="down" size={11} />
-                  </summary>
-                  <p className="skills-path">{skill.path}</p>
-                </details>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  aria-label={t('composer:skills_remove', { name: skill.name })}
-                  onClick={() =>
-                    updateDraft(key, (previous) => ({
-                      ...previous,
-                      ...removeSkillBinding(previous.text, previous.skills ?? [], skill),
-                    }))
-                  }
-                >
-                  <Icon name="close" size={13} />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
         {skillSteeringBlocked && (
           <p className="slash-feedback" role="status">
             {t('composer:skills_steer_unsupported')}
@@ -622,7 +588,9 @@ export function Composer(props: Props) {
             {displayMessage(draft.error)}
           </p>
         )}
-        <textarea
+        <SkillInput
+          draftKey={key}
+          skills={draft.skills}
           id={inputId}
           ref={textareaRef}
           enterKeyHint={mobileInput ? 'enter' : undefined}
@@ -648,16 +616,18 @@ export function Composer(props: Props) {
                 : t('composer:describe_a_task_paste_an_image_or_type')
           }
           maxLength={100000}
-          onChange={(event) => {
+          onChange={(event, restoredSkills) => {
             updateDraft(key, (previous) => ({
               ...previous,
               text: event.target.value,
-              skills: editBindings(
-                previous.text,
-                event.target.value,
-                previous.skills,
-                event.target.selectionStart,
-              ),
+              skills:
+                restoredSkills ??
+                editBindings(
+                  previous.text,
+                  event.target.value,
+                  previous.skills,
+                  event.target.selectionStart,
+                ),
             }));
             setCaret({ key, start: event.target.selectionStart, end: event.target.selectionEnd });
             setSkillMenu({ identity: '', selected: 0, dismissed: false });

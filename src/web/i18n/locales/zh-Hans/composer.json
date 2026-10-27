@@ -58,7 +58,6 @@
   "skills_not_ready": "Codex 尚未就绪，恢复连接后可重试。",
   "skills_offline": "当前离线，恢复连接后可读取技能。",
   "skills_selected": "已选技能",
-  "skills_remove": "移除 {{name}}",
   "skills_slash": "请先移除技能引用再运行命令。",
   "skills_steer_unsupported": "Codex 0.164.0 无法在运行中可靠应用所选技能。请等待当前任务结束，再发送此草稿。"
 }

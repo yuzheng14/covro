@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import {
   editBindings,
-  removeSkillBinding,
+  replaceSkillRange,
   selectedReferences,
   skillTrigger,
 } from '../../src/web/lib/skill-references';
@@ -27,7 +27,7 @@ it('shifts untouched identities and drops bindings when a token is edited, delet
 it('preserves duplicate-name identities and removes their token with the binding', () => {
   const other = { ...binding, path: '/b/SKILL.md', start: 8, end: 15 };
   expect(selectedReferences([binding, other])).toHaveLength(2);
-  expect(removeSkillBinding('$review $review ok', [binding, other], binding)).toEqual({
+  expect(replaceSkillRange('$review $review ok', 0, 8, '', [binding, other])).toEqual({
     text: '$review ok',
     skills: [{ ...other, start: 0, end: 7 }],
   });
@@ -41,4 +41,15 @@ it('uses the native caret to distinguish deleting the first of two identical tok
   expect(editBindings('$review $review ok', '$review ok', [binding, other], 0)).toEqual([
     { ...other, start: 0, end: 7 },
   ]);
+});
+
+it('treats selected skill ranges as indivisible for selection and deletion', async () => {
+  const { skillDeletion, skillSelection } = await import('../../src/web/lib/skill-references');
+  const other = { ...binding, path: '/b/SKILL.md', start: 8, end: 15 };
+  const text = '$review $review check';
+  expect(skillDeletion(text, [binding, other], 8, 8, true)).toEqual({ start: 0, end: 8 });
+  expect(skillDeletion(text, [binding, other], 8, 8, false)).toEqual({ start: 8, end: 16 });
+  expect(skillSelection([binding, other], 3, 12)).toEqual({ start: 0, end: 15 });
+  expect(skillSelection([binding], 2, 2)).toEqual({ start: 0, end: 0 });
+  expect(skillDeletion(text, [binding, other], 19, 19, true)).toBeUndefined();
 });

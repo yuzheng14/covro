@@ -3,6 +3,45 @@ export interface SkillBinding extends SkillReference {
   start: number;
   end: number;
 }
+
+/** Browser selection and deletion must never split a bound skill into literal fragments. */
+export function skillSelection(bindings: SkillBinding[], start: number, end: number) {
+  for (const binding of bindings) {
+    if (start === end && start > binding.start && start < binding.end) {
+      const boundary = start - binding.start < binding.end - start ? binding.start : binding.end;
+      return { start: boundary, end: boundary };
+    }
+    if (start < binding.end && end > binding.start) {
+      start = Math.min(start, binding.start);
+      end = Math.max(end, binding.end);
+    }
+  }
+  return { start, end };
+}
+
+export function skillDeletion(
+  text: string,
+  bindings: SkillBinding[],
+  start: number,
+  end: number,
+  backward: boolean,
+) {
+  if (start !== end) {
+    if (!bindings.some((binding) => start < binding.end && end > binding.start)) return;
+    return skillSelection(bindings, start, end);
+  }
+  const binding = bindings.find((binding) =>
+    backward
+      ? start > binding.start &&
+        (start <= binding.end || (start === binding.end + 1 && text[binding.end] === ' '))
+      : start >= binding.start && start < binding.end,
+  );
+  if (!binding) return;
+  return {
+    start: binding.start,
+    end: backward ? Math.max(end, binding.end) : binding.end + (text[binding.end] === ' ' ? 1 : 0),
+  };
+}
 export function skillTrigger(text: string, caret: number, selectionEnd = caret) {
   if (caret !== selectionEnd) return;
   const prefix = text.slice(0, caret);
@@ -91,20 +130,6 @@ export function skillSourceLabel(
       return '…/' + suffix;
   }
   return skill.path;
-}
-
-export function removeSkillBinding(text: string, bindings: SkillBinding[], skill: SkillReference) {
-  let next = text;
-  let remaining = bindings;
-  for (const binding of bindings
-    .filter((entry) => entry.name === skill.name && entry.path === skill.path)
-    .sort((a, b) => b.start - a.start)) {
-    const end = binding.end + (next[binding.end] === ' ' ? 1 : 0);
-    const edited = next.slice(0, binding.start) + next.slice(end);
-    remaining = rebaseBindings(edited, remaining, binding.start, end, binding.start);
-    next = edited;
-  }
-  return { text: next, skills: remaining };
 }
 
 export function replaceSkillRange(

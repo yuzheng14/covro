@@ -58,7 +58,6 @@
   "skills_not_ready": "Codex가 준비되지 않았습니다. 다시 연결한 후 재시도하세요.",
   "skills_offline": "오프라인입니다. 스킬을 불러오려면 다시 연결하세요.",
   "skills_selected": "선택한 스킬",
-  "skills_remove": "{{name}} 제거",
   "skills_slash": "명령을 실행하기 전에 스킬 참조를 제거하세요.",
   "skills_steer_unsupported": "Codex 0.164.0은 실행 중인 작업에 선택한 스킬을 안정적으로 적용하지 못합니다. 작업이 끝난 후 이 초안을 보내세요."
 }

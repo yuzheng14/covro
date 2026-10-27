@@ -7,13 +7,14 @@ import {
   createEmptyThread,
 } from './helpers';
 const input = (page: Page) => page.locator('.composer-box textarea');
+const selectedSkills = (page: Page) => page.locator('.composer-highlights mark');
 async function choose(page: Page, index = 0) {
   await input(page).fill('');
   await input(page).fill('$review');
   const options = page.getByRole('listbox', { name: '技能', exact: true }).getByRole('option');
   await expect(options).toHaveCount(2);
   await options.nth(index).click();
-  await expect(page.getByRole('list', { name: '已选技能' })).toBeVisible();
+  await expect(selectedSkills(page)).toHaveCount(1);
 }
 test.beforeEach(async ({ request }) => {
   await controlRuntime(request, { reset: true });
@@ -25,7 +26,7 @@ test('submits exact skill identity on first and existing messages while preservi
   await confirmCompatibility(page);
   await choose(page, 1);
   await input(page).pressSequentially('[approval] check');
-  const selectedPath = await page.locator('.composer-skills .skills-path').textContent();
+  const selectedPath = await selectedSkills(page).getAttribute('data-skill-path');
   await page.screenshot({ path: testInfo.outputPath('skill-reference-desktop.png') });
   const started = page.waitForRequest((r) => /\/turns$/.test(r.url()) && r.method() === 'POST');
   await input(page).press('Enter');
@@ -60,16 +61,17 @@ test('isolates project and conversation drafts and removes both marker and ident
     .getByRole('button', { name: '新建会话', exact: true })
     .click();
   await expect(input(page)).toHaveValue('');
-  await expect(page.locator('.composer-skills')).toHaveCount(0);
+  await expect(selectedSkills(page)).toHaveCount(0);
   await choose(page, 1);
   await projectGroup(page).getByRole('button', { name: '新建会话', exact: true }).click();
   await expect(input(page)).toHaveValue('$review-code ');
-  await expect(page.locator('.composer-skills .skills-path')).toContainText(
-    '/project/repo/SKILL.md',
+  await expect(selectedSkills(page)).toHaveAttribute(
+    'data-skill-path',
+    /\/project\/repo\/SKILL.md$/u,
   );
-  await page.getByRole('button', { name: '移除 review-code', exact: true }).click();
+  await input(page).press('Backspace');
   await expect(input(page)).toHaveValue('');
-  await expect(page.locator('.composer-skills')).toHaveCount(0);
+  await expect(selectedSkills(page)).toHaveCount(0);
 });
 test('uses the reserved unassigned cwd for first-message references', async ({ page }) => {
   await page.goto('/');
@@ -79,7 +81,7 @@ test('uses the reserved unassigned cwd for first-message references', async ({ p
     .click();
   await choose(page);
   await input(page).pressSequentially('check');
-  const selected = await page.locator('.composer-skills .skills-path').textContent();
+  const selected = await selectedSkills(page).getAttribute('data-skill-path');
   const started = page.waitForRequest((r) => /\/turns$/.test(r.url()) && r.method() === 'POST');
   await input(page).press('Enter');
   const request = await started;
@@ -110,9 +112,9 @@ test('literal dollars, cancellation, token edits and a failed send retain editab
   );
   await input(page).press('Enter');
   await expect(input(page)).toHaveValue('$review-code check');
-  await expect(page.locator('.composer-skills')).toHaveCount(1);
+  await expect(selectedSkills(page)).toHaveCount(1);
   await input(page).fill('$review-code-edited check');
-  await expect(page.locator('.composer-skills')).toHaveCount(0);
+  await expect(selectedSkills(page)).toHaveCount(0);
 });
 for (const [locale, title] of [
   ['en', 'Skills'],
@@ -169,12 +171,12 @@ test('keyboard selection and repeated-name deletion preserve the remaining exact
   ).toHaveCount(2);
   await input(page).press('ArrowDown');
   await input(page).press('Tab');
-  await expect(page.locator('.composer-skills li')).toHaveCount(2);
+  await expect(selectedSkills(page)).toHaveCount(2);
   await input(page).evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(0, 13));
   await input(page).press('Backspace');
   await expect(input(page)).toHaveValue('$review-code ');
-  await expect(page.locator('.composer-skills li')).toHaveCount(1);
-  await expect(page.locator('.composer-skills .skills-path')).toContainText('/user/SKILL.md');
+  await expect(selectedSkills(page)).toHaveCount(1);
+  await expect(selectedSkills(page)).toHaveAttribute('data-skill-path', /\/user\/SKILL.md$/u);
 });
 test('an uncertain reference send retains its draft and is never automatically submitted twice', async ({
   page,
@@ -191,7 +193,7 @@ test('an uncertain reference send retains its draft and is never automatically s
   });
   await input(page).press('Enter');
   await expect(input(page)).toHaveValue('$review-code check');
-  await expect(page.locator('.composer-skills li')).toHaveCount(1);
+  await expect(selectedSkills(page)).toHaveCount(1);
   await expect(page.getByRole('button', { name: '发送任务', exact: true })).toBeDisabled();
   await input(page).press('Enter');
   expect(count).toBe(1);
@@ -300,7 +302,7 @@ test('fixture reset isolates active native skill submissions from subsequent tes
   expect((await unassigned.json()).data).toEqual([]);
 });
 
-test('compact sources distinguish same-name same-scope skills and disclose the full selected path', async ({
+test('compact sources distinguish same-name same-scope skills and retain the full path in inline references', async ({
   page,
 }) => {
   const paths = ['team-a', 'team-b'].map((team) => `/homes/${team}/.codex/skills/review/SKILL.md`);
@@ -329,11 +331,93 @@ test('compact sources distinguish same-name same-scope skills and disclose the f
   await expect(options.nth(1)).toContainText('team-b');
   await expect(options.nth(1)).toHaveAccessibleName(new RegExp(paths[1]!));
   await options.nth(1).click();
-  const path = page.locator('.composer-skills .skills-path');
-  await expect(path).not.toBeVisible();
-  await page.locator('.composer-skills summary').click();
-  await expect(path).toBeVisible();
-  await expect(path).toHaveText(paths[1]!);
-  await page.getByRole('button', { name: '移除 review-code', exact: true }).click();
+  await expect(selectedSkills(page)).toHaveAttribute('data-skill-path', paths[1]!);
+  await expect(input(page)).toHaveAccessibleDescription(new RegExp(paths[1]!));
+  await input(page).press('Backspace');
   await expect(input(page)).toHaveValue('');
+});
+
+for (const width of [1280, 390])
+  test(`inline references delete as a unit without extra chips at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/');
+    await confirmCompatibility(page);
+    await choose(page);
+    await expect(page.locator('.composer-skills')).toHaveCount(0);
+    await input(page).press('Backspace');
+    await expect(input(page)).toHaveValue('');
+    await expect(selectedSkills(page)).toHaveCount(0);
+    await choose(page, 1);
+    await input(page).pressSequentially('检查本次修改');
+    await input(page).press('Home');
+    await input(page).press('ArrowRight');
+    expect(
+      await input(page).evaluate((element: HTMLTextAreaElement) => element.selectionStart),
+    ).toBe(12);
+    await page.screenshot({ path: testInfo.outputPath(`inline-skill-${width}.png`) });
+    await input(page).press('Home');
+    await input(page).press('Delete');
+    await expect(input(page)).toHaveValue('检查本次修改');
+    await expect(selectedSkills(page)).toHaveCount(0);
+  });
+
+test('native beforeinput without a desktop keydown removes the full bound skill', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await confirmCompatibility(page);
+  await choose(page, 1);
+  const selection = await input(page).evaluate((element: HTMLTextAreaElement) => {
+    element.dispatchEvent(
+      new InputEvent('beforeinput', {
+        bubbles: true,
+        cancelable: true,
+        inputType: 'deleteContentBackward',
+      }),
+    );
+    const range = [element.selectionStart, element.selectionEnd];
+    element.setRangeText('', element.selectionStart, element.selectionEnd, 'end');
+    element.dispatchEvent(
+      new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }),
+    );
+    return range;
+  });
+  expect(selection).toEqual([0, 13]);
+  await expect(input(page)).toHaveValue('');
+  await expect(selectedSkills(page)).toHaveCount(0);
+});
+
+test('native undo restores the exact selected skill after one-step deletion', async ({ page }) => {
+  await page.goto('/');
+  await confirmCompatibility(page);
+  await choose(page, 1);
+  const path = await selectedSkills(page).getAttribute('data-skill-path');
+  await input(page).press('Backspace');
+  await expect(input(page)).toHaveValue('');
+  await expect(selectedSkills(page)).toHaveCount(0);
+  await input(page).press('ControlOrMeta+z');
+  await expect(input(page)).toHaveValue('$review-code ');
+  await expect(selectedSkills(page)).toHaveAttribute('data-skill-path', path!);
+});
+
+test('undo after a project switch restores only that project’s selected identity', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await confirmCompatibility(page);
+  await choose(page, 0);
+  const originalPath = await selectedSkills(page).getAttribute('data-skill-path');
+  await projectGroup(page, '另一个项目')
+    .getByRole('button', { name: '新建会话', exact: true })
+    .click();
+  await choose(page, 1);
+  const currentPath = await selectedSkills(page).getAttribute('data-skill-path');
+  expect(currentPath).toContain('/other-project/user/SKILL.md');
+  await input(page).press('Backspace');
+  await input(page).press('ControlOrMeta+z');
+  await expect(selectedSkills(page)).toHaveAttribute('data-skill-path', currentPath!);
+  await projectGroup(page).getByRole('button', { name: '新建会话', exact: true }).click();
+  await expect(selectedSkills(page)).toHaveAttribute('data-skill-path', originalPath!);
 });

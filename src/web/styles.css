@@ -5661,80 +5661,37 @@ dd {
 .skill-reference-menu .skills-state {
   margin: 20px 12px;
 }
-.composer-skills {
-  display: flex;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 6px;
-  list-style: none;
-  margin: 0;
-  padding: 10px 38px 2px 12px;
-  max-height: 10rem;
-  overflow: auto;
+/* No extra selected-skill row: the native editor highlights the bound text in place. */
+.composer-editor {
+  position: relative;
 }
-.composer-skills li {
-  display: flex;
-  align-items: flex-start;
-  width: fit-content;
-  max-width: 100%;
-  border: 1px solid #dfe9e2;
-  border-radius: 8px;
-  background: #f4f8f5;
-  color: #486b55;
+.composer-editor textarea {
+  position: relative;
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
-.composer-skills details {
-  flex: 1;
-  min-width: 0;
-}
-.composer-skills summary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 4px 0 4px 8px;
-  list-style: none;
-}
-.composer-skills summary::-webkit-details-marker {
-  display: none;
-}
-.composer-skills summary strong {
-  font-size: 12px;
-  font-weight: 500;
+.composer-highlights {
+  position: absolute;
+  top: 0;
+  left: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  pointer-events: none;
+  padding: 17px 44px 7px 17px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  color: transparent;
 }
-.skill-chip-source {
-  max-width: 160px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #829289;
-  font-size: 10px;
+.composer-highlights mark {
+  padding: 0;
+  border-radius: 3px;
+  color: transparent;
+  background: #dfeee4;
+  box-shadow: 0 0 0 1px #dfeee4;
 }
-.composer-skills .button {
-  width: 28px;
-  height: 30px;
-  min-height: 30px;
-  padding: 4px;
-  flex-shrink: 0;
-}
-.composer-skills .skills-path {
-  padding: 2px 8px 10px;
-  color: #768a7e;
-}
-@media (pointer: coarse) {
-  .composer-skills summary,
-  .composer-skills .button {
-    min-height: 40px;
-  }
-  .composer-skills .button {
-    width: 36px;
-  }
-}
-@container (max-width: 500px) {
-  .skill-chip-source {
-    max-width: 80px;
-  }
+.composer-region[data-mobile-input] .composer-highlights {
+  font-size: 16px;
 }
