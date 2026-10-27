@@ -31,10 +31,49 @@ jobs:
       - run: node --import tsx scripts/verify-production.ts
       - run: node --import tsx scripts/verify-package.ts
       - run: node --import tsx scripts/verify-upgrade.ts
-  e2e:
-    # Keep browser dependencies on a stable image instead of following latest.
+  e2e-deps:
     runs-on: ubuntu-24.04
-    # Browser dependencies can take over 10 minutes to install on a cold runner.
+    # A cold cache still needs one runner to download system packages.
+    timeout-minutes: 20
+    outputs:
+      cache-key: ${{ steps.cache-key.outputs.key }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Identify E2E dependency cache
+        id: cache-key
+        env:
+          E2E_RUNNER_ARCH: ${{ runner.arch }}
+          INSTALLER_HASH: ${{ hashFiles('scripts/install-e2e-deps.sh') }}
+        run: |
+          playwright_version=$(node -p "require('@playwright/test/package.json').version")
+          echo "key=e2e-deps-ubuntu-24.04-${E2E_RUNNER_ARCH}-${ImageVersion}-playwright-${playwright_version}-${INSTALLER_HASH}" >> "$GITHUB_OUTPUT"
+      - name: Cache E2E system packages and Chromium
+        id: cache
+        uses: actions/cache@v6.1.0
+        env:
+          SEGMENT_DOWNLOAD_TIMEOUT_MINS: '2'
+        with:
+          path: |
+            .local/e2e-deps/apt
+            ~/.cache/ms-playwright
+          key: ${{ steps.cache-key.outputs.key }}
+          # Only the E2E runners need to download an existing cache.
+          lookup-only: true
+      - name: Prepare E2E dependency cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: bash scripts/install-e2e-deps.sh prepare
+  e2e:
+    needs: e2e-deps
+    # Match the runner image used to prepare the browser and package cache.
+    runs-on: ubuntu-24.04
+    # Preserve room for the source fallback if a cache cannot be restored.
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -49,7 +88,20 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps --only-shell chromium
+      - name: Restore E2E system packages and Chromium
+        id: cache
+        uses: actions/cache/restore@v6.1.0
+        env:
+          SEGMENT_DOWNLOAD_TIMEOUT_MINS: '2'
+        with:
+          path: |
+            .local/e2e-deps/apt
+            ~/.cache/ms-playwright
+          key: ${{ needs.e2e-deps.outputs.cache-key }}
+      - name: Install E2E dependencies
+        env:
+          E2E_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        run: bash scripts/install-e2e-deps.sh install
       - name: Balance E2E files by measured duration
         env:
           SHARD_INDEX: ${{ matrix.shard }}
@@ -63,14 +115,15 @@ jobs:
   # Keep the existing required check green only when every job passed.
   verify:
     if: ${{ always() }}
-    needs: [quality, e2e]
+    needs: [quality, e2e-deps, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
       - name: Require all checks to pass
         env:
           QUALITY_RESULT: ${{ needs.quality.result }}
+          E2E_DEPS_RESULT: ${{ needs.e2e-deps.result }}
           E2E_RESULT: ${{ needs.e2e.result }}
         run: |
-          echo "quality: $QUALITY_RESULT; e2e: $E2E_RESULT"
-          [[ "$QUALITY_RESULT" == success && "$E2E_RESULT" == success ]]
+          echo "quality: $QUALITY_RESULT; e2e-deps: $E2E_DEPS_RESULT; e2e: $E2E_RESULT"
+          [[ "$QUALITY_RESULT" == success && "$E2E_DEPS_RESULT" == success && "$E2E_RESULT" == success ]]
