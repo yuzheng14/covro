@@ -35,6 +35,8 @@ import type {
   ActionResolution,
   PermissionCapabilities,
   RuntimeSettings,
+  LiveSettings,
+  LiveSettingsState,
   ReviewTarget,
   PendingAction,
   Settings,
@@ -109,6 +111,7 @@ export type {
 export { CodexError } from './transport.js';
 
 export const VERIFIED_CODEX_VERSION = CODEX_COMPATIBILITY.recommended;
+const LIVE_SETTINGS_CODEX_VERSION = '0.164.0';
 const CAPABILITIES = [
   'command/exec',
   'command/exec/terminate',
@@ -252,6 +255,10 @@ export class CodexAdapter implements CodexClient {
   private actionIds = new Map<RpcId, string>();
   private stderrTail = Buffer.alloc(0);
   private disabled = new Set<string>();
+  private liveCapabilities = new Map<
+    string,
+    NonNullable<RuntimeSettings['liveSettingsCapabilities']>
+  >();
   private permissionState = new Map<string, RuntimeSettings>();
   private state: CodexDiagnostics = {
     ready: false,
@@ -323,6 +330,7 @@ export class CodexAdapter implements CodexClient {
       const version = stdout.trim().replace(/^codex-cli\s+/, '');
       this.state.codexVersion = version;
       this.permissionState.clear();
+      this.liveCapabilities.clear();
       this.denials.clear();
       this.state.compatibility = CODEX_COMPATIBILITY.verified.includes(version)
         ? 'verified'
@@ -562,20 +570,23 @@ export class CodexAdapter implements CodexClient {
       throw error;
     }
   }
-  private validateSettings(settings: Settings = {}): void {
-    const model =
-      settings.model === undefined
-        ? undefined
-        : this.state.models.find((entry) => entry.id === settings.model);
+  private validateSettings(settings: Settings = {}, current?: RuntimeSettings): void {
+    const selectedModel = settings.model ?? current?.model;
+    const model = this.state.models.find((entry) => entry.id === selectedModel);
     if (settings.model !== undefined && !model)
       throw new AppError('VALIDATION_ERROR', '模型不在当前 Codex 模型列表中');
+    const effort =
+      settings.reasoningEffort ?? (settings.model ? current?.reasoningEffort : undefined);
     if (
-      settings.reasoningEffort !== undefined &&
+      effort != null &&
       !(
         model?.reasoningEfforts ?? this.state.models.flatMap((entry) => entry.reasoningEfforts)
-      ).includes(settings.reasoningEffort)
+      ).includes(effort)
     )
       throw new AppError('VALIDATION_ERROR', '所选推理强度不受当前模型支持');
+    const tier = settings.serviceTier !== undefined ? settings.serviceTier : current?.serviceTier;
+    if (tier === 'fast' && model && !model.serviceTiers?.includes('fast'))
+      throw new AppError('VALIDATION_ERROR', '所选模型不支持 Fast');
   }
   async listThreads(
     cwd: string | string[],
@@ -934,6 +945,7 @@ export class CodexAdapter implements CodexClient {
       excludeTmpdirEnvVar: config.sandbox_workspace_write?.exclude_tmpdir_env_var ?? null,
       excludeSlashTmp: config.sandbox_workspace_write?.exclude_slash_tmp ?? null,
       permissionCapabilities: await this.readPermissionCapabilities(undefined, config),
+      liveSettingsCapabilities: this.liveCapabilities.get(''),
     };
   }
   private async readPermissionCapabilities(
@@ -967,6 +979,12 @@ export class CodexAdapter implements CodexClient {
         features.push(...page.data);
         cursor = page.nextCursor;
       }
+      this.liveCapabilities.set(threadId ?? '', {
+        fast:
+          this.state.codexVersion === LIVE_SETTINGS_CODEX_VERSION &&
+          features.find((entry) => entry.name === 'step_model_switching')?.enabled === true,
+        reviewer: this.state.codexVersion === LIVE_SETTINGS_CODEX_VERSION,
+      });
       const configFeatures = config?.features;
       const explicit = isRecord(configFeatures) ? configFeatures.guardian_approval : undefined;
       const autoReview =
@@ -978,6 +996,7 @@ export class CodexAdapter implements CodexClient {
         autoReview,
       );
     } catch {
+      this.liveCapabilities.delete(threadId ?? '');
       return permissionCapabilities(
         null,
         false,
@@ -1027,11 +1046,16 @@ export class CodexAdapter implements CodexClient {
         result.cwd,
       ),
       permissionCapabilities: await this.readPermissionCapabilities(result.thread.id),
+      liveSettingsCapabilities: this.liveCapabilities.get(result.thread.id),
     };
     const latest = this.permissionState.get(result.thread.id);
     const confirmed =
       latest && latest !== previous
-        ? { ...latest, permissionCapabilities: settings.permissionCapabilities }
+        ? {
+            ...latest,
+            permissionCapabilities: settings.permissionCapabilities,
+            liveSettingsCapabilities: settings.liveSettingsCapabilities,
+          }
         : settings;
     this.permissionState.set(result.thread.id, confirmed);
     // The service correctly keeps a newer settings notification over a lifecycle response.
@@ -1124,7 +1148,7 @@ export class CodexAdapter implements CodexClient {
     images?: string[],
     skills?: import('../shared/skills.js').SkillReference[],
   ): Promise<TurnView> {
-    this.validateSettings(settings);
+    this.validateSettings(settings, this.permissionState.get(id));
     await this.validatePermissionSettings(cwd, settings, id);
     const turn = mapTurn(
       id,
@@ -1139,6 +1163,60 @@ export class CodexAdapter implements CodexClient {
       ).turn,
     );
     return turn;
+  }
+  async updateLiveSettings(
+    id: string,
+    cwd: string,
+    turnId: string,
+    settings: LiveSettings,
+  ): Promise<Partial<Omit<LiveSettingsState, 'turnId'>>> {
+    // Exact experimental 0.164.0 contract; stable generation intentionally omits this method.
+    if (this.state.codexVersion !== LIVE_SETTINGS_CODEX_VERSION)
+      throw new AppError('PROTOCOL_INCOMPATIBLE', '执行中配置更新尚未核验此 Codex 版本');
+    const epoch = this.epoch;
+    const current = this.permissionState.get(id);
+    const patch: Partial<Omit<LiveSettingsState, 'turnId'>> = {};
+    if (settings.serviceTier !== undefined) {
+      await this.readPermissionCapabilities(id);
+      if (!this.liveCapabilities.get(id)?.fast)
+        throw new AppError(
+          'LIVE_SETTINGS_UNAVAILABLE',
+          '当前实例未启用 step_model_switching；Fast 下轮生效',
+        );
+      const model = this.state.models.find((entry) => entry.id === current?.model);
+      if (settings.serviceTier === 'fast' && !model?.serviceTiers?.includes('fast'))
+        throw new AppError('VALIDATION_ERROR', '当前轮次模型不支持 Fast');
+      patch.serviceTier = settings.serviceTier;
+    }
+    if (settings.permissionMode) {
+      await this.validatePermissionSettings(cwd, settings, id);
+      // Only these two presets have identical sandbox/profile and approval policy.
+      if (
+        (current?.permissionMode === 'ask' || current?.permissionMode === 'auto-review') &&
+        (settings.permissionMode === 'ask' || settings.permissionMode === 'auto-review')
+      )
+        patch.approvalReviewer = settings.permissionMode === 'ask' ? 'user' : 'auto_review';
+    }
+    if (epoch !== this.epoch)
+      throw new AppError('CODEX_UNAVAILABLE', 'Codex 运行实例已变化，请重试');
+    if (!Object.keys(patch).length) return patch;
+    if (!this.rpc || !this.ready) throw new CodexError('CODEX_UNAVAILABLE', 'Codex is not ready');
+    const result = await this.rpc.request<{ status: 'applied' | 'targetUnavailable' }>(
+      'turn/settings/update',
+      {
+        threadId: id,
+        turnId,
+        ...(patch.serviceTier === undefined ? {} : { serviceTier: patch.serviceTier }),
+        ...(patch.approvalReviewer === undefined
+          ? {}
+          : { approvalsReviewer: patch.approvalReviewer }),
+      },
+    );
+    if (result.status === 'targetUnavailable')
+      throw new AppError('TURN_CONFLICT', '目标任务已改变或不再活动，请刷新状态', 409);
+    if (result.status !== 'applied')
+      throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid turn/settings/update result', true);
+    return patch;
   }
   async startReview(
     id: string,
@@ -1293,6 +1371,7 @@ export class CodexAdapter implements CodexClient {
               event.params.threadSettings.activePermissionProfile,
               event.params.threadSettings.cwd,
             ),
+            liveSettingsCapabilities: this.liveCapabilities.get(event.params.threadId),
             permissionCapabilities: this.permissionState.get(event.params.threadId)
               ?.permissionCapabilities,
           };

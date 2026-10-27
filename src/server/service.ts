@@ -44,6 +44,7 @@ import type {
   ResumeThreadInput,
   ServerMessage,
   StartTurnInput,
+  UpdateLiveSettingsInput,
   RetryTurnInput,
   Settings,
   StartReviewInput,
@@ -113,6 +114,7 @@ export class GatewayService {
   // Request ordering only: title values always come from app-server.
   private titleReadSequence = 0;
   private readonly titleReads = new Map<string, number>();
+  private readonly liveSettingsWrites = new Map<string, Promise<unknown>>();
   // A status/title/history update must not discard a lifecycle response's full configuration.
   private runtimeSettingsSequence = 0;
   private readonly runtimeSettingsUpdates = new Map<string, number>();
@@ -1482,6 +1484,60 @@ export class GatewayService {
       );
       return { result: { threadId, turnId: result.turnId } };
     });
+  }
+
+  async updateLiveSettings(threadId: string, input: UpdateLiveSettingsInput): Promise<Operation> {
+    const previous = this.liveSettingsWrites.get(threadId) ?? Promise.resolve();
+    const writing = previous
+      .catch(() => {})
+      .then(() =>
+        this.perform('turn.settings', threadId, input, async () => {
+          await this.requireActiveTurn(threadId, input.expectedTurnId);
+          this.ensureCompatibilityConfirmed();
+          const thread = this.projection.get(threadId)!;
+          const ownership = this.workspaces.assertOwnership(
+            thread.projectId,
+            thread.cwd,
+            thread.id,
+          );
+          if (!this.codex.updateLiveSettings)
+            throw new AppError('PROTOCOL_INCOMPATIBLE', 'Codex does not support live settings');
+          const epoch = this.codex.epoch;
+          this.store.dispatch(input.clientOperationId);
+          const patch = await this.codex.updateLiveSettings(
+            threadId,
+            ownership.cwd,
+            input.expectedTurnId,
+            input.settings,
+          );
+          const current = this.projection.get(threadId);
+          // A late receipt cannot label a replacement task or another runtime as updated.
+          if (
+            this.codex.epoch === epoch &&
+            current?.turns.at(-1)?.id === input.expectedTurnId &&
+            isActive(current.turns.at(-1)!.status) &&
+            Object.keys(patch).length
+          ) {
+            current.liveSettings = {
+              ...(current.liveSettings?.turnId === input.expectedTurnId
+                ? current.liveSettings
+                : {}),
+              turnId: input.expectedTurnId,
+              ...patch,
+            };
+            this.projection.touch(threadId);
+            this.publishThread(threadId);
+          }
+          return { result: { threadId, turnId: input.expectedTurnId, applied: patch } };
+        }),
+      );
+    this.liveSettingsWrites.set(threadId, writing);
+    try {
+      return await writing;
+    } finally {
+      if (this.liveSettingsWrites.get(threadId) === writing)
+        this.liveSettingsWrites.delete(threadId);
+    }
   }
 
   async interrupt(threadId: string, input: InterruptInput): Promise<Operation> {

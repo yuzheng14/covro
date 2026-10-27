@@ -96,6 +96,12 @@ export class Projection {
       thread.status = incoming.status;
     this.flushAutoReviews(threadId, incoming.id);
     const updated = thread.turns.find((turn) => turn.id === incoming.id)!;
+    if (
+      thread.liveSettings &&
+      (thread.turns.at(-1)?.id !== thread.liveSettings.turnId ||
+        (updated.id === thread.liveSettings.turnId && isTerminal(updated.status)))
+    )
+      delete thread.liveSettings;
     this.finishReconnect(updated);
     settleCompactions(updated);
     if (isTerminal(updated.status)) this.finishAutoReviews(updated);
@@ -320,6 +326,7 @@ export class Projection {
         this.resolveAction(action.actionId, 'expired');
     for (const thread of this.threads.values()) {
       thread.managed = false;
+      delete thread.liveSettings;
       delete thread.resumeError;
       if (thread.runtimeSettings) {
         const { model, reasoningEffort } = thread.runtimeSettings;

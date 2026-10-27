@@ -431,6 +431,13 @@ export function createApp({
     );
     return c.json(op, status(op));
   });
+  app.post('/api/threads/:threadId/live-settings', async (c) => {
+    const op = await service.updateLiveSettings(
+      id(c.req.param('threadId')),
+      await parse(c, schemas.updateLiveSettingsSchema),
+    );
+    return c.json(op, status(op));
+  });
   app.post('/api/threads/:threadId/turns', async (c) => {
     const op = await service.startTurn(
       id(c.req.param('threadId')),
