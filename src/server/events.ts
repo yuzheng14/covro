@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import type { ThreadPatch } from '../shared/thread-patch.js';
+import { ThreadPatchBuilder, type StreamedItem } from './thread-patch.js';
 import type {
   Cursor,
   Operation,
@@ -24,6 +26,7 @@ export class EventHub {
   private readonly listeners = new Set<{ threadId: string; send: Listener }>();
   private readonly runtimeListeners = new Set<Listener>();
   private readonly overviewListeners = new Set<Listener>();
+  private readonly threadPatches = new Map<string, ThreadPatchBuilder>();
 
   constructor(private readonly maxBytes = 16 * 1024 * 1024) {}
 
@@ -32,8 +35,8 @@ export class EventHub {
   }
 
   publish(
-    kind: 'thread' | 'runtime' | 'operation',
-    payload: ThreadView | SystemInfo | Operation,
+    kind: 'thread' | 'threadPatch' | 'runtime' | 'operation',
+    payload: ThreadView | ThreadPatch | SystemInfo | Operation,
     threadId?: string,
   ): void {
     const event: BusinessEvent = {
@@ -63,6 +66,15 @@ export class EventHub {
     return () => {
       this.runtimeListeners.delete(send);
     };
+  }
+
+  publishThread(thread: ThreadView, streamed?: StreamedItem): void {
+    let builder = this.threadPatches.get(thread.id);
+    if (!builder) {
+      builder = new ThreadPatchBuilder();
+      this.threadPatches.set(thread.id, builder);
+    }
+    this.publish('threadPatch', builder.build(thread, streamed), thread.id);
   }
 
   /** Overview is recovered via HTTP; it never consumes the detailed replay buffer. */
@@ -123,6 +135,7 @@ export class EventHub {
     snapshot: () => ThreadView,
     after: Cursor | undefined,
     send: Listener,
+    incremental = false,
   ): () => void {
     const replayable =
       after?.serverEpoch === this.serverEpoch &&
@@ -149,9 +162,18 @@ export class EventHub {
         )
           this.deliver(send, event);
     } else {
-      const data = structuredClone(snapshot());
       boundary = this.seq;
-      this.deliver(send, { type: 'snapshot', cursor: this.cursor(), threadId, data });
+      this.deliver(
+        send,
+        incremental
+          ? { type: 'resync', cursor: this.cursor(), threadId }
+          : {
+              type: 'snapshot',
+              cursor: this.cursor(),
+              threadId,
+              data: structuredClone(snapshot()),
+            },
+      );
     }
     initializing = false;
     for (const message of queued)

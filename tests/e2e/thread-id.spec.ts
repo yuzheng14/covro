@@ -132,7 +132,9 @@ test('late details and clipboard completion never replace the current session or
       if (
         message.type !== 'error' &&
         message.threadId === delayedId &&
-        (message.type === 'snapshot' || message.kind === 'thread')
+        (message.type === 'snapshot' ||
+          message.type === 'resync' ||
+          (message.type === 'event' && message.kind === 'threadPatch'))
       )
         return;
       socket.send(raw);

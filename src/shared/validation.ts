@@ -183,6 +183,7 @@ export const subscribeSchema = z
   .object({
     type: z.literal('subscribe'),
     threadId: idSchema,
+    incremental: z.boolean().optional(),
     after: z
       .object({ serverEpoch: idSchema, seq: z.number().int().nonnegative() })
       .strict()

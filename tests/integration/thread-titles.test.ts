@@ -82,7 +82,10 @@ it('publishes name notifications to detail and overview, and reads the fallback 
     actual.title = name;
     codex.emit({ type: 'threadName', threadId: id, name });
     expect(cached.title).toBe(name);
-    expect(detail.at(-1)).toMatchObject({ kind: 'thread', payload: { title: name } });
+    expect(detail.at(-1)).toMatchObject({
+      kind: 'threadPatch',
+      payload: { thread: { title: name } },
+    });
     expect(overview.at(-1)).toMatchObject({ kind: 'threadSummary', payload: { title: name } });
   }
   actual.title = '上游回退预览';

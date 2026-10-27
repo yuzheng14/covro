@@ -196,9 +196,9 @@ test('disables archive for running approvals and synchronizes completed archive 
       const message = JSON.parse(raw.toString()) as ServerMessage;
       if (
         message.type === 'event' &&
-        message.kind === 'thread' &&
+        message.kind === 'threadPatch' &&
         !replayArchiveDetails &&
-        (message.payload as ThreadView).archived
+        (message.payload as import('../../src/shared/thread-patch').ThreadPatch).thread.archived
       )
         return;
       socket.send(raw);

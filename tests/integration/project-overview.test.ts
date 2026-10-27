@@ -193,9 +193,9 @@ describe('project conversation overview', () => {
       'execution',
     ])
       expect(encoded).not.toContain(forbidden);
-    expect(selected.filter((event) => event.type === 'event' && event.kind === 'thread')).toEqual(
-      [],
-    );
+    expect(
+      selected.filter((event) => event.type === 'event' && event.kind === 'threadPatch'),
+    ).toEqual([]);
     expect(selected.some((event) => event.type === 'event' && event.kind === 'threadSummary')).toBe(
       false,
     );
@@ -227,13 +227,15 @@ describe('project conversation overview', () => {
       false,
     );
     expect(
-      replay.filter((event) => event.type === 'event' && event.kind === 'thread').length,
+      replay.filter((event) => event.type === 'event' && event.kind === 'threadPatch').length,
     ).toBeGreaterThan(0);
     expect(replay).toContainEqual(
       expect.objectContaining({
-        kind: 'thread',
+        kind: 'threadPatch',
         cursor: 'cursor' in runningSummary ? runningSummary.cursor : undefined,
-        payload: expect.objectContaining({ status: 'running' }),
+        payload: expect.objectContaining({
+          thread: expect.objectContaining({ status: 'running' }),
+        }),
       }),
     );
     expect(replay).toContainEqual(expect.objectContaining({ kind: 'runtime' }));
