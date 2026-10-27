@@ -61,7 +61,8 @@ jobs:
           SEGMENT_DOWNLOAD_TIMEOUT_MINS: '2'
         with:
           path: |
-            .local/e2e-deps/apt
+            .local/e2e-deps/apt/*.deb
+            .local/e2e-deps/apt/runner-image
             ~/.cache/ms-playwright
           key: ${{ steps.cache-key.outputs.key }}
           # Only the E2E runners need to download an existing cache.
@@ -95,7 +96,8 @@ jobs:
           SEGMENT_DOWNLOAD_TIMEOUT_MINS: '2'
         with:
           path: |
-            .local/e2e-deps/apt
+            .local/e2e-deps/apt/*.deb
+            .local/e2e-deps/apt/runner-image
             ~/.cache/ms-playwright
           key: ${{ needs.e2e-deps.outputs.cache-key }}
       - name: Install E2E dependencies
