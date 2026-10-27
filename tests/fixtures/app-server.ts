@@ -2103,6 +2103,15 @@ function receive(request: ClientRequest): void {
       }, options.compactStartDelayMs ?? 0);
       break;
     }
+    case 'thread/approveGuardianDeniedAction': {
+      const thread = threads.get(request.params.threadId);
+      if (!thread) {
+        error(request.id, 'Thread not found');
+        break;
+      }
+      reply(request.id, {});
+      break;
+    }
     case 'review/start': {
       const thread = threads.get(request.params.threadId);
       if (!thread || thread.status.type === 'active') {

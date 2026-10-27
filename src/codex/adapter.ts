@@ -5,6 +5,7 @@ import type { CommandExecTerminateResponse } from './generated/v2/CommandExecTer
 import { spawn, execFile, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
+import { GuardianDenials } from './guardian-denials.js';
 import { ThreadTitles } from './thread-titles.js';
 import {
   collaborationSelection,
@@ -121,6 +122,7 @@ const CAPABILITIES = [
   'thread/items/list',
   'turn/start',
   'review/start',
+  'thread/approveGuardianDeniedAction',
   'turn/steer',
   'turn/interrupt',
   'model/list',
@@ -154,6 +156,7 @@ type Responses = {
   'thread/items/list': ThreadItemsListResponse;
   'turn/start': TurnStartResponse;
   'review/start': ReviewStartResponse;
+  'thread/approveGuardianDeniedAction': unknown;
   'turn/steer': TurnSteerResponse;
   'turn/interrupt': TurnInterruptResponse;
 };
@@ -210,6 +213,7 @@ export class CodexAdapter implements CodexClient {
   private restartTimer?: NodeJS.Timeout;
   private restartAttempt = 0;
   private titles?: ThreadTitles;
+  private readonly denials = new GuardianDenials();
   private readonly tokenUsage = new TurnTokenUsage();
   // Ordering only. Persisted archive state belongs exclusively to Codex.
   private archiveSequence = 0;
@@ -289,6 +293,7 @@ export class CodexAdapter implements CodexClient {
       const version = stdout.trim().replace(/^codex-cli\s+/, '');
       this.state.codexVersion = version;
       this.permissionState.clear();
+      this.denials.clear();
       this.state.compatibility = CODEX_COMPATIBILITY.verified.includes(version)
         ? 'verified'
         : 'unverified';
@@ -336,6 +341,7 @@ export class CodexAdapter implements CodexClient {
         const wasReady = this.ready;
         this.state.ready = false;
         this.tokenUsage.clear();
+        this.denials.clear();
         this.state.connection = 'unavailable';
         this.state.error = error.message;
         this.expireActions();
@@ -1121,6 +1127,13 @@ export class CodexAdapter implements CodexClient {
     await this.call('turn/interrupt', { threadId: id, turnId });
   }
 
+  listGuardianDenials(id: string) {
+    return this.denials.list(id);
+  }
+  async approveGuardianDenial(id: string, denialId: string): Promise<void> {
+    const event = this.denials.take(id, denialId);
+    await this.call('thread/approveGuardianDeniedAction', { threadId: id, event });
+  }
   async compactThread(id: string): Promise<void> {
     // The empty response acknowledges dispatch, not completion. Turn notifications
     // carry the compaction's identity and final outcome.
@@ -1208,6 +1221,7 @@ export class CodexAdapter implements CodexClient {
         break;
       case 'item/autoApprovalReview/started':
       case 'item/autoApprovalReview/completed':
+        if (event.method === 'item/autoApprovalReview/completed') this.denials.record(event.params);
         this.emit({
           type: 'autoReview',
           threadId: event.params.threadId,

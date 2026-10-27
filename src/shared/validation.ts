@@ -128,6 +128,10 @@ export const steerSchema = operationSchema
     ...taskFields,
   })
   .refine(hasContent, 'Text or an image is required');
+export const approveDenialSchema = operationSchema.extend({
+  denialId: idSchema,
+  confirm: z.literal(true),
+});
 export const interruptSchema = operationSchema.extend({ expectedTurnId: idSchema });
 export const retryTurnSchema = createThreadSchema.extend({ expectedTurnId: idSchema });
 const elicitationValueSchema = z.union([

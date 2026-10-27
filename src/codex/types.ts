@@ -92,6 +92,8 @@ export interface CodexClient {
     images?: string[],
   ): Promise<{ turnId: string }>;
   interruptTurn(id: string, turnId: string): Promise<void>;
+  listGuardianDenials?(id: string): import('../shared/guardian-denials.js').GuardianDenial[];
+  approveGuardianDenial?(id: string, denialId: string): Promise<void>;
   compactThread(id: string): Promise<void>;
   respond(actionId: string, resolution: ActionResolution): Promise<void>;
 }

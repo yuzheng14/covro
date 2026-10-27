@@ -1139,6 +1139,41 @@ export class GatewayService {
     return this.dispatchTurn(threadId, { ...input, text: '' }, undefined, input.expectedTurnId);
   }
 
+  async getGuardianDenials(threadId: string) {
+    const thread = await this.loadThread(threadId);
+    this.ensureManaged(thread);
+    this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+    if (!this.codex.listGuardianDenials)
+      throw new AppError('METHOD_UNAVAILABLE', 'Codex 不支持拒绝记录读取', 409);
+    return { data: this.codex.listGuardianDenials(threadId) };
+  }
+  async approveGuardianDenial(
+    threadId: string,
+    input: OperationInput & { denialId: string; confirm: true },
+  ): Promise<Operation> {
+    return this.perform('guardian.approve', threadId, input, async () => {
+      const thread = await this.loadThread(threadId);
+      this.ensureManaged(thread);
+      this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+      if (
+        thread.status === 'unknown' ||
+        isActive(thread.status) ||
+        thread.turns.some((turn) => isActive(turn.status))
+      )
+        throw new AppError('THREAD_BUSY', '请等待当前任务结束并确认状态后再授权重试', 409);
+      this.ensureCompatibilityConfirmed();
+      if (
+        !this.codex.approveGuardianDenial ||
+        !this.codex.listGuardianDenials?.(threadId).some((entry) => entry.id === input.denialId)
+      )
+        throw new AppError('DENIAL_EXPIRED', '拒绝记录已失效，请重新查看当前会话', 409);
+      this.store.dispatch(input.clientOperationId);
+      await this.codex.approveGuardianDenial(threadId, input.denialId);
+      this.publishThread(threadId);
+      return { result: { threadId } };
+    });
+  }
+
   async compactThread(threadId: string, input: OperationInput): Promise<Operation> {
     return this.perform('thread.compact', threadId, input, async () => {
       this.capacityRetries.clear(threadId);

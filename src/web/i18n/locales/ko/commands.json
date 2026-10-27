@@ -119,5 +119,13 @@
   "diffPartial": "파일 변경, 읽기 실패 또는 크기 제한으로 일부 내용을 생략했습니다.",
   "diffDescription": "스테이징, 미스테이징 및 미추적 변경 보기",
   "diffUnavailable": "프로젝트 또는 저장된 대화를 선택하세요.",
-  "diffOpened": "작업 공간 변경을 열었습니다. 새 스냅샷을 보려면 새로고침하세요."
+  "diffOpened": "작업 공간 변경을 열었습니다. 새 스냅샷을 보려면 새로고침하세요.",
+  "approveDescription": "거부된 작업을 한 번 허용",
+  "approveTitle": "거부된 작업",
+  "approveEmpty": "현재 런타임에 재시도 가능한 거부 기록이 없습니다.",
+  "approveSelect": "거부된 작업 선택",
+  "approveConfirm": "이 작업을 한 번만 허용합니다. 기본 권한은 변경되지 않습니다.",
+  "approveOnce": "한 번 허용",
+  "approveSubmitted": "재시도 승인을 기록했습니다. 계속할 작업을 보내세요.",
+  "approveCancelled": "승인을 취소했습니다."
 }

@@ -114,6 +114,9 @@ class ControlledFixture implements CodexClient {
   startReview: CodexClient['startReview'] = (...args) => this.inner.startReview(...args);
   steerTurn: CodexClient['steerTurn'] = (...args) => this.inner.steerTurn(...args);
   interruptTurn: CodexClient['interruptTurn'] = (...args) => this.inner.interruptTurn(...args);
+  listGuardianDenials = (id: string) => this.inner.listGuardianDenials!(id);
+  approveGuardianDenial = (id: string, denialId: string) =>
+    this.inner.approveGuardianDenial!(id, denialId);
   compactThread: CodexClient['compactThread'] = (...args) => this.inner.compactThread(...args);
   respond: CodexClient['respond'] = (...args) => this.inner.respond(...args);
   async reset(version = 'fixture-unverified-1') {

@@ -119,5 +119,13 @@
   "diffPartial": "Some content is omitted because files changed, could not be read, or exceeded the snapshot limits.",
   "diffDescription": "Inspect staged, unstaged and untracked workspace changes",
   "diffUnavailable": "Choose a project or a saved session to inspect its Git changes.",
-  "diffOpened": "Workspace changes opened; refresh in the viewer to read a new snapshot."
+  "diffOpened": "Workspace changes opened; refresh in the viewer to read a new snapshot.",
+  "approveDescription": "Approve a denied action once",
+  "approveTitle": "Denied actions",
+  "approveEmpty": "No retryable denials in this runtime.",
+  "approveSelect": "Choose a denied action",
+  "approveConfirm": "Authorize this exact action once. Codex may retry it; your default permissions stay unchanged.",
+  "approveOnce": "Authorize once",
+  "approveSubmitted": "Retry authorization recorded. Ask Codex to continue when ready.",
+  "approveCancelled": "Authorization cancelled."
 }
