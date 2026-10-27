@@ -359,6 +359,16 @@ function ConversationContent({
       userScrolled.current = false;
     }
     const box = containerRef.current;
+    const focused = document.activeElement;
+    // Notification navigation owns the focused card; a later stream update must not jump past it.
+    if (
+      focused instanceof HTMLElement &&
+      box?.contains(focused) &&
+      focused.matches('[data-attention-id]')
+    ) {
+      stickToBottom.current = false;
+      anchor.current = undefined;
+    }
     if (stickToBottom.current) endRef.current?.scrollIntoView({ block: 'end' });
     else if (box && anchor.current) {
       const target = [...box.querySelectorAll<HTMLElement>('[data-turn-id]')].find(

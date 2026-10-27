@@ -2,7 +2,7 @@
   "browser_notifications": "Browser notifications",
   "send_test_notification": "Send test notification",
   "background_notifications_and_sleeping_tabs": "Background notifications and sleeping tabs",
-  "keep_this_page_and_browser_open_background_tabs": "Keep this page and browser open. Background tabs can receive notifications, but frozen or discarded pages may not notify promptly. Results and unread indicators sync when you return.",
+  "keep_this_page_and_browser_open_background_tabs": "Notifications depend on this page staying online. Keep the page and browser running. Web Push is not used; notifications may be missed while the page is frozen, discarded, or closed. Results and unread indicators sync on return; past notifications are not replayed.",
   "keep_this_site_active": "Keep this site active",
   "chrome_settings_performance_always_keep_these_sites_active": "Chrome: Settings → Performance → Always keep these sites active. Add this site.",
   "settings_instructions": "Settings instructions",
@@ -19,7 +19,7 @@
   "enable_notifications": "Enable notifications",
   "allow_notifications_in_the_browser_s_site_settings": "Allow notifications in the browser's site settings, then enable them here.",
   "use_https_localhost_or_127_0_0_1": "Use HTTPS. localhost or 127.0.0.1 can be used for local access.",
-  "use_a_desktop_browser_that_supports_system_notifications": "Use a desktop browser that supports system notifications. In-page status and unread indicators remain available.",
+  "use_a_desktop_browser_that_supports_system_notifications": "Use a browser that supports system notifications. In-page status and unread indicators remain available.",
   "permission_is_requested_only_when_you_click_enable": "Permission is requested only when you click Enable. This setting is shared across this site's tabs in this browser.",
   "cannot_save_notification_settings_allow_browser_storage_for": "Cannot save notification settings. Allow browser storage for this site and retry.",
   "cannot_enable_notifications_check_notification_permissions_and_site": "Cannot enable notifications. Check notification permissions and site storage settings.",
@@ -34,5 +34,12 @@
   "events_description": "Show the project and session when work finishes or needs an answer or approval. Click to open the session and find the pending request.",
   "test_description": "You will be notified when the agent finishes or needs an answer or approval.",
   "answer_required": "Agent needs an answer",
-  "approval_required": "Agent needs approval"
+  "approval_required": "Agent needs approval",
+  "preparing_delivery": "Preparing…",
+  "delivery_unavailable": "Delivery unavailable",
+  "delivery_error_initialization": "Could not initialize notification delivery. Reload the page or enable notifications again.",
+  "delivery_error_unsupported": "This browser cannot use the notification delivery API. Use a browser that supports system notifications.",
+  "delivery_error_permission": "Notification permission was revoked. Allow notifications again in the browser’s site settings.",
+  "delivery_error_delivery": "Could not send the notification. Check browser and system notification settings, then retry. In-page status and unread indicators remain available.",
+  "test_submitted": "Notification submitted to the browser. Check your system notification center."
 }

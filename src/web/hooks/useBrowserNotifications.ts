@@ -6,6 +6,12 @@ import type { AttentionRequest, AttentionTarget, TurnCompletion } from '../../sh
 import { attentionKey } from '../../shared/thread-attention';
 import { api } from '../lib/api';
 import {
+  NotificationDeliveryError,
+  prepareNotificationDelivery,
+  showBrowserNotification,
+} from '../lib/notification-delivery';
+import { parseNotificationURL, type NotificationDestination } from '../lib/notification-navigation';
+import {
   claimCompletion,
   claimNotification,
   attentionNotification,
@@ -16,6 +22,7 @@ import {
 } from '../lib/browser-notifications';
 
 interface Options {
+  navigationReady: boolean;
   projectName: (projectId: string) => string | undefined;
   openThread: (threadId: string, projectId: string, target?: AttentionTarget) => void;
 }
@@ -29,6 +36,18 @@ export function useBrowserNotifications(options: Options) {
   const [requesting, setRequesting] = useState(false);
   const requestInFlight = useRef(false);
   const [error, setError] = useState<string>();
+  const [ready, setReady] = useState(false);
+  const [initializing, setInitializing] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<string>();
+  const [destination, setDestination] = useState<NotificationDestination>();
+
+  const deliveryError = useCallback((problem: unknown) => {
+    if (!mounted.current) return;
+    const reason = problem instanceof NotificationDeliveryError ? problem.reason : 'delivery';
+    setError(message(`notifications:delivery_error_${reason}`));
+    setTestResult(undefined);
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -39,23 +58,77 @@ export function useBrowserNotifications(options: Options) {
     const sync = (event: StorageEvent) => {
       if (event.key === null || event.key === NOTIFICATIONS_ENABLED_KEY) refresh();
     };
+    const navigate = (value: unknown) => {
+      const next = parseNotificationURL(value);
+      if (next) setDestination(next);
+      return next;
+    };
+    const fromURL = () => {
+      if (navigate(window.location.href))
+        history.replaceState(history.state, '', window.location.pathname + window.location.search);
+    };
+    const clicked = (event: MessageEvent) => {
+      const worker = event.source as ServiceWorker | null;
+      if (
+        worker?.scriptURL === new URL('/notification-worker.js', window.location.origin).href &&
+        event.origin === window.location.origin &&
+        event.data?.type === 'covro-notification-click'
+      )
+        navigate(event.data.url);
+    };
+    navigator.serviceWorker?.addEventListener('message', clicked);
+    window.addEventListener('hashchange', fromURL);
+    fromURL();
     window.addEventListener('storage', sync);
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
     return () => {
       mounted.current = false;
+      navigator.serviceWorker?.removeEventListener('message', clicked);
+      window.removeEventListener('hashchange', fromURL);
       window.removeEventListener('storage', sync);
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
   }, []);
 
+  useEffect(() => {
+    if (!destination || !options.navigationReady) return;
+    setDestination(undefined);
+    if (latest.current.projectName(destination.projectId))
+      latest.current.openThread(destination.threadId, destination.projectId, destination.target);
+  }, [destination, options.navigationReady]);
+
+  useEffect(() => {
+    let active = true;
+    setReady(false);
+    if (!enabled || access !== 'granted') {
+      setInitializing(false);
+      return;
+    }
+    setInitializing(true);
+    void prepareNotificationDelivery()
+      .then(() => {
+        if (active) setReady(true);
+      })
+      .catch((problem: unknown) => {
+        if (active) deliveryError(problem);
+      })
+      .finally(() => {
+        if (active) setInitializing(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [enabled, access, deliveryError]);
+
   const toggle = async () => {
     if (requestInFlight.current) return;
     setError(undefined);
+    setTestResult(undefined);
     const current = notificationAccess();
     setAccess(current);
-    if (enabled && current === 'granted') {
+    if (enabled) {
       try {
         localStorage.setItem(NOTIFICATIONS_ENABLED_KEY, '0');
         setEnabled(false);
@@ -75,11 +148,15 @@ export function useBrowserNotifications(options: Options) {
       if (!mounted.current) return;
       setAccess(permission);
       if (permission === 'granted') {
+        await prepareNotificationDelivery();
+        if (!mounted.current) return;
+        if (notificationAccess() !== 'granted') throw new NotificationDeliveryError('permission');
         localStorage.setItem(NOTIFICATIONS_ENABLED_KEY, '1');
         setEnabled(true);
       }
-    } catch {
-      if (mounted.current)
+    } catch (problem) {
+      if (problem instanceof NotificationDeliveryError) deliveryError(problem);
+      else if (mounted.current)
         setError(
           message(
             'notifications:cannot_enable_notifications_check_notification_permissions_and_site',
@@ -91,18 +168,29 @@ export function useBrowserNotifications(options: Options) {
     }
   };
 
-  const show = useCallback((title: string, options: NotificationOptions, onClick?: () => void) => {
-    const notification = new Notification(title, options);
-    notification.onclick = () => {
-      window.focus();
-      onClick?.();
-      notification.close();
-    };
-    notification.onerror = () => {
-      if (mounted.current)
-        setError(message('notifications:the_browser_could_not_show_notifications_check_browser'));
-    };
-  }, []);
+  const show = useCallback(
+    (title: string, options: NotificationOptions, destination?: NotificationDestination) =>
+      showBrowserNotification(
+        title,
+        options,
+        destination,
+        () => {
+          if (destination)
+            latest.current.openThread(
+              destination.threadId,
+              destination.projectId,
+              destination.target,
+            );
+        },
+        deliveryError,
+        () =>
+          mounted.current &&
+          notificationsEnabled() &&
+          notificationAccess() === 'granted' &&
+          (!destination || Boolean(latest.current.projectName(destination.projectId))),
+      ),
+    [deliveryError],
+  );
 
   const notify = useCallback(
     async (completion: TurnCompletion) => {
@@ -110,6 +198,7 @@ export function useBrowserNotifications(options: Options) {
       const projectName = latest.current.projectName(scopeKey(completion.projectId));
       if (!projectName) return;
       try {
+        await prepareNotificationDelivery();
         if (!(await claimCompletion(completion.threadId, completion.turnId))) return;
         // The user may disable notifications or remove the project while the claim is pending.
         if (
@@ -120,30 +209,35 @@ export function useBrowserNotifications(options: Options) {
         )
           return;
         const message = completionNotification(completion, projectName);
-        show(message.title, message.options, () =>
-          latest.current.openThread(completion.threadId, scopeKey(completion.projectId)),
-        );
-      } catch {
-        if (mounted.current)
+        await show(message.title, message.options, {
+          threadId: completion.threadId,
+          projectId: scopeKey(completion.projectId),
+        });
+      } catch (problem) {
+        if (problem instanceof NotificationDeliveryError) deliveryError(problem);
+        else if (mounted.current)
           setError(
             message('notifications:cannot_show_notifications_or_save_deduplication_records_check'),
           );
       }
     },
-    [show],
+    [show, deliveryError],
   );
 
-  const test = () => {
-    if (!notificationsEnabled() || notificationAccess() !== 'granted') return;
+  const test = async () => {
+    if (testing || !notificationsEnabled() || notificationAccess() !== 'granted') return;
     setError(undefined);
+    setTestResult(undefined);
+    setTesting(true);
     try {
-      show(t('notifications:test_notification'), {
+      const sent = await show(t('notifications:test_notification'), {
         body: t('notifications:test_description'),
       });
-    } catch {
-      setError(
-        message('notifications:this_browser_cannot_show_system_notifications_check_browser'),
-      );
+      if (sent && mounted.current) setTestResult(message('notifications:test_submitted'));
+    } catch (problem) {
+      deliveryError(problem);
+    } finally {
+      if (mounted.current) setTesting(false);
     }
   };
 
@@ -153,6 +247,8 @@ export function useBrowserNotifications(options: Options) {
       const project = scopeKey(request.projectId);
       if (!latest.current.projectName(project)) return;
       try {
+        // Installation can be slow. Arbitrate and revalidate requests only once delivery is ready.
+        await prepareNotificationDelivery();
         if (!(await claimNotification(attentionKey(request)))) return;
         // Revalidate after asynchronous arbitration: another tab may already have responded.
         const pending = await api.threadAttention(request.threadId);
@@ -166,20 +262,36 @@ export function useBrowserNotifications(options: Options) {
         )
           return;
         const notification = attentionNotification(request, name);
-        show(notification.title, notification.options, () =>
-          latest.current.openThread(request.threadId, project, request.target),
-        );
-      } catch {
-        if (mounted.current)
+        await show(notification.title, notification.options, {
+          threadId: request.threadId,
+          projectId: project,
+          target: request.target,
+        });
+      } catch (problem) {
+        if (problem instanceof NotificationDeliveryError) deliveryError(problem);
+        else if (mounted.current)
           setError(
             message('notifications:cannot_show_notifications_or_save_deduplication_records_check'),
           );
       }
     },
-    [show],
+    [show, deliveryError],
   );
 
-  return { enabled, access, requesting, error, toggle, test, notify, notifyAttention };
+  return {
+    enabled,
+    access,
+    requesting,
+    error,
+    ready,
+    initializing,
+    testing,
+    testResult,
+    toggle,
+    test,
+    notify,
+    notifyAttention,
+  };
 }
 
 export type BrowserNotifications = ReturnType<typeof useBrowserNotifications>;

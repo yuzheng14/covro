@@ -2,7 +2,7 @@
   "browser_notifications": "ブラウザー通知",
   "send_test_notification": "テスト通知を送信",
   "background_notifications_and_sleeping_tabs": "バックグラウンド通知とタブの休止",
-  "keep_this_page_and_browser_open_background_tabs": "ページとブラウザーを開いたままにしてください。バックグラウンドでは通知を受信できますが、休止・破棄中は遅れる場合があります。復帰時に結果と未読表示が同期されます。",
+  "keep_this_page_and_browser_open_background_tabs": "通知にはページのオンライン接続が必要です。ページとブラウザーを起動したままにしてください。Web Push は使用しないため、ページの凍結、破棄、終了中は通知が届かない場合があります。復帰後に結果と未読表示を同期しますが、過去の通知は再送しません。",
   "keep_this_site_active": "このサイトを常にアクティブにする方法",
   "chrome_settings_performance_always_keep_these_sites_active": "Chrome：設定 → パフォーマンス → 常にアクティブにするサイトに、このサイトを追加してください。",
   "settings_instructions": "設定手順",
@@ -19,7 +19,7 @@
   "enable_notifications": "通知をオン",
   "allow_notifications_in_the_browser_s_site_settings": "ブラウザーのサイト設定で通知を許可してから、ここでオンにしてください。",
   "use_https_localhost_or_127_0_0_1": "HTTPS でアクセスしてください。ローカルでは localhost または 127.0.0.1 を使用できます。",
-  "use_a_desktop_browser_that_supports_system_notifications": "システム通知対応のデスクトップブラウザーを使用してください。ページ内の状態と未読表示は引き続き利用できます。",
+  "use_a_desktop_browser_that_supports_system_notifications": "システム通知対応のブラウザーを使用してください。ページ内の状態と未読表示は引き続き利用できます。",
   "permission_is_requested_only_when_you_click_enable": "「オン」をクリックしたときのみ許可を求めます。この設定は同じブラウザーのこのサイトのタブ間で共有されます。",
   "cannot_save_notification_settings_allow_browser_storage_for": "通知設定を保存できません。このサイトのストレージ利用を許可して再試行してください。",
   "cannot_enable_notifications_check_notification_permissions_and_site": "通知をオンにできません。通知の許可とサイトのストレージ設定を確認してください。",
@@ -34,5 +34,12 @@
   "events_description": "作業の終了、回答や承認が必要なときにプロジェクトと会話を通知します。クリックすると会話を開き、未処理のリクエストに移動します。",
   "test_description": "作業が終了したときや、回答・承認が必要なときに通知します。",
   "answer_required": "Agent への回答が必要です",
-  "approval_required": "Agent の承認が必要です"
+  "approval_required": "Agent の承認が必要です",
+  "preparing_delivery": "準備中…",
+  "delivery_unavailable": "送信できません",
+  "delivery_error_initialization": "通知サービスを初期化できませんでした。ページを再読み込みするか、通知を再度有効にしてください。",
+  "delivery_error_unsupported": "このブラウザーでは通知送信 API を利用できません。システム通知対応のブラウザーを使用してください。",
+  "delivery_error_permission": "通知の許可が取り消されました。ブラウザーのサイト設定で通知を再度許可してください。",
+  "delivery_error_delivery": "通知を送信できませんでした。ブラウザーとシステムの通知設定を確認し、再試行してください。ページ内の状態と未読表示は引き続き利用できます。",
+  "test_submitted": "ブラウザーに通知を送信しました。システムの通知一覧を確認してください。"
 }
