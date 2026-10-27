@@ -31,10 +31,11 @@ if [[ "${E2E_CACHE_HIT:-}" == true && -f "$cache_dir/runner-image" && \
   "$(cat "$cache_dir/runner-image")" == "$runner_image" ]]; then
   shopt -s nullglob
   packages=("$cache_dir"/*.deb)
-  # Supplying the local files lets apt resolve their dependencies without an
-  # index refresh. --no-download makes an incomplete cache fail immediately.
+  # Preparation already verified this package set against the same runner
+  # image. Install it directly instead of resolving against stale apt indexes.
   if [[ ${#packages[@]} -eq 0 ]] || \
-    sudo apt-get install -y --no-install-recommends --no-download "${packages[@]}"; then
+    sudo dpkg --install "${packages[@]}"; then
+    echo "Installed E2E system dependencies from cache (${#packages[@]} packages, no apt downloads)."
     # This also validates restored browser files and fills a missing browser.
     pnpm exec playwright install --only-shell chromium
     exit 0

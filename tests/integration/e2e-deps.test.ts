@@ -39,7 +39,7 @@ function setup() {
       'printf "\\n" >> "$COMMAND_LOG"',
       // Never run elevated commands or change the host system in these tests.
       'if [[ "$1" == install ]]; then cp "$4" "$APT_CONFIG_CAPTURE"; fi',
-      'if [[ "$1" == apt-get ]]; then exit "${APT_STUB_EXIT:-0}"; fi',
+      'if [[ "$1" == dpkg ]]; then exit "${DPKG_STUB_EXIT:-0}"; fi',
       'exit 0',
     ].join('\n'),
     { mode: 0o755 },
@@ -106,11 +106,10 @@ describe('CI E2E dependency installation', () => {
     writeFileSync(join(fixture.cache, 'runner-image'), '20261026.1\n');
     const deb = join(fixture.cache, 'fonts_1_amd64.deb');
     writeFileSync(deb, 'fixture');
-    expect(fixture.run('install').status).toBe(0);
-    expect(fixture.commands()).toEqual([
-      `sudo\tapt-get\tinstall\t-y\t--no-install-recommends\t--no-download\t${deb}`,
-      browserInstall,
-    ]);
+    const result = fixture.run('install');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('1 packages, no apt downloads');
+    expect(fixture.commands()).toEqual([`sudo\tdpkg\t--install\t${deb}`, browserInstall]);
   });
 
   it.each([undefined, '20261019.1'])(
@@ -127,9 +126,9 @@ describe('CI E2E dependency installation', () => {
     const fixture = setup();
     writeFileSync(join(fixture.cache, 'runner-image'), '20261026.1\n');
     writeFileSync(join(fixture.cache, 'fonts_1_amd64.deb'), 'fixture');
-    expect(fixture.run('install', { APT_STUB_EXIT: '100' }).status).toBe(0);
+    expect(fixture.run('install', { DPKG_STUB_EXIT: '1' }).status).toBe(0);
     expect(fixture.commands()).toHaveLength(2);
-    expect(fixture.commands()[0]).toContain('--no-download');
+    expect(fixture.commands()[0]).toContain('dpkg\t--install');
     expect(fixture.commands()[1]).toBe(fullInstall);
   });
 
