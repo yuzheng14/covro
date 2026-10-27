@@ -10,9 +10,9 @@ Discovery uses native `skills/list` from Codex 0.164.0. The gateway resolves the
 
 ## Explicit references / 显式引用
 
-Type `$` at the start of the input or after whitespace/an opening bracket to search available skills. Arrow keys choose an entry; Enter or Tab selects it. Escape closes the suggestions without changing text. Touch users select an entry and use the send button; mobile Enter inserts a newline. Candidates show original names, descriptions, scopes and full paths, including duplicate names.
+Type `$` at the start of the input or after whitespace/an opening bracket to search available skills. Arrow keys choose an entry; Enter or Tab selects it. Escape closes the suggestions without changing text. Touch users select an entry and use the send button; mobile Enter inserts a newline. Candidates show original names, descriptions, scopes and compact source paths; hover for the full path. Same-name sources remain distinct. Selected references are compact chips; expand one to inspect its actual path.
 
-在输入开头、空白或左括号后输入 `$` 搜索可用技能。方向键切换，Enter 或 Tab 选择，Escape 取消且保留原文。触屏点击候选后使用发送按钮，手机 Enter 保持换行。同名技能可按原始名称、说明、作用域和完整路径区分。
+在输入开头、空白或左括号后输入 `$` 搜索可用技能。方向键切换，Enter 或 Tab 选择，Escape 取消且保留原文。触屏点击候选后使用发送按钮，手机 Enter 保持换行。候选展示原始名称、说明、作用域及精简来源路径，悬停可查看完整路径，同名来源保持区分。已选引用收为紧凑标签，展开可查看实际路径。
 
 Selection binds the original name, path and server cwd to that token in the existing project/conversation draft. Editing a token removes its binding; removing a selected reference removes its marker too. Other edits, images and draft switching preserve intact references. Confirmed sends clear the submitted references; failed or uncertain sends retain them without automatically resubmitting. Drafts follow the existing in-memory lifetime and planned-update recovery; ordinary page reloads do not persist composer drafts.
 

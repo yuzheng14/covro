@@ -4,6 +4,8 @@ import type { useSkills } from '../lib/skills';
 import { t } from '../i18n';
 import { displayMessage } from '../i18n/messages';
 import { Button } from './ui/button';
+import { Icon } from './Icon';
+import { skillSourceLabel } from '../lib/skill-references';
 export function SkillReferenceMenu({
   id,
   skills,
@@ -26,31 +28,42 @@ export function SkillReferenceMenu({
     selectedRef.current?.scrollIntoView({ block: 'nearest' });
   }, [selected, matches[selected]?.path]);
   return (
-    <div className="slash-menu skill-reference-menu">
+    <div className="skill-reference-menu">
       <div className="skills-toolbar">
         <strong>{t('composer:skills_title')}</strong>
         <Button
           type="button"
-          size="sm"
+          size="icon"
           variant="ghost"
+          aria-label={t('common:reload')}
+          title={t('common:reload')}
+          disabled={skills.loading}
           onPointerDown={(event) => event.preventDefault()}
           onClick={skills.refresh}
         >
-          {t('common:reload')}
+          <Icon name="refresh" size={14} />
         </Button>
       </div>
       {unavailable || skills.error ? (
-        <p role="status">{displayMessage(unavailable ?? skills.error)}</p>
+        <p className="skills-state" role="status">
+          {displayMessage(unavailable ?? skills.error)}
+        </p>
       ) : skills.loading ? (
-        <p role="status">{t('common:loading_2')}</p>
+        <p className="skills-state" role="status">
+          {t('common:loading_2')}
+        </p>
       ) : (
         <>
-          {!!skills.catalog?.errors.length && <p role="status">{t('composer:skills_partial')}</p>}
+          {!!skills.catalog?.errors.length && (
+            <p className="skills-errors" role="status">
+              {t('composer:skills_partial')}
+            </p>
+          )}
           <div
             id={id}
             role="listbox"
             aria-label={t('composer:skills_title')}
-            className="slash-options"
+            className="skill-options"
           >
             {matches.map((skill, index) => (
               <button
@@ -61,22 +74,44 @@ export function SkillReferenceMenu({
                 role="option"
                 tabIndex={-1}
                 aria-selected={index === selected}
-                className="slash-option"
+                className="skill-option"
+                title={skill.path}
+                aria-label={`$${skill.name} · ${t(`composer:skills_scope_${skill.scope}`)} · ${skill.path}`}
+                aria-description={skill.description}
                 onPointerDown={(event) => event.preventDefault()}
                 onPointerMove={(event) => {
                   if (event.pointerType === 'mouse') onSelect(index);
                 }}
                 onClick={() => onChoose(skill)}
               >
-                <strong>${skill.name}</strong>
-                <span>{skill.description}</span>
-                <span className="skills-path">
-                  {t(`composer:skills_scope_${skill.scope}`)} · {skill.path}
+                <span className="skill-mark">
+                  <Icon name="code" size={16} />
                 </span>
+                <span className="skill-option-content">
+                  <span className="skills-name">
+                    <strong>${skill.name}</strong>
+                    <span className="skills-scope">
+                      {t(`composer:skills_scope_${skill.scope}`)}
+                    </span>
+                  </span>
+                  <span className="skill-option-description">{skill.description}</span>
+                  <span className="skill-option-path">
+                    {skillSourceLabel(skill, skills.catalog?.cwd ?? '', matches)}
+                  </span>
+                </span>
+                {index === selected && (
+                  <span className="skill-option-selected">
+                    <Icon name="check" size={15} />
+                  </span>
+                )}
               </button>
             ))}
           </div>
-          {!matches.length && <p role="status">{t('composer:skills_no_match')}</p>}
+          {!matches.length && (
+            <p className="skills-state" role="status">
+              {t('composer:skills_no_match')}
+            </p>
+          )}
         </>
       )}
     </div>

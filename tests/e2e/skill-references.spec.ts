@@ -259,7 +259,7 @@ test('a late catalog from another workspace cannot supply reference candidates',
   await input(page).fill('$review');
   const options = page.getByRole('listbox', { name: '技能', exact: true }).getByRole('option');
   await expect(options).toHaveCount(2);
-  await expect(options.first()).toContainText('/other-project/');
+  await expect(options.first()).toHaveAccessibleName(/\/other-project\//u);
   await old
     .fulfill({
       json: {
@@ -279,7 +279,7 @@ test('a late catalog from another workspace cannot supply reference candidates',
     })
     .catch(() => {});
   await expect(options).toHaveCount(2);
-  await expect(options.first()).toContainText('/other-project/');
+  await expect(options.first()).toHaveAccessibleName(/\/other-project\//u);
   await expect(page.locator('.skill-reference-menu')).not.toContainText('review-old');
 });
 
@@ -298,4 +298,42 @@ test('fixture reset isolates active native skill submissions from subsequent tes
   expect((await projects.json()).data).toEqual([]);
   const unassigned = await request.get('/api/unassigned/threads');
   expect((await unassigned.json()).data).toEqual([]);
+});
+
+test('compact sources distinguish same-name same-scope skills and disclose the full selected path', async ({
+  page,
+}) => {
+  const paths = ['team-a', 'team-b'].map((team) => `/homes/${team}/.codex/skills/review/SKILL.md`);
+  await page.route('**/api/skills/list', (route) =>
+    route.fulfill({
+      json: {
+        cwd: '/project',
+        errors: [],
+        skills: paths.map((path) => ({
+          name: 'review-code',
+          description: 'Review changes.',
+          path,
+          scope: 'user',
+          enabled: true,
+          pluginId: null,
+        })),
+      },
+    }),
+  );
+  await page.goto('/');
+  await confirmCompatibility(page);
+  await input(page).fill('$review');
+  const options = page.getByRole('listbox', { name: '技能', exact: true }).getByRole('option');
+  await expect(options).toHaveCount(2);
+  await expect(options.nth(0)).toContainText('team-a');
+  await expect(options.nth(1)).toContainText('team-b');
+  await expect(options.nth(1)).toHaveAccessibleName(new RegExp(paths[1]!));
+  await options.nth(1).click();
+  const path = page.locator('.composer-skills .skills-path');
+  await expect(path).not.toBeVisible();
+  await page.locator('.composer-skills summary').click();
+  await expect(path).toBeVisible();
+  await expect(path).toHaveText(paths[1]!);
+  await page.getByRole('button', { name: '移除 review-code', exact: true }).click();
+  await expect(input(page)).toHaveValue('');
 });

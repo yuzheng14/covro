@@ -5,6 +5,7 @@ import {
   selectedReferences,
   removeSkillBinding,
   replaceSkillRange,
+  skillSourceLabel,
 } from '../lib/skill-references';
 import { SkillReferenceMenu } from './SkillReferenceMenu';
 import { useSkills } from '../lib/skills';
@@ -540,13 +541,20 @@ export function Composer(props: Props) {
           <ul className="composer-skills" aria-label={t('composer:skills_selected')}>
             {selectedReferences(draft.skills).map((skill) => (
               <li key={JSON.stringify([skill.name, skill.path])}>
-                <span title={skill.path}>
-                  <strong>${skill.name}</strong>
-                  <span className="skills-path">{skill.path}</span>
-                </span>
+                <details>
+                  <summary title={skill.path} aria-label={`$${skill.name} · ${skill.path}`}>
+                    <Icon name="code" size={14} />
+                    <strong>${skill.name}</strong>
+                    <span className="skill-chip-source">
+                      {skillSourceLabel(skill, skill.cwd, selectedReferences(draft.skills))}
+                    </span>
+                    <Icon name="down" size={11} />
+                  </summary>
+                  <p className="skills-path">{skill.path}</p>
+                </details>
                 <Button
                   type="button"
-                  size="sm"
+                  size="icon"
                   variant="ghost"
                   aria-label={t('composer:skills_remove', { name: skill.name })}
                   onClick={() =>
