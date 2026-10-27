@@ -32,13 +32,14 @@ jobs:
       - run: node --import tsx scripts/verify-package.ts
       - run: node --import tsx scripts/verify-upgrade.ts
   e2e:
-    runs-on: ubuntu-latest
+    # Keep browser dependencies on a stable image instead of following latest.
+    runs-on: ubuntu-24.04
     # Browser dependencies can take over 10 minutes to install on a cold runner.
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -49,8 +50,16 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps --only-shell chromium
+      - name: Balance E2E files by measured duration
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          SHARD_TOTAL: ${{ strategy.job-total }}
+        run: |
+          mkdir -p .local
+          pnpm exec playwright test --list --reporter=json > .local/e2e-tests.json
+          node --import tsx scripts/plan-e2e-shard.ts .local/e2e-tests.json "$SHARD_INDEX" "$SHARD_TOTAL" .local/e2e-shard.txt
       # Each runner has its own fixture server; tests within a shard stay serial.
-      - run: pnpm test:e2e --shard=${{ matrix.shard }}/6
+      - run: pnpm test:e2e --test-list=.local/e2e-shard.txt
   # Keep the existing required check green only when every job passed.
   verify:
     if: ${{ always() }}
