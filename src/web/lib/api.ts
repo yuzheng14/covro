@@ -81,6 +81,8 @@ export const api = {
   exportGatewayConfig: () => request<GatewayConfig>('/api/config/export'),
   historyCacheContext: () => request<{ scope: string }>('/api/history-cache-context'),
   system: () => request<SystemInfo>('/api/system'),
+  accountUsage: () =>
+    request<import('../../shared/account-usage').AccountUsage>('/api/account/usage'),
   runtimeSettings: (projectId: string) =>
     request<RuntimeSettings>(`${scopeApi(projectId)}/runtime-settings`),
   projects: () => request<{ data: Project[] }>('/api/projects'),

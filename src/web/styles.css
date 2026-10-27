@@ -5274,3 +5274,83 @@ dd {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+.account-dialog {
+  width: min(540px, calc(100vw - 32px));
+}
+.account-scope,
+.account-refresh,
+.account-metadata,
+.account-reset {
+  color: var(--muted);
+  font-size: 12px;
+}
+.account-refresh {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0;
+}
+.account-refresh button {
+  gap: 6px;
+}
+.account-group {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+.account-group-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+.account-group h3 {
+  font-size: 15px;
+  margin: 0;
+}
+.account-group-heading > span,
+.account-metadata {
+  display: block;
+  font-size: 12px;
+}
+.account-window {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 18px;
+  font-size: 13px;
+}
+.account-window-values {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+}
+.account-window progress {
+  width: 100%;
+  height: 7px;
+  border: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--border);
+  accent-color: var(--accent);
+}
+.account-window progress::-webkit-progress-bar {
+  background: var(--border);
+}
+.account-window progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 4px;
+}
+.account-reset {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.account-limit-reached {
+  color: #a94a26;
+}

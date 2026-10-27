@@ -1,3 +1,7 @@
+import l3_account from './locales/ko/account.json';
+import l2_account from './locales/ja/account.json';
+import l1_account from './locales/zh-Hans/account.json';
+import l0_account from './locales/en/account.json';
 import l3_backups from './locales/ko/backups.json';
 import l2_backups from './locales/ja/backups.json';
 import l1_backups from './locales/zh-Hans/backups.json';
@@ -57,6 +61,7 @@ import l3_workspace from './locales/ko/workspace.json';
 
 export const resources = {
   en: {
+    account: l0_account,
     approvals: l0_approvals,
     backups: l0_backups,
     commands: l0_commands,
@@ -73,6 +78,7 @@ export const resources = {
     workspace: l0_workspace,
   },
   'zh-Hans': {
+    account: l1_account,
     approvals: l1_approvals,
     backups: l1_backups,
     commands: l1_commands,
@@ -89,6 +95,7 @@ export const resources = {
     workspace: l1_workspace,
   },
   ja: {
+    account: l2_account,
     approvals: l2_approvals,
     backups: l2_backups,
     commands: l2_commands,
@@ -105,6 +112,7 @@ export const resources = {
     workspace: l2_workspace,
   },
   ko: {
+    account: l3_account,
     approvals: l3_approvals,
     backups: l3_backups,
     commands: l3_commands,

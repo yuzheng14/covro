@@ -176,6 +176,10 @@ export function createApp({
     return c.json({ scope });
   });
   app.get('/api/system', (c) => c.json(service.getSystem()));
+  app.get('/api/account/usage', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    return c.json(await service.refreshAccountUsage());
+  });
   app.get('/api/shell', (c) =>
     c.json(
       service.shell.snapshot(

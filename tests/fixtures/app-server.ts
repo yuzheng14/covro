@@ -5,12 +5,13 @@ import { CODEX_COMPATIBILITY } from '../../src/codex/compatibility.js';
 import { createInterface } from 'node:readline';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync, watchFile } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { mermaidChunks } from './mermaid.js';
 import type { ClientRequest } from '../../src/codex/generated/ClientRequest.js';
+import type { GetAccountResponse } from '../../src/codex/generated/v2/GetAccountResponse.js';
 import type { ServerNotification } from '../../src/codex/generated/ServerNotification.js';
 import type { ServerRequest } from '../../src/codex/generated/ServerRequest.js';
 import type { ReasoningEffort } from '../../src/codex/generated/ReasoningEffort.js';
@@ -30,6 +31,13 @@ import type { PermissionRequirements, PermissionSelection } from '../../src/code
 import type { ActivePermissionProfile } from '../../src/codex/generated/v2/ActivePermissionProfile.js';
 
 export interface SimulatorOptions {
+  accountUsagePath?: string;
+  accountResponse?: GetAccountResponse;
+  rateLimitResponses?: unknown[];
+  rateLimitFailure?: boolean;
+  rateLimitHang?: boolean;
+  rateLimitNotification?: 'account' | 'limits';
+  accountAfterNotification?: GetAccountResponse;
   configOverrides?: Record<string, JsonValue>;
   requirements?: Partial<PermissionRequirements> | null;
   guardianApproval?: boolean;
@@ -106,9 +114,33 @@ export interface SimulatorOptions {
   autoReviewDelayMs?: number;
 }
 const optionsIndex = process.argv.indexOf('--options');
+let limitReads = 0;
+let accountNotified = false;
 const options = JSON.parse(
   optionsIndex < 0 ? '{}' : (process.argv[optionsIndex + 1] ?? '{}'),
 ) as SimulatorOptions;
+function usageControl(): {
+  account?: GetAccountResponse;
+  limits?: unknown;
+  failure?: boolean;
+  unsupported?: boolean;
+  notification?: 'account' | 'limits';
+} {
+  return options.accountUsagePath && existsSync(options.accountUsagePath)
+    ? JSON.parse(readFileSync(options.accountUsagePath, 'utf8'))
+    : {};
+}
+if (options.accountUsagePath)
+  watchFile(options.accountUsagePath, { interval: 50 }, () => {
+    if (!handshaken) return;
+    const control = usageControl();
+    if (control.notification === 'limits')
+      notify({
+        method: 'account/rateLimits/updated',
+        params: { rateLimits: { limitId: 'codex' } },
+      } as ServerNotification);
+    else notify({ method: 'account/updated', params: { authMode: 'chatgpt', planType: 'plus' } });
+  });
 const threads = new Map<string, Thread>();
 const archived = new Set<string>();
 if (options.historyPath && existsSync(options.historyPath)) {
@@ -1737,16 +1769,51 @@ function receive(request: ClientRequest): void {
       break;
     }
     case 'account/read':
-      reply(request.id, {
-        account:
-          options.accountType === 'chatgpt'
-            ? { type: 'chatgpt', email: null, planType: 'plus' }
-            : options.accountType === 'apiKey'
-              ? { type: 'apiKey' }
-              : null,
-        requiresOpenaiAuth: false,
-      });
+      reply(
+        request.id,
+        usageControl().account ||
+          (accountNotified && options.accountAfterNotification) ||
+          options.accountResponse || {
+            account:
+              options.accountType === 'chatgpt'
+                ? { type: 'chatgpt', email: null, planType: 'plus' }
+                : options.accountType === 'apiKey'
+                  ? { type: 'apiKey' }
+                  : null,
+            requiresOpenaiAuth: false,
+          },
+      );
       break;
+    case 'account/rateLimits/read': {
+      if (options.rateLimitHang) break;
+      const control = usageControl();
+      if (control.unsupported) {
+        error(request.id, 'Method not found', -32601);
+        break;
+      }
+      if (control.failure || options.rateLimitFailure) {
+        error(request.id, 'Private upstream diagnostic must not reach the browser', -32000);
+        break;
+      }
+      const values = options.rateLimitResponses ?? [{ rateLimits: {} }];
+      reply(request.id, control.limits ?? values[Math.min(limitReads++, values.length - 1)]);
+      if (limitReads === 1 && options.rateLimitNotification)
+        setTimeout(() => {
+          accountNotified = true;
+          if (options.rateLimitNotification === 'account') {
+            notify({
+              method: 'account/updated',
+              params: { authMode: 'chatgpt', planType: 'plus' },
+            });
+          } else {
+            notify({
+              method: 'account/rateLimits/updated',
+              params: { rateLimits: { limitId: 'codex' } },
+            } as ServerNotification);
+          }
+        }, 100);
+      break;
+    }
     case 'config/read':
       reply(request.id, {
         config: {

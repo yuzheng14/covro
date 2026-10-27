@@ -423,6 +423,7 @@ export function App() {
   return (
     <WorkspaceLayout threadId={thread?.id} getHistoryCursor={history.getHistoryCursor}>
       <Sidebar
+        system={system}
         onBackups={() => {
           setSidebarOpen(false);
           setBackupsOpen(true);

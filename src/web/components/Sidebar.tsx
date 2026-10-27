@@ -3,7 +3,7 @@ import { displayMessage } from '../i18n/messages';
 import { t, currentLocale } from '../i18n';
 import { useState } from 'react';
 import { ArrowDownUp, ArrowUpCircle, Server } from 'lucide-react';
-import type { Project, ThreadSummary } from '../../shared/types';
+import type { Project, ThreadSummary, SystemInfo } from '../../shared/types';
 import type { ProjectThreads } from '../lib/project-threads';
 import { cn } from '../lib/utils';
 import { ControlHint } from './ControlHint';
@@ -17,6 +17,7 @@ import { SidebarSettings } from './SidebarSettings';
 import { newSessionShortcut } from '../hooks/useNewSessionShortcut';
 
 interface Props {
+  system?: SystemInfo;
   archiveView: boolean;
   onArchiveView: (archived: boolean) => void;
   onArchive: (id: string, archived: boolean) => void;
@@ -388,6 +389,8 @@ export function Sidebar(props: Props) {
         </ThreadListNavigation>
         <div className="sidebar-footer">
           <SidebarSettings
+            system={props.system}
+            offline={props.offline}
             notificationStatus={props.notificationStatus}
             onNotificationSettings={props.onNotificationSettings}
             onGatewaySettings={props.onGatewaySettings}
