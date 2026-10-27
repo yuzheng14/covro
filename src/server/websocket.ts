@@ -42,6 +42,19 @@ export function sendBounded(socket: SocketSink, message: ServerMessage, limit: n
     };
   }
   const encoded = JSON.stringify(outgoing);
+  // Large item replacements use the lossless HTTP path; never clip their body.
+  if (
+    message.type === 'event' &&
+    message.kind === 'threadPatch' &&
+    Buffer.byteLength(encoded) > budget
+  ) {
+    sendBounded(
+      socket,
+      { type: 'resync', threadId: message.threadId!, cursor: message.cursor },
+      limit,
+    );
+    return;
+  }
   if (socket.bufferedAmount + Buffer.byteLength(encoded) > limit) {
     socket.close(4008, 'Slow connection; reconnect for snapshot');
     socket.terminate?.();
@@ -96,7 +109,12 @@ export function socketHandlers(
           throw new AppError('VALIDATION_FAILED', 'Invalid subscription');
         const input = socketMessageSchema.parse(JSON.parse(event.data));
         if (input.type === 'unsubscribe') return;
-        const stop = await service.subscribe(input.threadId, input.after, deliver);
+        const stop = await service.subscribe(
+          input.threadId,
+          input.after,
+          deliver,
+          input.incremental,
+        );
         if (current !== generation || ws.readyState !== 1) stop();
         else unsubscribe = stop;
       } catch (error) {

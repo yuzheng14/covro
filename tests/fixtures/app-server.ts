@@ -789,6 +789,30 @@ function activityRetryScenario(thread: Thread, turn: Turn, failTurn: boolean): v
   );
 }
 
+/** More than the socket snapshot budget, with recognizable ends on old content. */
+function transportHistory(thread: Thread, turn: Turn): void {
+  for (let index = 0; index < 25; index++) {
+    const item = command(randomUUID(), thread.cwd);
+    item.status = 'completed';
+    item.aggregatedOutput =
+      index === 0 ? '工具输出正文。'.repeat(100) + '\n完整工具输出的末尾。' : 'x'.repeat(120_000);
+    turn.items.push(item);
+  }
+  turn.items.push({
+    id: randomUUID(),
+    type: 'agentMessage',
+    text:
+      '### 长会话历史验证\n\n' +
+      '这段历史正文应当保持完整，继续发送任务和重新连接后，仍然可以读到消息末尾。\n\n'.repeat(16) +
+      '**完整消息的末尾仍然可见。**',
+    phase: 'final_answer',
+    memoryCitation: null,
+    delivery: null,
+    questions: null,
+  });
+  complete(thread, turn);
+}
+
 /** A long response lets browser tests read earlier output while later deltas arrive. */
 function stickyPromptReply(thread: Thread, turn: Turn, streaming: boolean): void {
   const item: Extract<ThreadItem, { type: 'agentMessage' }> = {
@@ -2416,6 +2440,7 @@ function receive(request: ClientRequest): void {
       );
       const capacity = /\[capacity-(recover|fail|partial|quote|other)\]/.exec(prompt)?.[1];
       if (capacity) capacityScenario(thread, turn, capacity);
+      else if (prompt.includes('[transport-history]')) transportHistory(thread, turn);
       else if (prompt.includes('[sticky-prompt]') || prompt.includes('[sticky-prompt-stream]'))
         stickyPromptReply(thread, turn, prompt.includes('[sticky-prompt-stream]'));
       else if (

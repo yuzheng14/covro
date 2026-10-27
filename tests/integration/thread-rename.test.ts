@@ -45,8 +45,10 @@ it('renames through native metadata, publishes detail and overview, and deduplic
   expect(codex.interrupts).toBe(0);
   expect(detail).toContainEqual(
     expect.objectContaining({
-      kind: 'thread',
-      payload: expect.objectContaining({ id, title: '手工名称 🧪' }),
+      kind: 'threadPatch',
+      payload: expect.objectContaining({
+        thread: expect.objectContaining({ id, title: '手工名称 🧪' }),
+      }),
     }),
   );
   expect(overview).toContainEqual(

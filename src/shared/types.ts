@@ -449,6 +449,7 @@ export interface Cursor {
 export interface SubscribeMessage {
   type: 'subscribe';
   threadId: string;
+  incremental?: boolean;
   after?: Cursor;
 }
 /** Live-only completion metadata; never replayed from conversation history. */
@@ -473,12 +474,14 @@ export interface AttentionRequest {
 }
 export type ServerMessage =
   | { type: 'snapshot'; cursor: Cursor; threadId: string; data: ThreadView }
+  | { type: 'resync'; cursor: Cursor; threadId: string }
   | {
       type: 'event';
       cursor: Cursor;
       threadId?: string;
       kind:
         | 'thread'
+        | 'threadPatch'
         | 'threadSummary'
         | 'runtime'
         | 'operation'
@@ -487,6 +490,7 @@ export type ServerMessage =
         | 'attentionRequest';
       payload:
         | ThreadView
+        | import('./thread-patch.js').ThreadPatch
         | ThreadSummary
         | SystemInfo
         | Operation

@@ -10,6 +10,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { CodexAdapter } from '../../src/codex/adapter.js';
 import { parseConfig } from '../../src/server/config.js';
 import { startGateway } from '../../src/server/main.js';
+import { ProjectionCache } from '../../src/web/lib/realtime.js';
 import type {
   Operation,
   ServerMessage,
@@ -274,6 +275,53 @@ const multipleOrigins = (origin: string) => [
   'https://codex.example.ts.net',
 ];
 
+it('hydrates incremental subscribers through an HTTP cursor and replays live changes', async () => {
+  const { origin, post, connect } = await setup();
+  const created = await post('/api/projects/test/threads', { clientOperationId: randomUUID() });
+  const id = ((await created.json()) as Operation).result as { threadId: string };
+  const ws = await connect(origin, true);
+  const resync = message(ws, (event) => event.type === 'resync');
+  ws.send(JSON.stringify({ type: 'subscribe', threadId: id.threadId, incremental: true }));
+  expect(await resync).toMatchObject({ threadId: id.threadId });
+  const response = await fetch(`${origin}/api/threads/${id.threadId}/snapshot`);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  const snapshot = (await response.json()) as {
+    data: ThreadView;
+    cursor: { serverEpoch: string; seq: number };
+  };
+  expect(snapshot.data.id).toBe(id.threadId);
+  const cache = new ProjectionCache();
+  cache.apply({ type: 'snapshot', threadId: id.threadId, ...snapshot });
+  ws.on('message', (data: Buffer) => cache.apply(JSON.parse(data.toString()) as ServerMessage));
+  ws.send(
+    JSON.stringify({
+      type: 'subscribe',
+      threadId: id.threadId,
+      incremental: true,
+      after: snapshot.cursor,
+    }),
+  );
+  const completion = message(
+    ws,
+    (event) =>
+      event.type === 'event' &&
+      event.kind === 'threadPatch' &&
+      (event.payload as import('../../src/shared/thread-patch.js').ThreadPatch).thread.status ===
+        'completed',
+  );
+  await post(`/api/threads/${id.threadId}/turns`, {
+    clientOperationId: randomUUID(),
+    text: '通过增量完成任务',
+  });
+  await completion;
+  expect(cache.get(id.threadId)!.data.turns[0]!.items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ type: 'agentMessage', text: '模拟任务已完成。' }),
+    ]),
+  );
+});
+
 it('broadcasts other project summaries before selection and alongside one detailed subscription', async () => {
   const { origin, post, connect } = await setup({ multipleProjects: true });
   const initial = (await (
@@ -362,7 +410,9 @@ it('broadcasts other project summaries before selection and alongside one detail
       payload: { title: 'Codex 配置继承与运行设置' },
     });
     expect(events.filter(summary('completed'))).toHaveLength(1);
-    expect(events.some((event) => event.type === 'event' && event.kind === 'thread')).toBe(false);
+    expect(events.some((event) => event.type === 'event' && event.kind === 'threadPatch')).toBe(
+      false,
+    );
     const summaries = events.filter(
       (event) => event.type === 'event' && event.kind === 'threadSummary',
     );
@@ -420,7 +470,9 @@ it('validates unsubscribe and releases detail delivery while keeping overview an
   runtime.service.events.publish('runtime', runtime.service.getSystem());
   await runtimeEvent;
   expect(received.some((event) => event.type === 'error')).toBe(false);
-  expect(received.some((event) => event.type === 'event' && event.kind === 'thread')).toBe(false);
+  expect(received.some((event) => event.type === 'event' && event.kind === 'threadPatch')).toBe(
+    false,
+  );
   expect(received.some((event) => event.type === 'event' && event.kind === 'threadSummary')).toBe(
     true,
   );
@@ -467,9 +519,9 @@ it('serves every configured origin through one HTTP gateway and shared WebSocket
   }
   const completions = sockets.map((ws) =>
     message(ws, (event) => {
-      if (event.type !== 'event' || event.kind !== 'thread') return false;
-      const thread = event.payload as ThreadView;
-      return thread.id === threadId && thread.turns[0]?.status === 'completed';
+      if (event.type !== 'event' || event.kind !== 'threadPatch') return false;
+      const patch = event.payload as import('../../src/shared/thread-patch.js').ThreadPatch;
+      return patch.thread.id === threadId && patch.turns[0]?.turn.status === 'completed';
     }),
   );
   const browserOrigin = origins[2]!;

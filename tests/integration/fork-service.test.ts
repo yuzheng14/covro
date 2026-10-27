@@ -66,7 +66,7 @@ describe('forking a conversation without taking over its execution', () => {
     expect((await ctx.service.getThread('fork-1')).turns).toHaveLength(2);
     expect(await ctx.service.getThread(sourceId)).toEqual(before);
     expect(
-      sourceEvents.filter((event) => event.type === 'event' && event.kind === 'thread'),
+      sourceEvents.filter((event) => event.type === 'event' && event.kind === 'threadPatch'),
     ).toHaveLength(0);
     expect(ctx.codex).toMatchObject({ resumes: 0, interrupts: 0, forks: 1 });
   });

@@ -1,4 +1,5 @@
 import type { CodexClient, CodexDiagnostics, CodexEvent } from '../codex/types.js';
+import type { StreamedItem } from './thread-patch.js';
 import { CapacityRetries, type CapacityAttempt } from './capacity-retry.js';
 import { isModelCapacityError } from '../shared/turn-errors.js';
 import { randomUUID } from 'node:crypto';
@@ -712,6 +713,17 @@ export class GatewayService {
     if (!thread) return [];
     this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
     return pendingAttention(thread);
+  }
+
+  async getThreadSnapshot(threadId: string) {
+    await this.getThread(threadId);
+    const thread = this.projection.get(threadId)!;
+    this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+    // Copy and cursor share one synchronous boundary; later events are replayable.
+    return {
+      data: this.threadView(thread),
+      cursor: this.events.cursor(),
+    };
   }
 
   async getThreadHistory(threadId: string, cursor?: string): Promise<ThreadView> {
@@ -1490,6 +1502,7 @@ export class GatewayService {
     threadId: string,
     after: Cursor | undefined,
     listener: (message: ServerMessage) => void,
+    incremental = false,
   ): Promise<() => void> {
     await this.getThread(threadId);
     return this.events.subscribe(
@@ -1497,6 +1510,7 @@ export class GatewayService {
       () => this.threadView(this.projection.get(threadId)!),
       after,
       listener,
+      incremental,
     );
   }
 
@@ -1864,11 +1878,11 @@ export class GatewayService {
     return new AppError('INTERNAL_ERROR', error instanceof Error ? error.message : '未知错误', 500);
   }
 
-  private publishThread(threadId: string): void {
+  private publishThread(threadId: string, streamed?: StreamedItem): void {
     const thread = this.projection.get(threadId);
     if (!thread) return;
-    const view = this.threadView(thread);
-    this.events.publish('thread', view, threadId);
+    const view = this.threadView(thread, false);
+    this.events.publishThread(view, streamed);
     const summary = toThreadSummary(view);
     const encoded = JSON.stringify(summary);
     if (this.summaries.get(threadId) === encoded) return;
@@ -1902,18 +1916,18 @@ export class GatewayService {
     return links;
   }
 
-  private threadView(thread: ThreadView): ThreadView {
-    const result = structuredClone(thread);
+  private threadView(thread: ThreadView, copy = true): ThreadView {
+    const result = copy ? structuredClone(thread) : { ...thread };
     // Most threads have no empty-input continuation, so defer the operation-history lookup.
     const links =
       this.capacityLinks.get(thread.id) ??
       (thread.turns.some((turn) => !turn.items.some((item) => item.type === 'userMessage'))
         ? this.retryLinks(thread.id)
         : undefined);
-    for (const turn of result.turns) {
+    result.turns = result.turns.map((turn) => {
       const root = links?.get(turn.id);
-      if (root) turn.retryOf = root;
-    }
+      return root ? { ...turn, retryOf: root } : turn;
+    });
     const retry = this.capacityRetries.view(thread.id);
     if (retry) result.capacityRetry = structuredClone(retry);
     else delete result.capacityRetry;
@@ -2192,7 +2206,7 @@ export class GatewayService {
     else if (event.type === 'diff') {
       this.projection.diff(thread.id, event.turnId, event.diff);
     }
-    this.publishThread(thread.id);
+    this.publishThread(thread.id, event.type === 'delta' ? event : undefined);
     if (event.type === 'item' || event.type === 'turn')
       this.publishNewAttention(thread.id, previousAttention);
   }

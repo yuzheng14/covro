@@ -72,6 +72,11 @@ test('/export downloads full saved Markdown even when the browser only has a his
     const response = await route.fetch();
     await route.fulfill({ response, json: slice((await response.json()) as ThreadView) });
   });
+  await page.route(`**/api/threads/${id}/snapshot`, async (route) => {
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    await route.fulfill({ response, json: { ...snapshot, data: slice(snapshot.data) } });
+  });
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'clipboard', {
       get() {

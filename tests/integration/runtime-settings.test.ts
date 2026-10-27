@@ -25,7 +25,10 @@ it('refreshes settings from metadata and never replaces a newer live update with
   ctx.codex.emit({ type: 'threadSettings', threadId: id, settings });
   late.resolve(structuredClone(actual));
   expect((await reading).runtimeSettings).toEqual(settings);
-  expect(events.at(-1)).toMatchObject({ kind: 'thread', payload: { runtimeSettings: settings } });
+  expect(events.at(-1)).toMatchObject({
+    kind: 'threadPatch',
+    payload: { thread: { runtimeSettings: settings } },
+  });
   ctx.service.projection.thread(actual, true);
   expect(ctx.service.projection.get(id)?.runtimeSettings).toEqual(settings);
 });

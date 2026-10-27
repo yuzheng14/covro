@@ -100,9 +100,9 @@ describe('Codex upstream reconnection state', () => {
       expect.objectContaining({ text: '恢复后继续回答' }),
     );
     const latest = messages
-      .filter((message) => message.type === 'event' && message.kind === 'thread')
+      .filter((message) => message.type === 'event' && message.kind === 'threadPatch')
       .at(-1);
-    expect(latest).toMatchObject({ payload: { turns: [{ status: 'running' }] } });
+    expect(latest).toMatchObject({ payload: { turns: [{ turn: { status: 'running' } }] } });
     expect(JSON.stringify(latest)).not.toContain('reconnect');
     ctx.error('Reconnecting… 1/5');
     expect((await ctx.read()).turns[0]!.reconnect?.status).toBe('retrying');

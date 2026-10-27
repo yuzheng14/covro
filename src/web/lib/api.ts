@@ -106,6 +106,12 @@ export const api = {
     ),
   thread: (threadId: string, signal?: AbortSignal) =>
     request<ThreadView>(`/api/threads/${encodeURIComponent(threadId)}`, undefined, signal),
+  threadSnapshot: (threadId: string, signal?: AbortSignal) =>
+    request<{ data: ThreadView; cursor: import('../../shared/types').Cursor }>(
+      `/api/threads/${encodeURIComponent(threadId)}/snapshot`,
+      undefined,
+      signal,
+    ),
   threadAttention: (threadId: string) =>
     request<AttentionRequest[]>(`/api/threads/${encodeURIComponent(threadId)}/attention`),
   threadHistory: (threadId: string, cursor: string, signal: AbortSignal) =>

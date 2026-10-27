@@ -102,14 +102,18 @@ describe('automatic reviews through GatewayService', () => {
     expect(respond).not.toHaveBeenCalled();
     expect(context.codex.replies).toBe(0);
     const threadEvents = received.filter(
-      (message) => message.type === 'event' && message.kind === 'thread',
+      (message) => message.type === 'event' && message.kind === 'threadPatch',
     );
     expect(threadEvents.at(-1)).toMatchObject({
       type: 'event',
       threadId,
       payload: {
         turns: [
-          { items: expect.arrayContaining([expect.objectContaining({ autoReview: denied })]) },
+          {
+            items: expect.arrayContaining([
+              expect.objectContaining({ value: expect.objectContaining({ autoReview: denied }) }),
+            ]),
+          },
         ],
       },
     });
