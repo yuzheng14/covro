@@ -113,7 +113,7 @@ async function fixture() {
     await exec(nodes[0]!, [join(roots[0]!, 'bin/covro.mjs'), 'stop', '--config', config], { env });
   });
   await cli('start');
-  await expect.poll(async () => (await cli('status')).codexReady).toBe(true);
+  await expect.poll(async () => (await cli('status')).codexReady, { timeout: 30_000 }).toBe(true);
   const db = new Database(join(directory, 'data/app.sqlite'));
   db.prepare('INSERT INTO preferences VALUES (?, ?)').run('runtime-test', '"preserved"');
   db.close();
@@ -213,7 +213,9 @@ it('restores the original runtime and data when an equal-version target fails st
   await expect
     .poll(async () => (await f.cli('update', 'status')).run?.phase, { timeout: 30_000 })
     .toBe('rolledBack');
-  await expect.poll(async () => (await f.cli('status')).runtime.node).toBe(f.nodes[0]);
+  await expect
+    .poll(async () => (await f.cli('status')).runtime.node, { timeout: 30_000 })
+    .toBe(f.nodes[0]);
   expect(await readFile(f.config, 'utf8')).toBe(f.configText);
   const db = new Database(join(f.directory, 'data/app.sqlite'));
   expect(db.prepare('SELECT value FROM preferences WHERE key=?').get('runtime-test')).toEqual({

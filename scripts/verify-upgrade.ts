@@ -77,6 +77,8 @@ for (const mode of [
     for (const entry of ['bin', 'dist', 'package.json'])
       await cp(resolve(entry), join(root, entry), { recursive: true });
     await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
+    await mkdir(join(directory, 'npm/bin'), { recursive: true });
+    await symlink(join(root, 'bin/covro.mjs'), join(directory, 'npm/bin/covro'));
     await cp(root, candidate, { recursive: true });
     const next = JSON.parse(await readFile(join(candidate, 'package.json'), 'utf8'));
     next.version = target;
@@ -172,7 +174,20 @@ for (const mode of [
       `#!${process.execPath}\nconst fs=require('node:fs'),path=require('node:path');const args=process.argv.slice(2);if(args[0]==='root')console.log(${JSON.stringify(join(directory, 'npm/lib/node_modules'))});else if(args[0]==='install'){if(args.at(-1)!==${JSON.stringify(`${npmPackageName}@${target}`)})throw new Error('Unexpected npm package selector');const prefix=args[args.indexOf('--prefix')+1];fs.mkdirSync(prefix,{recursive:true});fs.cpSync(${JSON.stringify(candidate)},path.join(prefix,'lib/node_modules',${JSON.stringify(npmPackageName)}),{recursive:true});}else process.exit(2);\n`,
     );
     await chmod(npm, 0o700);
-    const env = { ...process.env, PATH: `${commands}:${process.env.PATH}`, COVRO_HOME: home };
+    const shellHome = join(directory, 'shell');
+    await mkdir(shellHome);
+    const env = {
+      ...process.env,
+      PATH: `${commands}:${process.env.PATH}`,
+      COVRO_HOME: home,
+      HOME: shellHome,
+      ZDOTDIR: shellHome,
+      CODEX_HOME: join(directory, 'codex-home'),
+      NODE_OPTIONS: `--import=${resolve('tests/fixtures/runtime-preload.mjs')}`,
+      COVRO_TEST_RELEASE_METADATA: join(candidate, 'package.json'),
+    };
+    for (const key of ['INVOCATION_ID', 'PM2_HOME', 'SUPERVISOR_ENABLED'])
+      delete (env as NodeJS.ProcessEnv)[key];
     const probe = createServer();
     probe.listen(0, '127.0.0.1');
     await once(probe, 'listening');
