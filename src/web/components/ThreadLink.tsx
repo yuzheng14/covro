@@ -99,6 +99,11 @@ export function ThreadLink({
   const statusLabel = `${offline && isActive(status) ? t('common:last_known') : ''}${runStatusLabels[status]}${
     status === 'completed' && unreadCompletion ? t('sidebar:unread') : ''
   }${thread.pendingActionCount > 0 ? t('sidebar:pending_requests_2', { count: thread.pendingActionCount, v0: thread.pendingActionCount }) : ''}`;
+  const questionCount = thread.pendingQuestionCount ?? 0;
+  const questionLabel = `${t('conversation:awaiting_answer')}${t('sidebar:pending_requests_2', {
+    count: questionCount,
+    v0: questionCount,
+  })}`;
   const showStatus =
     (status !== 'idle' && status !== 'completed') ||
     unreadCompletion ||
@@ -128,11 +133,18 @@ export function ThreadLink({
           {thread.forkedFromId && <Icon name="fork" size={14} />}
           <span className="thread-link-content">
             <span className="thread-title">{title}</span>
-            <span className="sr-only"> · {statusLabel}</span>
+            <span className="sr-only">
+              {' · '}
+              {statusLabel}
+              {questionCount > 0 ? ` · ${questionLabel}` : ''}
+            </span>
           </span>
         </button>
       </ControlHint>
       <div className="thread-row-actions">
+        {questionCount > 0 && (
+          <ThreadStatusIcon status="waitingInput" label={questionLabel} offline={offline} pending />
+        )}
         {showStatus ? (
           <ThreadStatusIcon
             status={status === 'completed' && !unreadCompletion ? 'idle' : status}
@@ -246,6 +258,12 @@ export function ThreadLink({
                   v0: thread.pendingActionCount,
                 })}
               </dd>
+            </div>
+          )}
+          {questionCount > 0 && (
+            <div>
+              <dt>{t('conversation:awaiting_answer')}</dt>
+              <dd>{t('sidebar:pending_requests', { count: questionCount, v0: questionCount })}</dd>
             </div>
           )}
           {thread.forkedFromId && (

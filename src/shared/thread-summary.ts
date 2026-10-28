@@ -1,4 +1,5 @@
 import type { ThreadSummary, ThreadView } from './types.js';
+import { pendingAttention } from './thread-attention.js';
 
 /** Overview messages deliberately omit conversation content and control payloads. */
 export function toThreadSummary(thread: ThreadView): ThreadSummary {
@@ -17,6 +18,9 @@ export function toThreadSummary(thread: ThreadView): ThreadSummary {
     ...(thread.updatedAt === undefined ? {} : { updatedAt: thread.updatedAt }),
     pendingActionCount: thread.actions.filter(
       (action) => action.status === 'pending' || action.status === 'responding',
+    ).length,
+    pendingQuestionCount: pendingAttention(thread).filter(
+      (request) => request.target.kind === 'question',
     ).length,
     ...(lastTurn === undefined ? {} : { lastTurnId: lastTurn.id, lastTurnStatus: lastTurn.status }),
   };
