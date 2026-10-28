@@ -2180,6 +2180,12 @@ html.composer-resizing * {
   color: #934922;
   background: #fdf7f1;
 }
+.composer-box textarea,
+.composer-highlights {
+  padding: 17px 44px 7px 17px;
+  font-size: 13px;
+  line-height: 1.7;
+}
 .composer-box textarea {
   --composer-min-height: 93px;
   --composer-max-height: 230px;
@@ -2187,18 +2193,16 @@ html.composer-resizing * {
   resize: none;
   min-height: var(--composer-min-height);
   max-height: min(var(--composer-max-height), var(--composer-available-height, 230px));
-  padding: 17px 44px 7px 17px;
   border: 0;
   outline: 0;
-  font-size: 13px;
-  line-height: 1.7;
   color: #45534a;
   background: transparent;
 }
 .composer-box textarea::placeholder {
   color: #a8aeab;
 }
-.composer-region[data-mobile-input] textarea {
+.composer-region[data-mobile-input] textarea,
+.composer-region[data-mobile-input] .composer-highlights {
   /* Avoid iOS focus zoom so the controls stay in the visible viewport. */
   font-size: 16px;
 }
@@ -3527,6 +3531,9 @@ dd {
   }
   .composer-box textarea {
     --composer-min-height: 83px;
+  }
+  .composer-box textarea,
+  .composer-highlights {
     font-size: 13px;
     padding: 14px 48px 5px 13px;
   }
@@ -5677,10 +5684,6 @@ dd {
   left: 0;
   overflow: hidden;
   pointer-events: none;
-  padding: 17px 44px 7px 17px;
-  font: inherit;
-  font-size: 13px;
-  line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   color: transparent;
@@ -5691,7 +5694,4 @@ dd {
   color: transparent;
   background: #dfeee4;
   box-shadow: 0 0 0 1px #dfeee4;
-}
-.composer-region[data-mobile-input] .composer-highlights {
-  font-size: 16px;
 }
