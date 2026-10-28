@@ -405,11 +405,12 @@ export function App() {
     images?: string[],
     settings = workspace.settings,
     taskKind?: 'init',
+    skills?: import('../shared/skills').SkillReference[],
   ) {
     if (!canOperate || workspace.restoringSelection || workspace.savingModelDefaults) return false;
     if (!thread) {
       if (workspace.selectedId) return false;
-      return workspace.sendFirstMessage(text, images, taskKind);
+      return workspace.sendFirstMessage(text, images, taskKind, skills);
     }
     if (steer && !activeTurn) return false;
     const operation = await workspace.run(
@@ -417,9 +418,9 @@ export function App() {
       thread.id,
       `/api/threads/${encode(thread.id)}/${steer ? 'steer' : 'turns'}`,
       steer
-        ? { text, images, expectedTurnId: activeTurn!.id }
-        : { text, images, settings, ...(taskKind ? { taskKind } : {}) },
-      { kind: 'send', key: workspace.draftKey, text, images },
+        ? { text, images, skills, expectedTurnId: activeTurn!.id }
+        : { text, images, skills, settings, ...(taskKind ? { taskKind } : {}) },
+      { kind: 'send', key: workspace.draftKey, text, images, skills },
     );
     return operation?.status === 'acknowledged';
   }
@@ -1083,7 +1084,9 @@ export function App() {
                   { expectedTurnId: activeTurn.id },
                 );
             }}
-            onSend={sendMessage}
+            onSend={(text, steer, images, skills) =>
+              sendMessage(text, steer, images, workspace.settings, undefined, skills)
+            }
           />
         </div>
         <ShellPanel

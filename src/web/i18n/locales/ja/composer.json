@@ -56,5 +56,8 @@
   "skills_scope_system": "システム",
   "skills_scope_admin": "管理者",
   "skills_not_ready": "Codex の準備ができていません。再接続後に再試行してください。",
-  "skills_offline": "オフラインです。スキルを読み込むには再接続してください。"
+  "skills_offline": "オフラインです。スキルを読み込むには再接続してください。",
+  "skills_selected": "選択したスキル",
+  "skills_slash": "コマンドを実行する前にスキル参照を削除してください。",
+  "skills_steer_unsupported": "Codex 0.164.0 では実行中のタスクに選択したスキルを確実に適用できません。完了後にこの下書きを送信してください。"
 }

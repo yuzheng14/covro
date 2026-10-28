@@ -99,6 +99,18 @@ export const resumeThreadSchema = createThreadSchema.extend({
   confirmExternalStopped: z.boolean().optional(),
 });
 const taskFields = {
+  skills: z
+    .array(
+      z
+        .object({
+          name: z.string().min(1).max(256),
+          path: z.string().min(1).max(4096),
+          cwd: z.string().min(1).max(4096),
+        })
+        .strict(),
+    )
+    .max(32)
+    .optional(),
   text: z.string().max(100_000),
   images: z
     .array(z.string().refine((value) => imageDataBytes(value) !== undefined, 'Invalid image'))
@@ -119,7 +131,7 @@ export const startTurnSchema = createThreadSchema
   })
   .refine(hasContent, 'Text or an image is required')
   .refine(
-    (input) => input.taskKind !== 'init' || !input.images?.length,
+    (input) => input.taskKind !== 'init' || (!input.images?.length && !input.skills?.length),
     'Project initialization cannot include images',
   );
 export const steerSchema = operationSchema

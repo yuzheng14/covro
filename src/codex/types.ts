@@ -88,6 +88,7 @@ export interface CodexClient {
     text: string,
     settings?: Settings,
     images?: string[],
+    skills?: import('../shared/skills.js').SkillReference[],
   ): Promise<TurnView>;
   /** Native inline review scoped to this session's working directory. */
   startReview(id: string, target?: ReviewTarget): Promise<TurnView>;

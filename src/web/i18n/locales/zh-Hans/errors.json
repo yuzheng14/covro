@@ -155,5 +155,8 @@
   "RECAP_FAILED": "未能完成摘要，原会话保持不变。",
   "GOAL_UNAVAILABLE": "当前 Codex 运行实例不支持或未启用目标功能。",
   "GOAL_CONFLICT": "目标已发生变化，请重新读取当前状态再修改。",
-  "GOAL_BUSY": "另一个目标更新正在处理，请等待回执。"
+  "GOAL_BUSY": "另一个目标更新正在处理，请等待回执。",
+  "SKILL_UNAVAILABLE": "所选技能在当前工作区已不可用，请刷新后重新选择。",
+  "SKILLS_READ_FAILED": "无法读取技能，请刷新后重试。",
+  "SKILL_STEER_UNSUPPORTED": "Codex 0.164.0 无法在运行中可靠应用所选技能。请等待当前任务结束，再发送此草稿。"
 }

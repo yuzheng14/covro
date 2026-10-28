@@ -10,6 +10,7 @@ export interface DraftImage {
 }
 export interface MessageDraft {
   text: string;
+  skills?: import('./skill-references').SkillBinding[];
   images: DraftImage[];
   error?: string;
 }

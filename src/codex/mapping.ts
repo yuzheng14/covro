@@ -34,10 +34,15 @@ export function mapTurnError(error: {
   };
 }
 
-export function taskInput(text: string, images: string[] = []): UserInput[] {
+export function taskInput(
+  text: string,
+  images: string[] = [],
+  skills: import('../shared/skills.js').SkillReference[] = [],
+): UserInput[] {
   return [
     ...(text ? [{ type: 'text' as const, text, text_elements: [] }] : []),
     ...images.map((url) => ({ type: 'image' as const, url })),
+    ...skills.map(({ name, path }) => ({ type: 'skill' as const, name, path })),
   ];
 }
 

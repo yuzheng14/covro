@@ -74,3 +74,60 @@ it('rejects offline reads and results from an obsolete Codex epoch or a mismatch
     code: 'SKILLS_READ_FAILED',
   });
 });
+
+it('validates exact enabled identities for starts and rejects active skill steering before dispatch', async () => {
+  const ctx = setup();
+  const created = await ctx.service.createThread('project', { clientOperationId: operationId() });
+  const id = (created.result as { threadId: string }).threadId;
+  const catalog = await ctx.service.listSkills({ projectId: 'project', threadId: id });
+  const skills = [{ name: 'same', path: catalog.skills[0]!.path, cwd: catalog.cwd }];
+  const start = vi.spyOn(ctx.codex, 'startTurn');
+  await ctx.service.startTurn(id, {
+    clientOperationId: operationId(),
+    text: '$same check',
+    skills,
+  });
+  expect(start.mock.calls[0]?.slice(0, 3)).toEqual([id, catalog.cwd, '$same check']);
+  expect((start.mock.calls[0] as unknown[])?.[5]).toEqual(skills);
+  const steer = vi.spyOn(ctx.codex, 'steerTurn');
+  await expect(
+    ctx.service.steer(id, {
+      clientOperationId: operationId(),
+      expectedTurnId: 'turn-1',
+      text: '$same continue',
+      skills,
+    }),
+  ).rejects.toMatchObject({ code: 'SKILL_STEER_UNSUPPORTED' });
+  expect(steer).not.toHaveBeenCalled();
+  ctx.codex.complete(id, 'turn-1');
+  await ctx.service.startTurn(id, {
+    clientOperationId: operationId(),
+    text: '$same continue',
+    skills,
+  });
+  expect((start.mock.calls[1] as unknown[])?.[5]).toEqual(skills);
+  expect(ctx.listSkills).toHaveBeenLastCalledWith(catalog.cwd, true);
+});
+it.each(['forged', 'disabled', 'cwd', 'missing-token', 'removed'] as const)(
+  'rejects %s references before dispatch and preserves operation deduplication',
+  async (kind) => {
+    const ctx = setup();
+    const created = await ctx.service.createThread('project', { clientOperationId: operationId() });
+    const id = (created.result as { threadId: string }).threadId;
+    const catalog = await ctx.service.listSkills({ projectId: 'project', threadId: id });
+    const selected = { name: 'same', path: catalog.skills[0]!.path, cwd: catalog.cwd };
+    if (kind === 'forged') selected.path = '/etc/passwd';
+    if (kind === 'disabled') selected.path = catalog.skills[1]!.path;
+    if (kind === 'cwd') selected.cwd = '/other-workspace';
+    if (kind === 'removed') ctx.listSkills.mockResolvedValue({ ...catalog, skills: [] });
+    const input = {
+      clientOperationId: operationId(),
+      text: kind === 'missing-token' ? 'plain text' : '$same check',
+      skills: [selected],
+    };
+    await expect(ctx.service.startTurn(id, input)).rejects.toMatchObject({
+      code: 'SKILL_UNAVAILABLE',
+    });
+    expect(ctx.codex.starts).toBe(0);
+  },
+);

@@ -56,5 +56,8 @@
   "skills_scope_system": "System",
   "skills_scope_admin": "Admin",
   "skills_not_ready": "Codex is not ready. Retry when it reconnects.",
-  "skills_offline": "Offline. Reconnect to load skills."
+  "skills_offline": "Offline. Reconnect to load skills.",
+  "skills_selected": "Selected skills",
+  "skills_slash": "Remove skill references before running a slash command.",
+  "skills_steer_unsupported": "Codex 0.164.0 cannot apply a selected skill during an active task. Wait for it to finish, then send this draft."
 }

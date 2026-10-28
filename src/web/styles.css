@@ -2180,6 +2180,12 @@ html.composer-resizing * {
   color: #934922;
   background: #fdf7f1;
 }
+.composer-box textarea,
+.composer-highlights {
+  padding: 17px 44px 7px 17px;
+  font-size: 13px;
+  line-height: 1.7;
+}
 .composer-box textarea {
   --composer-min-height: 93px;
   --composer-max-height: 230px;
@@ -2187,18 +2193,16 @@ html.composer-resizing * {
   resize: none;
   min-height: var(--composer-min-height);
   max-height: min(var(--composer-max-height), var(--composer-available-height, 230px));
-  padding: 17px 44px 7px 17px;
   border: 0;
   outline: 0;
-  font-size: 13px;
-  line-height: 1.7;
   color: #45534a;
   background: transparent;
 }
 .composer-box textarea::placeholder {
   color: #a8aeab;
 }
-.composer-region[data-mobile-input] textarea {
+.composer-region[data-mobile-input] textarea,
+.composer-region[data-mobile-input] .composer-highlights {
   /* Avoid iOS focus zoom so the controls stay in the visible viewport. */
   font-size: 16px;
 }
@@ -3527,6 +3531,9 @@ dd {
   }
   .composer-box textarea {
     --composer-min-height: 83px;
+  }
+  .composer-box textarea,
+  .composer-highlights {
     font-size: 13px;
     padding: 14px 48px 5px 13px;
   }
@@ -5584,4 +5591,107 @@ dd {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+/* Explicit references use the same visual hierarchy in suggestions and selected tokens. */
+.skill-reference-menu {
+  padding: 6px;
+  border-bottom: 1px solid #e3ebe6;
+  background: #fafcfb;
+}
+.skill-reference-menu .skills-toolbar {
+  padding: 0 36px 2px 8px;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 11px;
+}
+.skill-reference-menu .skills-toolbar strong {
+  font-weight: 500;
+}
+.skill-options {
+  max-height: min(290px, 32dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 4px;
+}
+.skill-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.skill-option[aria-selected='true'] {
+  background: #edf4ef;
+  border-color: #d5e4da;
+}
+.skill-option .skill-mark {
+  width: 30px;
+  height: 30px;
+  background: #fff;
+}
+.skill-option-content {
+  flex: 1;
+  min-width: 0;
+}
+.skill-option .skills-name strong {
+  font-size: 13px;
+}
+.skill-option-description {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #747e78;
+}
+.skill-option-path {
+  display: block;
+  margin-top: 3px;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #8a948e;
+  overflow-wrap: anywhere;
+}
+.skill-option-selected {
+  color: #5b8068;
+  margin-top: 3px;
+}
+.skill-reference-menu .skills-state {
+  margin: 20px 12px;
+}
+/* No extra selected-skill row: the native editor highlights the bound text in place. */
+.composer-editor {
+  position: relative;
+}
+.composer-editor textarea {
+  position: relative;
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.composer-highlights {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  color: transparent;
+}
+.composer-highlights mark {
+  padding: 0;
+  border-radius: 3px;
+  color: transparent;
+  background: #dfeee4;
+  box-shadow: 0 0 0 1px #dfeee4;
 }
