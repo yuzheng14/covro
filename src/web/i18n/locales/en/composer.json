@@ -43,5 +43,18 @@
   "tap_to_run_command_enter_for_new_line": "Tap to run command · Enter for a new line",
   "add_images": "Add images",
   "retry_image": "Retry reading",
-  "image_read_failed": "Could not read the image. Retry or select it again."
+  "image_read_failed": "Could not read the image. Retry or select it again.",
+  "skills_title": "Skills",
+  "skills_search": "Search skills",
+  "skills_partial": "Some skills could not be discovered",
+  "skills_no_match": "No matching skills",
+  "skills_empty": "No skills found",
+  "skills_enabled": "Available",
+  "skills_disabled": "Disabled",
+  "skills_scope_repo": "Project",
+  "skills_scope_user": "User",
+  "skills_scope_system": "System",
+  "skills_scope_admin": "Admin",
+  "skills_not_ready": "Codex is not ready. Retry when it reconnects.",
+  "skills_offline": "Offline. Reconnect to load skills."
 }

@@ -43,5 +43,18 @@
   "tap_to_run_command_enter_for_new_line": "탭하여 명령 실행 · Enter로 줄바꿈",
   "add_images": "이미지 추가",
   "retry_image": "다시 읽기",
-  "image_read_failed": "이미지를 읽을 수 없습니다. 다시 시도하거나 다시 선택하세요."
+  "image_read_failed": "이미지를 읽을 수 없습니다. 다시 시도하거나 다시 선택하세요.",
+  "skills_title": "스킬",
+  "skills_search": "스킬 검색",
+  "skills_partial": "일부 스킬을 찾지 못했습니다",
+  "skills_no_match": "일치하는 스킬이 없습니다",
+  "skills_empty": "스킬이 없습니다",
+  "skills_enabled": "사용 가능",
+  "skills_disabled": "비활성화",
+  "skills_scope_repo": "프로젝트",
+  "skills_scope_user": "사용자",
+  "skills_scope_system": "시스템",
+  "skills_scope_admin": "관리자",
+  "skills_not_ready": "Codex가 준비되지 않았습니다. 다시 연결한 후 재시도하세요.",
+  "skills_offline": "오프라인입니다. 스킬을 불러오려면 다시 연결하세요."
 }

@@ -115,7 +115,7 @@ See the [contribution guide](docs/contributing.md) for development setup, checks
 
 | Topic                      | Guides                                                                                                                                                                            |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Everyday use               | [Usage · 中文](docs/usage.zh-CN.md) · [Commands](docs/slash-commands.md) · [Shell](docs/shell.md) · [Capacity retries](docs/capacity-retry.md)                                    |
+| Everyday use               | [Usage · 中文](docs/usage.zh-CN.md) · [Commands](docs/slash-commands.md) · [Skills](docs/skills.md) · [Shell](docs/shell.md) · [Capacity retries](docs/capacity-retry.md)         |
 | Projects and conversations | [Import and clone](docs/project-clone.md) · [Workspaces](docs/workspaces.md) · [History loading](docs/session-history.md)                                                         |
 | Setup and access           | [Install and update](docs/distribution.md) · [Deployment](docs/deployment.md) · [Interface languages](docs/i18n.md)                                                               |
 | Data and compatibility     | [Backups](docs/backups.md) · [Database](docs/database.md) · [Codex compatibility](docs/compatibility.md)                                                                          |

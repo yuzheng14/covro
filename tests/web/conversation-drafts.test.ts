@@ -50,3 +50,13 @@ describe('conversation draft ownership', () => {
     expect(drafts.apply(receipt('send', 'acknowledged'))).toBeUndefined();
   });
 });
+
+it('rotates the reserved creation identity after a definite HTTP failure but keeps unknown intent stable', () => {
+  const drafts = new ConversationDrafts();
+  const key = drafts.key('project');
+  const creationId = drafts.creationId(key);
+  drafts.track(creationId, { kind: 'create', key, projectId: 'project', settings: {}, creationId });
+  expect(drafts.creationId(key)).toBe(creationId);
+  drafts.discard(creationId);
+  expect(drafts.creationId(key)).not.toBe(creationId);
+});

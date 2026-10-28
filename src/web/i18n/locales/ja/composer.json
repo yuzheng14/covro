@@ -43,5 +43,18 @@
   "tap_to_run_command_enter_for_new_line": "タップしてコマンド実行 · Enter で改行",
   "add_images": "画像を追加",
   "retry_image": "再読み込み",
-  "image_read_failed": "画像を読み込めませんでした。再試行するか、選び直してください。"
+  "image_read_failed": "画像を読み込めませんでした。再試行するか、選び直してください。",
+  "skills_title": "スキル",
+  "skills_search": "スキルを検索",
+  "skills_partial": "一部のスキルを検出できませんでした",
+  "skills_no_match": "一致するスキルがありません",
+  "skills_empty": "スキルが見つかりません",
+  "skills_enabled": "利用可能",
+  "skills_disabled": "無効",
+  "skills_scope_repo": "プロジェクト",
+  "skills_scope_user": "ユーザー",
+  "skills_scope_system": "システム",
+  "skills_scope_admin": "管理者",
+  "skills_not_ready": "Codex の準備ができていません。再接続後に再試行してください。",
+  "skills_offline": "オフラインです。スキルを読み込むには再接続してください。"
 }

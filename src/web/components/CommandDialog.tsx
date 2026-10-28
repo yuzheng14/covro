@@ -9,12 +9,14 @@ export function CommandDialog({
   onClose,
   children,
   wide = false,
+  className = '',
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  className?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const id = useId();
@@ -25,7 +27,7 @@ export function CommandDialog({
   return (
     <dialog
       ref={dialog}
-      className={`project-dialog command-dialog${wide ? ' command-dialog-wide' : ''}`}
+      className={`project-dialog command-dialog${wide ? ' command-dialog-wide' : ''} ${className}`}
       aria-labelledby={id}
       onCancel={(event) => {
         event.preventDefault();

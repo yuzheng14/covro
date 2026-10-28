@@ -70,6 +70,7 @@ class ControlledFixture implements CodexClient {
   unarchiveThread: CodexClient['unarchiveThread'] = (...args) =>
     this.inner.unarchiveThread(...args);
   listThreads: CodexClient['listThreads'] = (...args) => this.inner.listThreads(...args);
+  listSkills: NonNullable<CodexClient['listSkills']> = (...args) => this.inner.listSkills!(...args);
   readRuntimeSettings: CodexClient['readRuntimeSettings'] = (...args) =>
     this.inner.readRuntimeSettings(...args);
   saveModelDefaults: CodexClient['saveModelDefaults'] = (...args) =>
@@ -129,7 +130,6 @@ class ControlledFixture implements CodexClient {
     this.version = version;
     this.unavailable = false;
     this.externalFailures.clear();
-    await this.start();
   }
   update(version: string | undefined, unavailable: boolean | undefined) {
     if (version !== undefined) this.version = version;
@@ -235,8 +235,14 @@ const control = createServer((request, response) => {
       if (input.restart === true) {
         await runtime.close();
         runtime = await startGateway(config, { codex, staticDir: resolve('dist/web') });
-      } else if (input.reset === true) await codex.reset(input.version);
-      else codex.update(input.version, input.unavailable);
+      } else if (input.reset === true) {
+        // A test reset must clear durable gateway intent as well as upstream history.
+        // Restart above deliberately preserves that data for recovery tests.
+        await runtime.close();
+        await rm(join(root, 'data'), { recursive: true, force: true });
+        await codex.reset(input.version);
+        runtime = await startGateway(config, { codex, staticDir: resolve('dist/web') });
+      } else codex.update(input.version, input.unavailable);
       if (input.releaseThreadId) codex.releaseExternal(input.releaseThreadId);
       if (input.external) externalThreadId = await codex.seedExternal(project, input.external);
     });

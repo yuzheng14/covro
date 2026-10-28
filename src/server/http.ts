@@ -175,6 +175,9 @@ export function createApp({
       .digest('hex');
     return c.json({ scope });
   });
+  app.post('/api/skills/list', async (c) =>
+    c.json(await service.listSkills(schemas.skillsQuerySchema.parse(await c.req.json()))),
+  );
   app.get('/api/system', (c) => c.json(service.getSystem()));
   app.get('/api/account/usage', async (c) => {
     c.header('Cache-Control', 'no-store');
