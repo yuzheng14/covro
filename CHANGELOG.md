@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.7.0](https://github.com/yuzheng14/covro/compare/v0.6.0...v0.7.0) (2026-10-28)
+
+
+### Features
+
+* **composer:** bind explicit skill references to native inputs ([#296](https://github.com/yuzheng14/covro/issues/296)) ([eb0ef57](https://github.com/yuzheng14/covro/commit/eb0ef57e414f776adeb53a7c10593434bb779c39)), closes [#264](https://github.com/yuzheng14/covro/issues/264)
+* **runtime:** verify Node environments and persist managed launch sources ([#291](https://github.com/yuzheng14/covro/issues/291)) ([f2d96f3](https://github.com/yuzheng14/covro/commit/f2d96f39695e400917704cd38dbc5764fa96471a)), closes [#281](https://github.com/yuzheng14/covro/issues/281)
+* **skills:** browse and search server-discovered workspace skills ([#289](https://github.com/yuzheng14/covro/issues/289)) ([8933dc0](https://github.com/yuzheng14/covro/commit/8933dc03cd8bbbafa6d7f5679e7bf6848b6176f9)), closes [#263](https://github.com/yuzheng14/covro/issues/263)
+* **ui:** show account quotas and reset times ([#290](https://github.com/yuzheng14/covro/issues/290)) ([92e71e8](https://github.com/yuzheng14/covro/commit/92e71e8faf24e938ae917e7d508cb9721dcb824e)), closes [#267](https://github.com/yuzheng14/covro/issues/267)
+
+
+### Bug Fixes
+
+* **ci:** cache E2E system packages and Chromium ([#299](https://github.com/yuzheng14/covro/issues/299)) ([d1426c0](https://github.com/yuzheng14/covro/commit/d1426c0109d313fcd6c7e279431e942ed9312f63))
+* **notifications:** support mobile delivery with a service worker ([#287](https://github.com/yuzheng14/covro/issues/287)) ([f75d330](https://github.com/yuzheng14/covro/commit/f75d33048937ff03e7fbbd80c30dd8896ac86ab2)), closes [#284](https://github.com/yuzheng14/covro/issues/284)
+* **realtime:** preserve full history with incremental synchronization ([#286](https://github.com/yuzheng14/covro/issues/286)) ([40212af](https://github.com/yuzheng14/covro/commit/40212af379d9ff2f23272e5d28ae0d724f2c377b)), closes [#285](https://github.com/yuzheng14/covro/issues/285)
+* **ui:** show unanswered async questions beside session titles ([#300](https://github.com/yuzheng14/covro/issues/300)) ([b59f1ff](https://github.com/yuzheng14/covro/commit/b59f1ff9485b0c6100e10148348cb3571332fa65))
+* **updates:** migrate managed upgrades to the default Node environment ([#292](https://github.com/yuzheng14/covro/issues/292)) ([eee1b55](https://github.com/yuzheng14/covro/commit/eee1b55adf6ef53242cc7325e598df2221b58e2a)), closes [#281](https://github.com/yuzheng14/covro/issues/281)
+
 ## [0.6.0](https://github.com/yuzheng14/covro/compare/v0.5.0...v0.6.0) (2026-10-27)
 
 
