@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/yuzheng14/covro/compare/v0.7.0...v0.8.0) (2026-10-29)
+
+
+### Features
+
+* **session:** adjust settings while tasks are running ([#294](https://github.com/yuzheng14/covro/issues/294)) ([543186f](https://github.com/yuzheng14/covro/commit/543186f9ef47e5c173cdfc9dc569f3e09882ea75)), closes [#271](https://github.com/yuzheng14/covro/issues/271)
+
 ## [0.7.0](https://github.com/yuzheng14/covro/compare/v0.6.0...v0.7.0) (2026-10-28)
 
 
