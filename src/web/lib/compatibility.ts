@@ -13,6 +13,7 @@ const protectedOperations = new Set([
   'compact',
   'review',
   'saveModelDefaults',
+  'liveSettings',
 ]);
 
 /** A dismissal never applies to a different runtime, executable version or verified baseline. */

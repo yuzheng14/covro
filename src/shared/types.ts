@@ -21,6 +21,13 @@ export interface Settings {
   approvalReviewer?: 'user' | 'auto_review';
   sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access';
 }
+/** Sparse edits eligible for the running turn; future selections remain in Settings. */
+export type LiveSettings = Pick<Settings, 'serviceTier' | 'permissionMode'>;
+export interface LiveSettingsState {
+  turnId: string;
+  serviceTier?: 'fast' | null;
+  approvalReviewer?: 'user' | 'auto_review';
+}
 export type PermissionMode = 'ask' | 'auto-review' | 'full-access' | 'read-only';
 export interface PermissionCapabilities {
   unavailableReason?: string;
@@ -35,6 +42,8 @@ export interface PermissionCapabilities {
 export interface RuntimeSettings {
   /** Only present when reported by the running Codex instance. */
   collaborationMode?: 'plan' | 'default';
+  /** Verified RPC plus thread feature availability; absent means unverified. */
+  liveSettingsCapabilities?: { fast: boolean; reviewer: boolean };
   model: string | null;
   reasoningEffort: string | null;
   /** null is reported standard speed; omitted means the upstream did not report it. */
@@ -192,6 +201,8 @@ export interface CapacityRetryView {
   reason?: 'progress' | 'native' | 'limit' | 'error';
 }
 export interface ThreadView {
+  /** Acknowledged publications for this task only, never inferred from future defaults. */
+  liveSettings?: LiveSettingsState;
   capacityRetry?: CapacityRetryView;
   /** Absent means no current native goal snapshot has been read. */
   goal?: import('./thread-goal.js').ThreadGoal | null;
@@ -369,6 +380,10 @@ export interface SteerInput extends OperationInput, TaskMessage {
 }
 export interface RetryTurnInput extends CreateThreadInput {
   expectedTurnId: string;
+}
+export interface UpdateLiveSettingsInput extends OperationInput {
+  expectedTurnId: string;
+  settings: LiveSettings;
 }
 export interface InterruptInput extends OperationInput {
   expectedTurnId: string;

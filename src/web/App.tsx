@@ -1041,6 +1041,8 @@ export function App() {
             settings={workspace.settings}
             models={system?.models ?? []}
             onSettings={workspace.setSettings}
+            onLiveSettings={workspace.updateLiveSettings}
+            liveSettingsPending={Boolean(thread && busyFor('liveSettings'))}
             onSaveModelDefaults={workspace.saveModelDefaults}
             savingModelDefaults={workspace.savingModelDefaults}
             disabled={

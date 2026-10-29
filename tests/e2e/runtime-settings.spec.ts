@@ -45,7 +45,7 @@ test('direct selectors show reported settings, keep proposals distinct and follo
   await page.locator('.composer-box').screenshot({ path: '/tmp/codex-toolbar-pending.png' });
   await page.getByRole('textbox', { name: '任务内容' }).fill('确认推理强度设置');
   await page.getByRole('button', { name: '发送任务', exact: true }).click();
-  await expect(effort).toBeDisabled();
+  await expect(effort).toBeEnabled();
   await expect(page.getByText('模拟任务已完成。', { exact: true })).toBeVisible();
   await expect(effort).toHaveAttribute('data-value', 'high');
   await expect(page.locator('.settings-pending')).toHaveCount(0);
@@ -345,7 +345,7 @@ test('combined settings and attachment controls fit on one row, including active
       await expect(panel.getByRole('combobox', { name: '模型', exact: true })).toBeVisible();
       await expect(panel.getByRole('combobox', { name: '推理强度', exact: true })).toBeVisible();
       if (active)
-        await expect(panel.getByRole('button', { name: 'Fast 模式', exact: true })).toBeDisabled();
+        await expect(panel.getByRole('button', { name: 'Fast 模式', exact: true })).toBeEnabled();
       await page.getByRole('button', { name: '关闭模型设置', exact: true }).click();
     }
   }

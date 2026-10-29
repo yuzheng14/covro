@@ -174,5 +174,11 @@
   "fieldError": "{{label}}：{{reason}}",
   "temporaryDirectories": "TMPDIR：{{tmpdir}}；/tmp：{{slashTmp}}",
   "model_settings": "模型设置",
-  "close_model_settings": "关闭模型设置"
+  "close_model_settings": "关闭模型设置",
+  "next_turn": "下轮生效",
+  "live_updating": "正在更新当前任务…",
+  "live_fast_applied": "Fast：后续模型步骤生效",
+  "live_reviewer_applied": "审核方：后续步骤生效；已有审批不变",
+  "live_permissions_deferred": "权限：下轮生效（沙箱和审批策略固定）",
+  "live_fast_deferred": "Fast：确认执行中更新前，下轮生效"
 }

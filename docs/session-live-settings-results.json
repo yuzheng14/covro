@@ -1,0 +1,35 @@
+{
+  "version": "0.164.0",
+  "inference": false,
+  "localStub": true,
+  "checks": [
+    "Fast acknowledged while first model request is still in flight",
+    "Reviewer publication preserves the existing human approval, which is explicitly denied",
+    "Later model request in the same turn uses priority; model/effort stay unchanged",
+    "New model/effort and explicit standard speed appear in the next actual model request"
+  ],
+  "requests": [
+    {
+      "model": "gpt-6.1-sol",
+      "reasoning": {
+        "effort": "low",
+        "context": "all_turns"
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "service_tier": "priority",
+      "reasoning": {
+        "effort": "low",
+        "context": "all_turns"
+      }
+    },
+    {
+      "model": "gpt-6-astra",
+      "reasoning": {
+        "effort": "high",
+        "context": "all_turns"
+      }
+    }
+  ]
+}

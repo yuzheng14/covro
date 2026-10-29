@@ -38,6 +38,16 @@ export const settingsSchema = z
     '权限模式不能与独立的权限、审批策略或审核方同时设置',
   );
 export const operationSchema = z.object({ clientOperationId: z.string().uuid() }).strict();
+export const updateLiveSettingsSchema = operationSchema.extend({
+  expectedTurnId: idSchema,
+  settings: z
+    .object({
+      serviceTier: z.literal('fast').nullable().optional(),
+      permissionMode: z.enum(['ask', 'auto-review', 'full-access', 'read-only']).optional(),
+    })
+    .strict()
+    .refine((settings) => Object.keys(settings).length > 0, 'Settings are required'),
+});
 export const saveModelDefaultsSchema = operationSchema.extend({
   settings: z
     .object({

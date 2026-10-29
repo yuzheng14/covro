@@ -57,6 +57,8 @@ interface Props {
   settings: Settings;
   models: ModelInfo[];
   onSettings: (settings: Settings) => void;
+  onLiveSettings: (settings: import('../../shared/types').LiveSettings) => void;
+  liveSettingsPending: boolean;
   onSaveModelDefaults: (settings: ModelDefaults) => Promise<ModelDefaultsResult | undefined>;
   savingModelDefaults: boolean;
   onSend: (
@@ -766,6 +768,8 @@ export function Composer(props: Props) {
           projectName={props.projectName}
           models={props.models}
           onChange={props.onSettings}
+          onLiveSettings={props.onLiveSettings}
+          liveSettingsPending={props.liveSettingsPending}
           onSaveModelDefaults={props.onSaveModelDefaults}
           savingModelDefaults={props.savingModelDefaults}
           thread={props.thread}
@@ -775,7 +779,6 @@ export function Composer(props: Props) {
           disabled={
             props.disabled ||
             Boolean(props.threadLoading) ||
-            active ||
             props.submitting ||
             props.resuming ||
             props.forking

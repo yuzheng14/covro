@@ -73,6 +73,8 @@ class ControlledFixture implements CodexClient {
   listSkills: NonNullable<CodexClient['listSkills']> = (...args) => this.inner.listSkills!(...args);
   readRuntimeSettings: CodexClient['readRuntimeSettings'] = (...args) =>
     this.inner.readRuntimeSettings(...args);
+  updateLiveSettings: NonNullable<CodexClient['updateLiveSettings']> = (...args) =>
+    this.inner.updateLiveSettings!(...args);
   saveModelDefaults: CodexClient['saveModelDefaults'] = (...args) =>
     this.inner.saveModelDefaults(...args);
   readThreadPage: CodexClient['readThreadPage'] = (...args) => this.inner.readThreadPage!(...args);

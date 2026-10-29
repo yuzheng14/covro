@@ -29,12 +29,12 @@
 
 ## ✨ What you can do
 
-- 📱 **Follow tasks from any device.** Review changes, handle approvals, answer questions, and check [account quotas](docs/account-usage.md) on desktop or mobile. Tasks keep running when you close the page.
+- 📱 **Follow tasks from any device.** Review changes, handle approvals, answer questions, and check [account quotas](docs/account-usage.md) on desktop or mobile. Tasks keep running when you close the page; adjust session settings while work continues.
 - 🗂️ **Keep projects and conversations together.** Start without a project, track parallel tasks, and resume or fork your Codex CLI conversations.
 - 📖 **Read results while you chat.** Preview documents, diagrams, and code changes beside the conversation on desktop, or full-screen on mobile. Loaded history stays complete as new responses stream in.
 - 🔔 **Know when your attention is needed.** Enable browser notifications for completed work, questions, and approvals in a supported desktop or Android browser. Keep the page online; notifications are not pushed while it is frozen or closed.
 
-Find controls, shortcuts, and supported commands in the [usage guide · 中文](docs/usage.zh-CN.md) and [command guide](docs/slash-commands.md).
+Find controls, shortcuts, and supported commands in the [usage guide · 中文](docs/usage.zh-CN.md), [command guide](docs/slash-commands.md), and [setting timing](docs/session-live-settings.md).
 
 <details>
   <summary><strong>📱 A workspace that fits your phone</strong></summary>

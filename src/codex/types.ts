@@ -69,6 +69,12 @@ export interface CodexClient {
     forceReload?: boolean,
   ): Promise<import('../shared/skills.js').SkillCatalog>;
   readRuntimeSettings(cwd: string): Promise<RuntimeSettings>;
+  updateLiveSettings?(
+    id: string,
+    cwd: string,
+    turnId: string,
+    settings: import('../shared/types.js').LiveSettings,
+  ): Promise<Partial<Omit<import('../shared/types.js').LiveSettingsState, 'turnId'>>>;
   saveModelDefaults(settings: ModelDefaults): Promise<ModelDefaultsResult>;
   onEvent(listener: (event: CodexEvent) => void): () => void;
   listThreads(cwd: string | string[], cursor?: string, archived?: boolean): Promise<ThreadPage>;

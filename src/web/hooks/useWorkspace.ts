@@ -19,6 +19,7 @@ import type {
 import { toThreadSummary } from '../../shared/thread-summary';
 import { api, HttpError } from '../lib/api';
 import { pendingSettings } from '../lib/settings';
+import { readSessionSettings, saveSessionSettings } from '../lib/session-settings';
 import {
   blocksTarget,
   canDiscardMissingOperation,
@@ -143,12 +144,14 @@ export function useWorkspace() {
   const busyRef = useRef(new Set<string>());
   const streamRef = useRef<ThreadStream | undefined>(undefined);
   const projectRef = useRef(projectId);
-  const settingsRef = useRef<Record<string, Settings>>({});
+  const [settingsByScope, setSettingsByScope] = useState(readSessionSettings);
+  const settingsRef = useRef<Record<string, Settings>>(settingsByScope);
+  const liveSettingsQueue = useRef(new Map<string, Promise<unknown>>());
   const conversationDrafts = useRef(new ConversationDrafts());
   const [sentDrafts, setSentDrafts] = useState<Record<string, SentDraft>>({});
   const firstMessagesRef = useRef(new Set<string>());
   const [firstMessages, setFirstMessages] = useState<string[]>([]);
-  const [settingsByScope, setSettingsByScope] = useState(settingsRef.current);
+  useEffect(() => saveSessionSettings(settingsByScope), [settingsByScope]);
   useUpgradeReloadState(
     'workspace',
     () => ({ settings: settingsRef.current, keys: conversationDrafts.current.snapshotKeys() }),
@@ -1288,6 +1291,27 @@ export function useWorkspace() {
     settings: settingsByScope[selectedId ? `thread:${selectedId}` : `project:${projectId}`] ?? {},
     setSettings,
     getProjectSettings,
+    updateLiveSettings: (settings: import('../../shared/types').LiveSettings) => {
+      const target = selectedThreadRef.current;
+      const turn = target?.turns.at(-1);
+      if (!target?.managed || !turn) return;
+      const previous = liveSettingsQueue.current.get(target.id) ?? Promise.resolve();
+      const writing = previous
+        .catch(() => {})
+        .then(() =>
+          run(
+            'liveSettings',
+            target.id,
+            `/api/threads/${encodeURIComponent(target.id)}/live-settings`,
+            { expectedTurnId: turn.id, settings },
+          ),
+        );
+      liveSettingsQueue.current.set(target.id, writing);
+      void writing.finally(() => {
+        if (liveSettingsQueue.current.get(target.id) === writing)
+          liveSettingsQueue.current.delete(target.id);
+      });
+    },
     runtimeDefaultsRevision,
     savingModelDefaults: busy.some((entry) => entry.startsWith('saveModelDefaults:')),
     saveModelDefaults: async (

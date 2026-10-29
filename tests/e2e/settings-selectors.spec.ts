@@ -115,7 +115,7 @@ test('effort hint distinguishes the next task value from the confirmed current v
   await expect(effort).toHaveAccessibleDescription('推理强度：high');
 });
 
-test('disabled effort controls still expose their current value on hover', async ({ page }) => {
+test('running effort controls stay editable and explain next-turn timing', async ({ page }) => {
   await newThread(page);
   const effort = effortControl(page);
   const hint = effortTooltip(page);
@@ -124,12 +124,13 @@ test('disabled effort controls still expose their current value on hover', async
     .fill('[approval] 查看任务运行期间的推理强度');
   await page.getByRole('button', { name: '发送任务', exact: true }).click();
   await expect(page.locator('.action-card')).toBeVisible();
-  await expect(effort).toBeDisabled();
+  await expect(effort).toBeEnabled();
   await openModelSettings(page);
   await effortHint(page).hover();
   await expect(hint).toBeVisible();
-  await expect(hint).toHaveText('推理强度：medium');
-  await expect(effort).toHaveAccessibleDescription('推理强度：medium');
+  await expect(hint).toContainText('推理强度：medium');
+  await expect(hint).toContainText('下轮生效');
+  await expect(effort).toHaveAccessibleDescription(/推理强度：medium.*下轮生效/);
   await page.keyboard.press('Escape');
   await expect(hint).toHaveCount(0);
   await page.mouse.move(0, 0, { steps: 5 });

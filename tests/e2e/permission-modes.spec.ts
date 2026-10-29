@@ -118,7 +118,7 @@ test('manual and automatic review keep the same sandbox and route eligible fixtu
     .fill('[mode-approval] 请求人工审批');
   await page.getByRole('button', { name: '发送任务', exact: true }).click();
   await expect(page.locator('.action-card')).toBeVisible();
-  await expect(modeControl(page)).toBeDisabled();
+  await expect(modeControl(page)).toBeEnabled();
   const manual = ((await (await request.get(`/api/threads/${id}`)).json()) as ThreadView)
     .runtimeSettings;
   await page.locator('.action-card').getByRole('button', { name: '允许本次', exact: true }).click();
@@ -238,6 +238,6 @@ test('preserves mode drafts by project and conversation and never substitutes de
   await page.locator(`[data-thread-id="${first}"]`).click();
   await expect(modeControl(page)).toHaveAttribute('data-value', 'auto-review');
   await page.reload();
-  await expect(modeControl(page)).toHaveAttribute('data-value', 'read-only');
-  await expect(page.locator('.settings-pending')).toHaveCount(0);
+  await expect(modeControl(page)).toHaveAttribute('data-value', 'auto-review');
+  await expect(page.locator('.settings-pending')).toContainText('当前：只读');
 });

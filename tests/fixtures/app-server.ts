@@ -10,8 +10,20 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { mermaidChunks } from './mermaid.js';
-import type { ClientRequest } from '../../src/codex/generated/ClientRequest.js';
 import type { GetAccountResponse } from '../../src/codex/generated/v2/GetAccountResponse.js';
+import type { ClientRequest as StableClientRequest } from '../../src/codex/generated/ClientRequest.js';
+type ClientRequest =
+  | StableClientRequest
+  | {
+      id: RequestId;
+      method: 'turn/settings/update';
+      params: {
+        threadId: string;
+        turnId: string;
+        serviceTier?: string | null;
+        approvalsReviewer?: string;
+      };
+    };
 import type { ServerNotification } from '../../src/codex/generated/ServerNotification.js';
 import type { ServerRequest } from '../../src/codex/generated/ServerRequest.js';
 import type { ReasoningEffort } from '../../src/codex/generated/ReasoningEffort.js';
@@ -44,6 +56,9 @@ export interface SimulatorOptions {
   rejectPermissions?: boolean;
   ignorePermissions?: boolean;
   settingsOnFeatureRead?: boolean;
+  stepModelSwitching?: boolean;
+  liveSettingsFailure?: boolean;
+  liveSettingsDelayMs?: number;
   configModel?: string | null;
   configEffort?: ReasoningEffort | null;
   configWriteStatus?: 'ok' | 'okOverridden';
@@ -1873,6 +1888,15 @@ function receive(request: ClientRequest): void {
       reply(request.id, {
         data: [
           {
+            name: 'step_model_switching',
+            stage: 'underDevelopment',
+            enabled: options.stepModelSwitching !== false,
+            defaultEnabled: false,
+            displayName: null,
+            description: null,
+            announcement: null,
+          },
+          {
             name: 'guardian_approval',
             stage: 'stable',
             enabled: options.guardianApproval !== false,
@@ -2287,6 +2311,36 @@ function receive(request: ClientRequest): void {
       );
       if (options.approval) approval(thread, turn, options.approval);
       else execute(thread, turn);
+      break;
+    }
+    case 'turn/settings/update': {
+      const params = (
+        request as unknown as {
+          params: {
+            threadId: string;
+            turnId: string;
+            serviceTier?: string | null;
+            approvalsReviewer?: string;
+          };
+        }
+      ).params;
+      const apply = () => {
+        if (
+          options.liveSettingsFailure ||
+          (params.serviceTier !== undefined && options.stepModelSwitching === false)
+        ) {
+          error(request.id, 'turn settings updates require the step_model_switching feature');
+          return;
+        }
+        const turn = threads.get(params.threadId)?.turns.at(-1);
+        reply(request.id, {
+          status:
+            turn?.id === params.turnId && turn.status === 'inProgress'
+              ? 'applied'
+              : 'targetUnavailable',
+        });
+      };
+      setTimeout(apply, options.liveSettingsDelayMs ?? 0);
       break;
     }
     case 'turn/start': {

@@ -160,6 +160,8 @@ export function isSettled(operation: Operation) {
 
 export function blocksTarget(entry: SavedOperation, target: string) {
   return (
+    // A settings receipt cannot reserve execution or block further explicit edits.
+    entry.kind !== 'liveSettings' &&
     entry.target === target &&
     !entry.operation?.reconciliation &&
     !entry.operation?.execution?.ended &&

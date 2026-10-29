@@ -1,6 +1,6 @@
 # 权限模式
 
-对应 [#72](https://github.com/yuzheng14/codex-web-ui/issues/72)，协议与本机核验版本为 Codex 0.162.1。没有升级 CLI、增加依赖或改写全局配置。
+对应 [#72](https://github.com/yuzheng14/codex-web-ui/issues/72)，以下原始权限预设核验版本为 Codex 0.162.1。当前支持的 0.164.0 执行中更新边界见[配置生效时机](session-live-settings.md)：沙箱/profile 和审批策略下轮生效；在相同 workspace + on-request 边界下，仅审核方可更新后续步骤，已有审批保持原归属。
 
 ## 原生请求与确认
 

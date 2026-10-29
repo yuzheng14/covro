@@ -174,5 +174,11 @@
   "fieldError": "{{label}}: {{reason}}",
   "temporaryDirectories": "TMPDIR: {{tmpdir}}; /tmp: {{slashTmp}}",
   "model_settings": "Model settings",
-  "close_model_settings": "Close model settings"
+  "close_model_settings": "Close model settings",
+  "next_turn": "Next turn",
+  "live_updating": "Updating running task…",
+  "live_fast_applied": "Fast: published for later model steps",
+  "live_reviewer_applied": "Reviewer: published for later steps; pending approvals unchanged",
+  "live_permissions_deferred": "Permissions: next turn (sandbox and approval policy are fixed)",
+  "live_fast_deferred": "Fast: next turn until a live update is confirmed"
 }
