@@ -237,10 +237,36 @@ export class RpcTransport extends EventEmitter {
           value.error.message,
           false,
           value.error.code,
+          modelProviderDiagnostics(value.error.data),
         ),
       );
     } else pending.resolve(value.result);
   }
+}
+/** Only public provider identifiers cross the gateway; arbitrary RPC data may contain secrets. */
+function modelProviderDiagnostics(data: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(data)) return;
+  const fields =
+    data.type === 'modelProviderMismatch'
+      ? ['modelProvider', 'currentModelProvider']
+      : data.type === 'modelProviderPolicyConflict'
+        ? ['modelProvider', 'requiredModelProvider']
+        : data.type === 'modelProviderNotConfigured'
+          ? ['modelProvider']
+          : undefined;
+  if (
+    !fields ||
+    fields.some(
+      (field) => typeof data[field] !== 'string' || !data[field] || data[field].length > 256,
+    )
+  )
+    return;
+  return {
+    modelProviderError: Object.fromEntries([
+      ['type', data.type],
+      ...fields.map((field) => [field, data[field]]),
+    ]),
+  };
 }
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

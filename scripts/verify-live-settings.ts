@@ -10,14 +10,21 @@ import { promisify } from 'node:util';
 import { CodexAdapter, type AdapterEvent } from '../src/codex/adapter.js';
 
 const args = process.argv.slice(2);
+const versionIndex = args.indexOf('--expected-version');
+const expectedVersion = versionIndex >= 0 ? args[versionIndex + 1] : undefined;
+assert.match(
+  expectedVersion ?? '',
+  /^\d+\.\d+\.\d+$/,
+  'Pass --expected-version with an exact CLI version',
+);
 const configIndex = args.indexOf('--config');
-assert(configIndex >= 0, 'Pass --config with an explicitly selected 0.164.0 binary');
+assert(configIndex >= 0, 'Pass --config with an explicitly selected Codex binary');
 const { codex } = JSON.parse(await readFile(resolve(args[configIndex + 1]!), 'utf8')) as {
   codex: { binary: string };
 };
 assert.equal(
   (await promisify(execFile)(codex.binary, ['--version'])).stdout.trim(),
-  'codex-cli 0.164.0',
+  `codex-cli ${expectedVersion}`,
 );
 const root = await mkdtemp(join(tmpdir(), 'covro-live-settings-'));
 const requests: {
@@ -187,7 +194,7 @@ try {
   console.log(
     JSON.stringify(
       {
-        version: '0.164.0',
+        version: expectedVersion,
         inference: false,
         localStub: true,
         checks,

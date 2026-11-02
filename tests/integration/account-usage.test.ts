@@ -6,7 +6,12 @@ import type { GetAccountResponse } from '../../src/codex/generated/v2/GetAccount
 import type { SimulatorOptions } from '../fixtures/app-server';
 
 const chatgpt: GetAccountResponse = {
-  account: { type: 'chatgpt', email: 'private@example.test', planType: 'plus' },
+  account: {
+    type: 'chatgpt',
+    email: 'private@example.test',
+    planType: 'plus',
+    workspaceName: null,
+  },
   requiresOpenaiAuth: true,
 };
 const limits = {
@@ -88,6 +93,7 @@ describe('account quota snapshots', () => {
     [{ account: null, requiresOpenaiAuth: true }, 'signedOut'],
     [{ account: null, requiresOpenaiAuth: false }, 'unsupported'],
     [{ account: { type: 'apiKey' }, requiresOpenaiAuth: true }, 'unsupported'],
+    [{ account: { type: 'gcp' }, requiresOpenaiAuth: false }, 'unsupported'],
     [
       {
         account: { type: 'amazonBedrock', usesCodexManagedCredentials: false },
@@ -99,6 +105,30 @@ describe('account quota snapshots', () => {
     const { source, reader: usage } = reader(account);
     expect(await usage.refresh()).toMatchObject({ status, groups: [], updatedAt: null });
     expect(source.limits).not.toHaveBeenCalled();
+  });
+  it('clears ChatGPT quota when switching to GCP and refreshes after a workspace change', async () => {
+    const { source, reader: usage } = reader();
+    await usage.refresh();
+    const previousScope = usage.snapshot().scope;
+    source.account.mockResolvedValue({ account: { type: 'gcp' }, requiresOpenaiAuth: false });
+    expect(await usage.refresh()).toMatchObject({
+      status: 'unsupported',
+      groups: [],
+      updatedAt: null,
+    });
+    expect(usage.snapshot().scope).not.toBe(previousScope);
+    expect(source.authenticated).toHaveBeenLastCalledWith(true);
+    source.account.mockResolvedValue({
+      ...chatgpt,
+      account: {
+        type: 'chatgpt',
+        email: 'private@example.test',
+        planType: 'plus',
+        workspaceName: 'New workspace',
+      },
+    });
+    source.limits.mockRejectedValue(new Error('No quota response'));
+    expect(await usage.refresh()).toMatchObject({ status: 'error', groups: [], updatedAt: null });
   });
   it('clears an account change before its slow read completes and discards old responses', async () => {
     const { source, reader: usage } = reader();
@@ -118,7 +148,7 @@ describe('account quota snapshots', () => {
     expect(usage.snapshot().scope).not.toBe(oldScope);
     source.account.mockResolvedValue({
       ...chatgpt,
-      account: { type: 'chatgpt', email: 'new@example.test', planType: 'pro' },
+      account: { type: 'chatgpt', email: 'new@example.test', planType: 'pro', workspaceName: null },
     });
     source.limits.mockResolvedValue({ rateLimits: { limitName: 'new account' } });
     await usage.refresh();
@@ -133,7 +163,7 @@ describe('account quota snapshots', () => {
     await usage.refresh();
     source.account.mockResolvedValue({
       ...chatgpt,
-      account: { type: 'chatgpt', email: null, planType: 'plus' },
+      account: { type: 'chatgpt', email: null, planType: 'plus', workspaceName: null },
     });
     source.limits.mockRejectedValue(new Error('failed'));
     expect(await usage.refresh()).toMatchObject({ status: 'error', groups: [], updatedAt: null });

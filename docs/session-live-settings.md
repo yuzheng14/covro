@@ -1,6 +1,8 @@
 # Session settings during execution / 执行中调整会话配置
 
-Verified on 2026-10-27 against **Codex 0.164.0**, tag `rust-v0.164.0`, commit `6aaac694803004a63c6f393d153c96d22521a6b9`. This is the version supported by this project. Generated stable types alone do not establish live-update support. [OpenAI Docs](https://learn.chatgpt.com/docs/app-server) describes the app-server lifecycle; the exact tagged implementation below determines this feature's boundaries.
+2026-11-02: the exact version gate is now 0.166.0, rechecked with the native CLI and local Responses stub. The original 0.164.0 record below remains historical evidence; current results and limits are in [0.166.0 verification](codex-0.166.0-verification.md). / 当前门禁与实测目标为 0.166.0，以下保留原 0.164.0 源码依据与历史记录。
+
+Verified on 2026-10-27 against **Codex 0.164.0**, tag `rust-v0.164.0`, commit `6aaac694803004a63c6f393d153c96d22521a6b9`. This records the original verification baseline. Generated stable types alone do not establish live-update support. [OpenAI Docs](https://learn.chatgpt.com/docs/app-server) describes the app-server lifecycle; the exact tagged implementation below determines this feature's boundaries.
 
 2026-10-27 以项目实际支持的 **Codex 0.164.0** 精确 tag/commit 核对。官方文档提供生命周期说明，以下精确源码决定生效边界；生成类型存在不代表客户端已接入。
 
@@ -36,7 +38,7 @@ This feature adds no Slash Command entry. `/skills` and `/usage` remain outside 
 
 ## Verification / 验证
 
-`node --import tsx scripts/verify-live-settings.ts --config <isolated config selecting an existing 0.164.0 binary>` uses a fresh temporary `CODEX_HOME`, local HTTP Responses stub and native Code Mode. It never loads account credentials, calls real inference or changes the real service. The model replies are deterministic fixtures; this is real-binary protocol/execution verification, not real-model behavior or entitlement verification.
+`node --import tsx scripts/verify-live-settings.ts --expected-version 0.164.0 --config <isolated config selecting an existing 0.164.0 binary>` uses a fresh temporary `CODEX_HOME`, local HTTP Responses stub and native Code Mode. It never loads account credentials, calls real inference or changes the real service. The model replies are deterministic fixtures; this is real-binary protocol/execution verification, not real-model behavior or entitlement verification.
 
 真实二进制 + 本地 stub 验证：首个模型请求在途时发布 Fast；真实人工命令审批等待期间发布审核方，确认旧请求仍待处理，再显式拒绝；同轮后续模型请求为 `priority` 且模型/强度不变；下一轮使用新模型/强度并清除 Fast；已结束目标返回冲突。结果见 [machine-readable record](session-live-settings-results.json)。没有自动批准测试审批。
 

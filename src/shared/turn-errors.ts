@@ -7,6 +7,7 @@ export const MODEL_CAPACITY_MESSAGE =
 export function isModelCapacityError(message: string, code?: string): boolean {
   return (
     code === 'serverOverloaded' ||
+    code === 'policyCapacityUnavailable' ||
     ((!code || code === 'other') && message.trim() === MODEL_CAPACITY_MESSAGE)
   );
 }
