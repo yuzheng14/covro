@@ -239,9 +239,9 @@ test('native answers from another client resolve only their individual question'
   const reply = page.locator('.user-message').last();
   await expect(reply.locator('blockquote')).toHaveJSProperty(
     'textContent',
-    '界面使用哪种主题？\n请选择 **深色** 或 <浅色>。',
+    '界面使用哪种主题？\n请选择 深色 或 <浅色>。',
   );
-  await expect(reply.locator('blockquote strong')).toHaveCount(0);
+  await expect(reply.locator('blockquote strong')).toHaveText('深色');
   await expect(reply.locator('.user-text')).toHaveText('来自 CLI 的浅色选择');
   await expect(card(page).getByRole('radio')).toHaveCount(0);
   await expect(freeName(page)).toBeVisible();

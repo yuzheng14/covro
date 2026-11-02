@@ -471,10 +471,24 @@ function complete(
     });
   }
 }
-function asyncQuestions(thread: Thread, turn: Turn, running: boolean, multiple: boolean): void {
+function asyncQuestions(
+  thread: Thread,
+  turn: Turn,
+  running: boolean,
+  multiple: boolean,
+  markdown = false,
+): void {
   const groups = [
     [
-      { title: '界面使用哪种主题？', options: ['深色（推荐）', '浅色'] },
+      markdown
+        ? {
+            title: '选择 **部署环境**\n\n阅读 `config.toml` 后确认。',
+            options: [
+              '**预览**：使用 `staging`',
+              '**生产**\n\n[部署指南](https://example.com/deploy)',
+            ],
+          }
+        : { title: '界面使用哪种主题？', options: ['深色（推荐）', '浅色'] },
       { title: '项目名称是什么？', options: null },
     ],
     ...(multiple ? [[{ title: '需要哪些补充说明？', options: null }]] : []),
@@ -2591,7 +2605,13 @@ function receive(request: ClientRequest): void {
         codexReconnect(thread, turn, 'hold', true);
       else if (reconnect) codexReconnect(thread, turn, reconnect);
       else if (prompt.includes('[async-questions'))
-        asyncQuestions(thread, turn, prompt.includes('-running]'), prompt.includes('-multiple]'));
+        asyncQuestions(
+          thread,
+          turn,
+          prompt.includes('-running]'),
+          prompt.includes('-multiple]'),
+          prompt.includes('-markdown]'),
+        );
       else if (prompt.includes('[codex-thinking]')) thinking(thread, turn);
       else if (prompt.includes('[mode-approval]') && policy(thread).approvalPolicy !== 'never') {
         if (policy(thread).approvalsReviewer === 'auto_review')

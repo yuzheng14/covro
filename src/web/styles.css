@@ -2888,7 +2888,7 @@ html.composer-resizing * {
   margin: 0 0 18px;
   padding: 0;
 }
-.async-question-card legend {
+.async-question-title {
   margin-bottom: 6px;
   padding: 0;
   font-weight: 600;
@@ -2916,8 +2916,28 @@ html.composer-resizing * {
 }
 .async-question-answer {
   margin: 4px 0 0;
-  white-space: pre-wrap;
   color: #415e49;
+}
+.async-question-card .markdown,
+.user-question-reply .markdown {
+  font-size: inherit;
+  white-space: normal;
+}
+.async-option-content {
+  min-width: 0;
+  flex: 1;
+}
+.async-question-card .question-option {
+  align-items: flex-start;
+}
+.async-question-card .question-option input {
+  margin-top: 4px;
+}
+.async-question-card .question-option strong {
+  display: inline;
+  font-size: inherit;
+  font-weight: 600;
+  color: inherit;
 }
 .async-question-footer {
   justify-content: space-between;
