@@ -125,5 +125,7 @@
   "retry_with_selected_model": "선택한 모델로 재시도",
   "capacity_in_seconds_short": "{{seconds}}초 후",
   "capacity_cancelled_short": "취소됨",
-  "capacity_limit_short": "한도 도달"
+  "capacity_limit_short": "한도 도달",
+  "turn_tokens": "이번 턴 {{tokens}} 토큰",
+  "turn_tokens_unknown": "턴 토큰 미보고"
 }

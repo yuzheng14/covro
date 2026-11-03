@@ -29,7 +29,7 @@
 
 ## ✨ What you can do
 
-- 📱 **Follow tasks from any device.** Review changes, handle approvals, answer questions, and check [account quotas](docs/account-usage.md) on desktop or mobile. Tasks keep running when you close the page; adjust session settings while work continues.
+- 📱 **Follow tasks from any device.** Review changes, handle approvals, answer questions, and check [account quotas](docs/account-usage.md) and [session context usage](docs/runtime-settings.md#会话上下文与-token266) on desktop or mobile. Tasks keep running when you close the page; adjust session settings while work continues.
 - 🗂️ **Keep projects and conversations together.** Start without a project, track parallel tasks, and resume or fork your Codex CLI conversations.
 - 📖 **Read results while you chat.** Preview documents, diagrams, and code changes beside the conversation on desktop, or full-screen on mobile. Loaded history stays complete as new responses stream in.
 - 🔔 **Know when your attention is needed.** Enable browser notifications for completed work, questions, and approvals in a supported desktop or Android browser. Keep the page online; notifications are not pushed while it is frozen or closed.
@@ -103,7 +103,7 @@ Covro connects to your existing CLI through `codex app-server`. Tasks, projects,
 
 Covro is for a single user. The [Shell panel](docs/shell.md) runs non-interactive commands using Codex’s configured sandbox. An interactive terminal, file editor, Git GUI, and multi-user team management are outside the current scope.
 
-DB Schema **7** is independent of the application version; older applications cannot open newer databases. Backups cover only Covro’s database and service configuration, excluding project files, Codex history, and credentials. Restore requires stopping the service. See [backups](docs/backups.md) and [database compatibility](docs/database.md).
+DB Schema **8** is independent of the application version; older applications cannot open newer databases. Backups cover only Covro’s database and service configuration, excluding project files, Codex history, and credentials. Restore requires stopping the service. See [backups](docs/backups.md) and [database compatibility](docs/database.md).
 
 ## Development and contribution
 

@@ -184,6 +184,8 @@ export interface TurnView extends TurnErrorMetadata {
   durationMs?: number;
   /** Output tokens across this turn's model responses; absent if collection was incomplete. */
   outputTokens?: number;
+  /** Total input + output tokens across this turn's model calls; absent if collection was incomplete. */
+  totalTokens?: number;
   items: ItemView[];
   diff?: string;
   error?: string;
@@ -200,6 +202,27 @@ export interface CapacityRetryView {
   nextAttemptAt?: number;
   reason?: 'progress' | 'native' | 'limit' | 'error';
 }
+/** Counters from one upstream report. Omitted counters are unknown, including in partial reports. */
+export interface TokenUsageBreakdown {
+  totalTokens?: number;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  cacheWriteInputTokens?: number;
+  outputTokens?: number;
+  reasoningOutputTokens?: number;
+}
+export interface SessionTokenUsage {
+  total?: TokenUsageBreakdown;
+  /** Most recent model response, not the sum of responses in a turn. */
+  last?: TokenUsageBreakdown;
+  modelContextWindow?: number | null;
+  turnId: string;
+  model?: string | null;
+  reportedAt: number;
+  /** A later lifecycle event made the last response unsuitable for a context ratio. */
+  invalidated?: 'compaction' | 'modelChanged';
+  stale?: boolean;
+}
 export interface ThreadView {
   /** Acknowledged publications for this task only, never inferred from future defaults. */
   liveSettings?: LiveSettingsState;
@@ -210,6 +233,7 @@ export interface ThreadView {
   archived?: boolean;
   id: string;
   runtimeSettings?: RuntimeSettings;
+  tokenUsage?: SessionTokenUsage;
   forkedFromId?: string;
   projectId: string | null;
   cwd: string;

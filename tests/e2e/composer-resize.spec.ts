@@ -25,7 +25,7 @@ test.beforeEach(async ({ page, request }) => {
   await page.goto('/');
   await confirmCompatibility(page);
   await expect(page.locator('.connection-badge')).toHaveText('实时连接正常');
-  await expect(page.locator('.composer-target')).toContainText('测试项目');
+  await expect(page.locator('.composer-target')).toHaveCount(0);
 });
 
 test('top-right drag follows the pointer both ways, captures outside and preserves the draft', async ({

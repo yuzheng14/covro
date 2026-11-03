@@ -5,6 +5,7 @@ import type {
   PendingAction,
   RunStatus,
   ThreadView,
+  SessionTokenUsage,
   TurnView,
   TurnErrorMetadata,
 } from '../shared/types.js';
@@ -69,6 +70,8 @@ export class Projection {
         current.title = oldTitle;
       }
       if (preserveRuntimeSettings) current.runtimeSettings = oldRuntimeSettings;
+      if (oldRuntimeSettings?.model !== current.runtimeSettings?.model)
+        this.invalidateContext(incoming.id, 'modelChanged');
       for (const turn of incoming.turns) this.turn(incoming.id, turn, preserveCurrent);
     }
     this.touch(incoming.id);
@@ -108,6 +111,26 @@ export class Projection {
     this.touch(threadId);
   }
 
+  tokenUsage(threadId: string, usage: SessionTokenUsage): boolean {
+    const thread = this.threads.get(threadId);
+    if (!thread) return false;
+    // Ignore delayed usage from an older known turn; a resume report may precede its history.
+    if (
+      thread.turns.some((turn) => turn.id === usage.turnId) &&
+      thread.turns.at(-1)?.id !== usage.turnId
+    )
+      return false;
+    thread.tokenUsage = { ...structuredClone(usage), model: thread.runtimeSettings?.model };
+    this.touch(threadId);
+    return true;
+  }
+
+  invalidateContext(threadId: string, reason: SessionTokenUsage['invalidated']): void {
+    const usage = this.threads.get(threadId)?.tokenUsage;
+    if (usage) usage.invalidated = reason;
+    this.touch(threadId);
+  }
+
   turnError(
     threadId: string,
     turnId: string,
@@ -137,6 +160,8 @@ export class Projection {
 
   compactionCompleted(threadId: string, turnId: string): boolean {
     const turn = this.threads.get(threadId)?.turns.find((entry) => entry.id === turnId);
+    if (this.threads.get(threadId)?.turns.at(-1)?.id === turnId)
+      this.invalidateContext(threadId, 'compaction');
     if (!turn || !endCompactions(turn, 'completed')) return false;
     this.touch(threadId);
     return true;
@@ -244,6 +269,12 @@ export class Projection {
   item(threadId: string, turnId: string, item: ItemView, preserveCurrent = false): void {
     const turn = this.threads.get(threadId)?.turns.find((entry) => entry.id === turnId);
     if (!turn) return;
+    if (
+      !preserveCurrent &&
+      item.type === 'contextCompaction' &&
+      this.threads.get(threadId)?.turns.at(-1)?.id === turnId
+    )
+      this.invalidateContext(threadId, 'compaction');
     const index = turn.items.findIndex((entry) => entry.id === item.id);
     if (index < 0) turn.items.push(this.limit(item));
     else if (!preserveCurrent)
@@ -326,6 +357,7 @@ export class Projection {
         this.resolveAction(action.actionId, 'expired');
     for (const thread of this.threads.values()) {
       thread.managed = false;
+      if (thread.tokenUsage) thread.tokenUsage.stale = true;
       delete thread.liveSettings;
       delete thread.resumeError;
       if (thread.runtimeSettings) {

@@ -180,5 +180,12 @@
   "live_fast_applied": "Fast：後続のモデルステップに反映",
   "live_reviewer_applied": "承認担当：後続ステップに反映。保留中の承認は変更なし",
   "live_permissions_deferred": "権限：次のターンで適用（サンドボックスと承認ポリシーは固定）",
-  "live_fast_deferred": "Fast：実行中の更新が確認されるまで次のターンで適用"
+  "live_fast_deferred": "Fast：実行中の更新が確認されるまで次のターンで適用",
+  "context_trigger": "コンテキスト使用量",
+  "context_not_reported": "使用量は未報告",
+  "context_stale": "最後に確認した使用量",
+  "context_compaction": "コンテキスト変更後の報告を待機中",
+  "context_modelChanged": "モデル変更後の報告を待機中",
+  "context_recent": "直近のモデル呼び出し",
+  "context_usage": "コンテキスト {{used}} / {{limit}} トークン"
 }

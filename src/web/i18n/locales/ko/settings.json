@@ -180,5 +180,12 @@
   "live_fast_applied": "Fast: 이후 모델 단계에 반영",
   "live_reviewer_applied": "검토자: 이후 단계에 반영. 대기 중인 승인은 유지",
   "live_permissions_deferred": "권한: 다음 턴에 적용 (샌드박스 및 승인 정책 고정)",
-  "live_fast_deferred": "Fast: 실행 중 업데이트가 확인될 때까지 다음 턴에 적용"
+  "live_fast_deferred": "Fast: 실행 중 업데이트가 확인될 때까지 다음 턴에 적용",
+  "context_trigger": "컨텍스트 사용량",
+  "context_not_reported": "사용량 미보고",
+  "context_stale": "마지막으로 확인된 사용량",
+  "context_compaction": "컨텍스트 변경 후 보고 대기 중",
+  "context_modelChanged": "모델 변경 후 보고 대기 중",
+  "context_recent": "최근 모델 호출",
+  "context_usage": "컨텍스트 {{used}} / {{limit}} 토큰"
 }

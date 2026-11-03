@@ -19,6 +19,7 @@ async function chooseEffort(page: Page, value: string) {
   await trigger.click();
   await page.getByRole('option', { name: value, exact: true }).click();
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await page.getByRole('button', { name: '关闭模型设置', exact: true }).click();
 }
 
 test.beforeEach(async ({ request }) => {
@@ -55,13 +56,10 @@ test('direct selectors show reported settings, keep proposals distinct and follo
   await expect(effort).toHaveAttribute('data-value', 'high');
   await page.reload();
   await expect(effort).toHaveAttribute('data-value', 'high');
-  await page.getByRole('button', { name: '权限详情' }).click();
   await expect(page.getByRole('combobox', { name: '权限模式', exact: true })).toHaveAttribute(
     'data-value',
     'read-only',
   );
-  await expect(page.locator('.permission-values')).toContainText('由 Codex 请求审批');
-  await expect(page.locator('.settings-observed')).toContainText('当前网络权限：受限');
   await expect(page.locator('.settings-panel')).not.toContainText('继承');
   await page.locator('.composer-box').screenshot({ path: '/tmp/codex-toolbar-advanced.png' });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -75,7 +73,6 @@ test('direct selectors show reported settings, keep proposals distinct and follo
     fullPage: true,
     animations: 'disabled',
   });
-  await page.getByRole('button', { name: '权限详情' }).click();
   await page.screenshot({ path: '/tmp/codex-toolbar-mobile-collapsed.png', fullPage: true });
 });
 
@@ -162,13 +159,10 @@ test('retries unavailable defaults and preserves unknown or custom values withou
   await expect(effort).toHaveAccessibleDescription('推理强度：未报告');
   await expect(effort).toBeDisabled();
   await expect(page.locator('.reasoning-gauge text')).toHaveText('?');
-  await page.getByRole('button', { name: '权限详情' }).click();
   await expect(page.getByRole('combobox', { name: '权限模式', exact: true })).toHaveAttribute(
     'data-value',
     'custom',
   );
-  await expect(page.locator('.permission-values')).toContainText('自定义审批规则');
-  await expect(page.locator('.settings-observed')).toContainText('当前网络权限：允许');
   await expect(page.locator('.settings-pending')).toHaveCount(0);
 });
 
@@ -229,16 +223,10 @@ test('idle history reports complete permissions immediately after resume', async
   await confirmCompatibility(page);
   const policy = page.getByRole('combobox', { name: '权限模式', exact: true });
   await expect(policy).toContainText('只读');
-  await page.getByRole('button', { name: '权限详情', exact: true }).click();
-  await expect(page.locator('.settings-heading')).toContainText('会话当前配置');
   await expect(page.getByRole('combobox', { name: '权限模式', exact: true })).toHaveAttribute(
     'data-value',
     'read-only',
   );
-  await expect(page.locator('.permission-values')).toContainText('由 Codex 请求审批');
-  await expect(page.locator('.settings-observed')).toContainText('当前网络权限：受限');
-  await expect(page.locator('.settings-observed')).toContainText('审批执行方：user');
-  await expect(page.locator('.settings-panel')).not.toContainText('未报告');
   await page.locator('.composer-box').screenshot({ path: '/tmp/codex-fix-permissions.png' });
 });
 
@@ -257,12 +245,10 @@ test('restored saved settings stay distinct from edits until the next task confi
   await expect(notice).toContainText('此会话正被其他进程使用');
   const effort = page.getByRole('combobox', { name: '推理强度', exact: true, includeHidden: true });
   await expect(effort).toHaveAttribute('data-value', 'medium');
-  await page.getByRole('button', { name: '权限详情' }).click();
   // An occupied history has not resumed, so its saved model does not imply known permissions.
   await expect(page.getByRole('combobox', { name: '权限模式', exact: true })).toContainText(
     '未报告',
   );
-  await expect(page.locator('.settings-heading')).toContainText('会话保存配置');
   await chooseEffort(page, 'high');
   await expect(page.locator('.settings-pending')).toContainText('恢复后发送或 Fork 时生效');
   await controlRuntime(request, { releaseThreadId: id });

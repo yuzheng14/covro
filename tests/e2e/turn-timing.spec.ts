@@ -36,7 +36,7 @@ test('each completed turn retains upstream timing through refresh, reconnect and
 }) => {
   await send(page, '[turn-timing:cross-day] 完成跨午夜的任务');
   await expect(completion(page)).toHaveText(
-    '已完成 · 耗时 2 分 15 秒 · TPS 未知 · 完成于 2026-10-15 00:01:15（UTC+08:00）',
+    '已完成 · 耗时 2 分 15 秒 · TPS 未知 · 本轮 token 未报告 · 完成于 2026-10-15 00:01:15（UTC+08:00）',
   );
   await expect(completion(page).locator('time')).toHaveAttribute(
     'datetime',
@@ -45,7 +45,7 @@ test('each completed turn retains upstream timing through refresh, reconnect and
   await send(page, '[turn-timing:hours] 完成第二轮较长的任务');
   await expect(completion(page)).toHaveCount(2);
   await expect(completion(page).last()).toHaveText(
-    '已完成 · 耗时 1 小时 1 分 1 秒 · TPS 未知 · 完成于 2026-10-16 14:32:08（UTC+08:00）',
+    '已完成 · 耗时 1 小时 1 分 1 秒 · TPS 未知 · 本轮 token 未报告 · 完成于 2026-10-16 14:32:08（UTC+08:00）',
   );
   const original = await completion(page).allTextContents();
   const threadId = (await page.evaluate(() => localStorage.getItem('codex-web.selected:fixture')))!;
@@ -90,9 +90,12 @@ test('historical duration and completion time degrade independently without gues
   page,
 }) => {
   for (const [scenario, expected] of [
-    ['duration-only', '已完成 · 耗时 2 分 15 秒 · TPS 未知 · 完成时间未知'],
-    ['time-only', '已完成 · 耗时未知 · TPS 未知 · 完成于 2026-10-15 00:01:15（UTC+08:00）'],
-    ['missing', '已完成 · 耗时未知 · TPS 未知 · 完成时间未知'],
+    ['duration-only', '已完成 · 耗时 2 分 15 秒 · TPS 未知 · 本轮 token 未报告 · 完成时间未知'],
+    [
+      'time-only',
+      '已完成 · 耗时未知 · TPS 未知 · 本轮 token 未报告 · 完成于 2026-10-15 00:01:15（UTC+08:00）',
+    ],
+    ['missing', '已完成 · 耗时未知 · TPS 未知 · 本轮 token 未报告 · 完成时间未知'],
   ]) {
     await send(page, `[turn-timing:${scenario}] 查看旧会话的完成信息`);
     await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');

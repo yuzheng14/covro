@@ -203,7 +203,7 @@ test('mouse and touch can execute menu entries without submitting user messages'
     await mobile.goto('/');
     await expect(mobile.locator('.connection-badge')).toHaveText('实时连接正常');
     // The overview socket can connect before the initial project selects its draft.
-    await expect(mobile.locator('.composer-target')).toHaveText('测试项目');
+    await expect(mobile.locator('.composer-target')).toHaveCount(0);
     await input(mobile).fill('/');
     await expect(option(mobile, 'help')).toBeInViewport();
     expect(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

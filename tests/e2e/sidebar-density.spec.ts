@@ -49,11 +49,17 @@ test('compact rows retain keyboard-accessible full titles and creation details',
   await page.setViewportSize({ width: 1280, height: 900 });
   test.setTimeout(90_000);
   await open(page);
-  const ids = await Promise.all(
-    Array.from({ length: 34 }, (_, index) =>
-      create(request, `会话 ${index + 1}：检查项目配置与运行结果`),
-    ),
-  );
+  const ids: string[] = [];
+  // Bound setup load on the deliberately fragmented RPC transport while retaining all 35 rows.
+  for (let offset = 0; offset < 34; offset += 4) {
+    ids.push(
+      ...(await Promise.all(
+        Array.from({ length: Math.min(4, 34 - offset) }, (_, index) =>
+          create(request, `会话 ${offset + index + 1}：检查项目配置与运行结果`),
+        ),
+      )),
+    );
+  }
   const id = await create(request, longTitle);
   ids.push(id);
   await page.getByRole('button', { name: '刷新会话列表' }).click();

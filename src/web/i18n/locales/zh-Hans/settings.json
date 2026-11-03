@@ -180,5 +180,12 @@
   "live_fast_applied": "Fast：后续模型步骤生效",
   "live_reviewer_applied": "审核方：后续步骤生效；已有审批不变",
   "live_permissions_deferred": "权限：下轮生效（沙箱和审批策略固定）",
-  "live_fast_deferred": "Fast：确认执行中更新前，下轮生效"
+  "live_fast_deferred": "Fast：确认执行中更新前，下轮生效",
+  "context_trigger": "上下文使用情况",
+  "context_not_reported": "用量未报告",
+  "context_stale": "上次已知用量",
+  "context_compaction": "上下文已变化，等待新用量",
+  "context_modelChanged": "模型已切换，等待新用量",
+  "context_recent": "最近一次模型调用",
+  "context_usage": "上下文 {{used}} / {{limit}} tokens"
 }

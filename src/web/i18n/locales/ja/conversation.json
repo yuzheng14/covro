@@ -125,5 +125,7 @@
   "retry_with_selected_model": "選択したモデルで再試行",
   "capacity_in_seconds_short": "{{seconds}} 秒後",
   "capacity_cancelled_short": "キャンセル済み",
-  "capacity_limit_short": "上限に到達"
+  "capacity_limit_short": "上限に到達",
+  "turn_tokens": "このターン {{tokens}} トークン",
+  "turn_tokens_unknown": "ターンのトークン数は未報告"
 }

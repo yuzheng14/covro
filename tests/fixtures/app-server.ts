@@ -28,6 +28,7 @@ import type { ServerNotification } from '../../src/codex/generated/ServerNotific
 import type { ServerRequest } from '../../src/codex/generated/ServerRequest.js';
 import type { ReasoningEffort } from '../../src/codex/generated/ReasoningEffort.js';
 import type { ThreadStartParams } from '../../src/codex/generated/v2/ThreadStartParams.js';
+import type { TokenUsageBreakdown } from '../../src/codex/generated/v2/TokenUsageBreakdown.js';
 import type { Thread } from '../../src/codex/generated/v2/Thread.js';
 import type { Turn } from '../../src/codex/generated/v2/Turn.js';
 import type { ThreadItem } from '../../src/codex/generated/v2/ThreadItem.js';
@@ -408,6 +409,55 @@ function complete(
     if (timingScenario === 'duration-only' || timingScenario === 'missing') turn.completedAt = null;
     if (timingScenario === 'time-only' || timingScenario === 'missing') turn.durationMs = null;
     if (timingScenario === 'missing') turn.startedAt = null;
+  }
+  const usageScenario = turn.items
+    .filter((item) => item.type === 'userMessage')
+    .flatMap((item) => item.content)
+    .filter((input) => input.type === 'text')
+    .map((input) => input.text)
+    .join(' ')
+    .match(/\[context-usage:(full|zero|partial|no-window)\]/)?.[1];
+  if (usageScenario) {
+    const last = {
+      totalTokens: 50_000,
+      inputTokens: 48_000,
+      cachedInputTokens: 32_000,
+      cacheWriteInputTokens: 1_000,
+      outputTokens: 2_000,
+      reasoningOutputTokens: 1_000,
+    };
+    const total = {
+      totalTokens: 500_000,
+      inputTokens: 480_000,
+      cachedInputTokens: 320_000,
+      cacheWriteInputTokens: 10_000,
+      outputTokens: 20_000,
+      reasoningOutputTokens: 10_000,
+    };
+    notify({
+      method: 'thread/tokenUsage/updated',
+      params: {
+        threadId: thread.id,
+        turnId: turn.id,
+        tokenUsage: {
+          total,
+          last:
+            usageScenario === 'zero'
+              ? {
+                  totalTokens: 0,
+                  inputTokens: 0,
+                  cachedInputTokens: 0,
+                  cacheWriteInputTokens: 0,
+                  outputTokens: 0,
+                  reasoningOutputTokens: 0,
+                }
+              : usageScenario === 'partial'
+                ? ({ inputTokens: 48_000 } as TokenUsageBreakdown)
+                : last,
+          modelContextWindow: usageScenario === 'no-window' ? null : 200_000,
+        },
+      },
+    });
   }
   const tpsScenario = turn.items
     .flatMap((item) =>

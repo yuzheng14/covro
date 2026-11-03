@@ -1,6 +1,7 @@
 import { t } from '../i18n';
 import type { TurnView } from '../../shared/types';
 import { formatTurnCompletedAt, formatTurnDuration } from '../lib/turn-timing';
+import { formatTokenCount } from '../lib/context-usage';
 import { formatTurnTps } from '../lib/turn-tps';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { Icon } from './Icon';
@@ -43,11 +44,17 @@ export function TurnCompletion({ turn }: { turn: TurnView }) {
               {tps === undefined
                 ? t('conversation:tps_cannot_be_calculated_without_complete_token_counts')
                 : t('conversation:output_tokens_including_reasoning_total_turn_duration_in', {
-                    v0: turn.outputTokens,
+                    v0: formatTokenCount(turn.outputTokens),
                   })}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
+      </span>
+      <span className="turn-tokens">
+        {' · '}
+        {turn.totalTokens === undefined
+          ? t('conversation:turn_tokens_unknown')
+          : t('conversation:turn_tokens', { tokens: formatTokenCount(turn.totalTokens) })}
       </span>
       <span>
         {' · '}

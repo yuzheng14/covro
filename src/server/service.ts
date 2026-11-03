@@ -2124,6 +2124,8 @@ export class GatewayService {
         settings &&
         JSON.stringify(current.runtimeSettings) !== JSON.stringify(settings)
       ) {
+        if (current.runtimeSettings?.model !== settings.model)
+          this.projection.invalidateContext(threadId, 'modelChanged');
         current.runtimeSettings = settings;
         this.projection.touch(threadId);
         this.publishThread(threadId);
@@ -2233,9 +2235,13 @@ export class GatewayService {
         ? pendingAttention(thread).map(attentionKey)
         : [],
     );
+    if (event.type === 'tokenUsage') {
+      if (this.projection.tokenUsage(thread.id, event.usage)) this.publishThread(thread.id);
+      return;
+    }
     if (event.type === 'compactionCompleted') {
-      if (this.projection.compactionCompleted(thread.id, event.turnId))
-        this.publishThread(thread.id);
+      this.projection.compactionCompleted(thread.id, event.turnId);
+      this.publishThread(thread.id);
       return;
     }
     if (event.type === 'turnError' || event.type === 'turnProgress') {
@@ -2260,6 +2266,8 @@ export class GatewayService {
       return;
     }
     if (event.type === 'threadSettings') {
+      if (thread.runtimeSettings?.model !== event.settings.model)
+        this.projection.invalidateContext(thread.id, 'modelChanged');
       this.runtimeSettingsUpdates.set(thread.id, ++this.runtimeSettingsSequence);
       thread.runtimeSettings = event.settings;
       this.projection.touch(thread.id);

@@ -180,5 +180,12 @@
   "live_fast_applied": "Fast: published for later model steps",
   "live_reviewer_applied": "Reviewer: published for later steps; pending approvals unchanged",
   "live_permissions_deferred": "Permissions: next turn (sandbox and approval policy are fixed)",
-  "live_fast_deferred": "Fast: next turn until a live update is confirmed"
+  "live_fast_deferred": "Fast: next turn until a live update is confirmed",
+  "context_trigger": "Context usage",
+  "context_not_reported": "Usage not reported",
+  "context_stale": "Last known usage",
+  "context_compaction": "Context changed; awaiting usage",
+  "context_modelChanged": "Model changed; awaiting usage",
+  "context_recent": "Latest model call",
+  "context_usage": "Context {{used}} / {{limit}} tokens"
 }
