@@ -100,6 +100,17 @@ export const turnUsage = sqliteTable(
   (table) => [primaryKey({ columns: [table.threadId, table.turnId] })],
 );
 
+/** Total input + output tokens observed across a complete turn. Older rows remain unknown. */
+export const turnTokenTotals = sqliteTable(
+  'turn_token_totals',
+  {
+    threadId: text('thread_id').notNull(),
+    turnId: text('turn_id').notNull(),
+    totalTokens: integer('total_tokens').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.threadId, table.turnId] })],
+);
+
 /** Removing a registration retains its identity and all existing thread links. */
 export const projectRegistrations = sqliteTable('project_registrations', {
   id: text('id').primaryKey(),

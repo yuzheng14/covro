@@ -85,7 +85,7 @@ describe('per-turn output token collection', () => {
         threadId: 'a',
         turnId,
         tokenUsage: {
-          total: { outputTokens, reasoningOutputTokens: 100 },
+          total: { totalTokens: outputTokens * 10, outputTokens, reasoningOutputTokens: 100 },
           last: { outputTokens: 20 },
         },
       });
@@ -98,7 +98,11 @@ describe('per-turn output token collection', () => {
       threadId: 'a',
       turn: { ...turn, status: 'completed', durationMs: 20_000 },
     });
-    expect(turns.at(-1)).toMatchObject({ outputTokens: 600, durationMs: 20_000 });
+    expect(turns.at(-1)).toMatchObject({
+      outputTokens: 600,
+      totalTokens: 6000,
+      durationMs: 20_000,
+    });
     notify('turn/completed', { threadId: 'a', turn: { ...turn, status: 'completed' } });
     expect(turns.at(-1)?.outputTokens).toBeUndefined();
   });
@@ -121,10 +125,12 @@ describe('persisted turn usage', () => {
     await ctx.service.startTurn(id, { clientOperationId: operationId(), text: 'usage' });
     const turn = ctx.codex.threads.get(id)!.turns[0]!;
     turn.outputTokens = 1200;
+    turn.totalTokens = 12600;
     ctx.codex.complete(id, turn.id);
     expect((await ctx.service.getThread(id)).turns[0]?.outputTokens).toBe(1200);
     // The upstream history has timing, but no per-turn usage field.
     delete turn.outputTokens;
+    delete turn.totalTokens;
     await ctx.service.shutdown();
     ctx.codex.ready = true;
     const restarted = new GatewayService({
@@ -132,7 +138,10 @@ describe('persisted turn usage', () => {
       codex: ctx.codex,
       projects: ctx.projects,
     });
-    expect((await restarted.getThread(id)).turns[0]?.outputTokens).toBe(1200);
+    expect((await restarted.getThread(id)).turns[0]).toMatchObject({
+      outputTokens: 1200,
+      totalTokens: 12600,
+    });
     await restarted.shutdown();
   });
 
@@ -146,6 +155,7 @@ describe('persisted turn usage', () => {
       status: 'completed',
       items: [],
       outputTokens: 1200,
+      totalTokens: 12600,
     };
     store.save('a', turn);
     store.save('a', { ...turn, outputTokens: undefined });
@@ -154,8 +164,23 @@ describe('persisted turn usage', () => {
     cleanups.push(reopened.close);
     const restored = new TurnUsageStore(reopened.database);
     const history = [{ ...turn, outputTokens: undefined }];
-    expect(restored.restore('a', history)[0]?.outputTokens).toBe(1200);
+    expect(restored.restore('a', history)[0]).toMatchObject({
+      outputTokens: 1200,
+      totalTokens: 12600,
+    });
     expect(restored.restore('b', history)[0]?.outputTokens).toBe(300);
     expect(restored.restore('unknown', history)[0]?.outputTokens).toBeUndefined();
+  });
+  it('persists total tokens independently of output counts and preserves unknown vs zero in old history', () => {
+    const db = databaseHarness();
+    cleanups.push(db.close);
+    const store = new TurnUsageStore(db.db.database);
+    const turn: TurnView = { id: 'one', threadId: 'a', status: 'completed', items: [] };
+    store.save('a', { ...turn, totalTokens: 0 });
+    store.save('b', { ...turn, outputTokens: 200 });
+    expect(store.restore('a', [turn])[0]).toMatchObject({ totalTokens: 0 });
+    expect(store.restore('a', [turn])[0]?.outputTokens).toBeUndefined();
+    expect(store.restore('b', [turn])[0]?.totalTokens).toBeUndefined();
+    expect(store.restore('b', [turn])[0]?.outputTokens).toBe(200);
   });
 });

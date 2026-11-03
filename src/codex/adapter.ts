@@ -248,6 +248,7 @@ export class CodexAdapter implements CodexClient {
   private titles?: ThreadTitles;
   private readonly denials = new GuardianDenials();
   private readonly tokenUsage = new TurnTokenUsage();
+  private readonly totalTokenUsage = new TurnTokenUsage();
   // Ordering only. Persisted archive state belongs exclusively to Codex.
   private archiveSequence = 0;
   private readonly archives = new Map<string, { archived: boolean; sequence: number }>();
@@ -380,6 +381,7 @@ export class CodexAdapter implements CodexClient {
         const wasReady = this.ready;
         this.state.ready = false;
         this.tokenUsage.clear();
+        this.totalTokenUsage.clear();
         this.denials.clear();
         this.state.connection = 'unavailable';
         this.accountUsage.invalidate('offline');
@@ -887,6 +889,7 @@ export class CodexAdapter implements CodexClient {
     const titles = this.titles;
     const result = await this.call('thread/start', { cwd, ...threadSettings(settings) });
     this.tokenUsage.created(result.thread.id);
+    this.totalTokenUsage.created(result.thread.id);
     titles?.register(result);
     return {
       ...mapThread(result.thread),
@@ -1420,7 +1423,14 @@ export class CodexAdapter implements CodexClient {
       case 'turn/started':
       case 'turn/completed': {
         const { threadId, turn } = event.params;
-        if (event.method === 'turn/started') this.tokenUsage.started(threadId, turn.id);
+        if (event.method === 'turn/started') {
+          this.tokenUsage.started(threadId, turn.id);
+          this.totalTokenUsage.started(threadId, turn.id);
+        }
+        const totalTokens =
+          event.method === 'turn/completed'
+            ? this.totalTokenUsage.completed(threadId, turn.id)
+            : undefined;
         const outputTokens =
           event.method === 'turn/completed'
             ? this.tokenUsage.completed(threadId, turn.id)
@@ -1431,6 +1441,7 @@ export class CodexAdapter implements CodexClient {
           turn: {
             ...mapTurn(threadId, turn),
             ...(outputTokens !== undefined ? { outputTokens } : {}),
+            ...(totalTokens !== undefined ? { totalTokens } : {}),
           },
         });
         if (event.method === 'turn/completed')
@@ -1438,6 +1449,11 @@ export class CodexAdapter implements CodexClient {
         break;
       }
       case 'thread/tokenUsage/updated':
+        this.totalTokenUsage.updated(
+          event.params.threadId,
+          event.params.turnId,
+          event.params.tokenUsage?.total?.totalTokens,
+        );
         this.tokenUsage.updated(
           event.params.threadId,
           event.params.turnId,
@@ -1451,12 +1467,15 @@ export class CodexAdapter implements CodexClient {
         break;
       case 'thread/compacted':
         this.tokenUsage.compacted(event.params.threadId, event.params.turnId);
+        this.totalTokenUsage.compacted(event.params.threadId, event.params.turnId);
         this.emit({ type: 'compactionCompleted', ...event.params });
         break;
       case 'item/started':
       case 'item/completed':
-        if (event.params.item.type === 'contextCompaction')
+        if (event.params.item.type === 'contextCompaction') {
           this.tokenUsage.compacted(event.params.threadId, event.params.turnId);
+          this.totalTokenUsage.compacted(event.params.threadId, event.params.turnId);
+        }
         if (['agentMessage', 'plan', 'reasoning'].includes(event.params.item.type))
           this.emit({
             type: 'turnProgress',

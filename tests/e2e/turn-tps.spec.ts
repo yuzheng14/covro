@@ -30,9 +30,11 @@ test('completed turn TPS survives refresh, reconnect and navigation, with access
   await expectThreadReady(page);
   await send(page, '[turn-tps:multi] 验证多次模型响应的平均 TPS');
   await expect(completion(page)).toContainText('耗时 20 秒 · 平均 60.0 TPS');
+  await expect(completion(page).locator('.turn-tokens')).toHaveText(' · 本轮 6.2K tokens');
   const threadId = await page.evaluate(() => localStorage.getItem('codex-web.selected:fixture'));
   await send(page, '[turn-tps:next] 继续完成第二轮任务');
   await expect(completion(page).last()).toContainText('平均 15.0 TPS');
+  await expect(completion(page).last().locator('.turn-tokens')).toHaveText(' · 本轮 300 tokens');
   const data = await (await request.get(`/api/threads/${threadId}`)).json();
   expect(data.turns.map((turn: { outputTokens?: number }) => turn.outputTokens)).toEqual([
     1200, 300,
@@ -62,5 +64,6 @@ test('completed turn TPS survives refresh, reconnect and navigation, with access
   await page.screenshot({ path: join(evidence, 'tps-mobile.png'), fullPage: true });
   await send(page, '[turn-tps:missing] 兼容没有 token 统计的会话');
   await expect(completion(page).last()).toContainText('TPS 未知');
+  await expect(completion(page).last().locator('.turn-tokens')).toHaveText(' · 本轮 token 未报告');
   await page.screenshot({ path: join(evidence, 'tps-unavailable.png'), fullPage: true });
 });

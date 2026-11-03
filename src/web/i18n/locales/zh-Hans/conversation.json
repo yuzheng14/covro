@@ -125,5 +125,7 @@
   "retry_with_selected_model": "使用所选模型重试",
   "capacity_in_seconds_short": "{{seconds}} 秒后",
   "capacity_cancelled_short": "已取消",
-  "capacity_limit_short": "已达上限"
+  "capacity_limit_short": "已达上限",
+  "turn_tokens": "本轮 {{tokens}} tokens",
+  "turn_tokens_unknown": "本轮 token 未报告"
 }

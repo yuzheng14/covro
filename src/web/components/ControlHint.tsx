@@ -23,6 +23,7 @@ export function ControlHint({
   content,
   children,
   suppressed = false,
+  toggleOnClick = false,
   className,
   asChild = false,
   side = 'top',
@@ -32,6 +33,7 @@ export function ControlHint({
   content: ReactNode;
   children: ReactNode;
   suppressed?: boolean;
+  toggleOnClick?: boolean;
   className?: string;
   asChild?: boolean;
   side?: ComponentProps<typeof TooltipContent>['side'];
@@ -77,6 +79,14 @@ export function ControlHint({
       <Tooltip open={open && !suppressed} onOpenChange={(next) => setOpen(next && !suppressed)}>
         <TooltipTrigger
           asChild
+          onClick={
+            toggleOnClick
+              ? (event) => {
+                  event.preventDefault();
+                  setOpen((previous) => !previous);
+                }
+              : undefined
+          }
           aria-describedby={asChild ? id : undefined}
           className={asChild ? className : undefined}
           onFocus={(event) => {

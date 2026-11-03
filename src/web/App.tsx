@@ -1011,7 +1011,6 @@ export function App() {
           )}
           <Composer
             offline={offline || !system?.ready}
-            onRefresh={workspace.refreshThread}
             focusRequest={composerFocusRequest}
             skillsRequest={skillsRequest}
             commands={slashCommands}

@@ -125,5 +125,7 @@
   "retry_with_selected_model": "Retry with selected model",
   "capacity_in_seconds_short": "In {{seconds}} s",
   "capacity_cancelled_short": "Cancelled",
-  "capacity_limit_short": "Limit reached"
+  "capacity_limit_short": "Limit reached",
+  "turn_tokens": "Turn {{tokens}} tokens",
+  "turn_tokens_unknown": "Turn tokens not reported"
 }

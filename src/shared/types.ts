@@ -184,6 +184,8 @@ export interface TurnView extends TurnErrorMetadata {
   durationMs?: number;
   /** Output tokens across this turn's model responses; absent if collection was incomplete. */
   outputTokens?: number;
+  /** Total input + output tokens across this turn's model calls; absent if collection was incomplete. */
+  totalTokens?: number;
   items: ItemView[];
   diff?: string;
   error?: string;

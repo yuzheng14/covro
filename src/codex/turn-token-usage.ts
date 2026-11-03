@@ -1,10 +1,10 @@
-/** Thread usage is cumulative; `last` describes one model response, not one turn. */
+/** Collect a cumulative counter delta over a fully observed turn; `last` is only one response. */
 export class TurnTokenUsage {
   private readonly threads = new Map<
     string,
     {
       total?: number;
-      active?: { id: string; baseline?: number; outputTokens?: number; invalid: boolean };
+      active?: { id: string; baseline?: number; tokens?: number; invalid: boolean };
     }
   >();
 
@@ -34,7 +34,7 @@ export class TurnTokenUsage {
     } else {
       if (active) {
         if (state.total !== undefined && total < state.total) active.invalid = true;
-        if (active.baseline !== undefined) active.outputTokens = total - active.baseline;
+        if (active.baseline !== undefined) active.tokens = total - active.baseline;
       }
       state.total = total;
     }
@@ -52,6 +52,6 @@ export class TurnTokenUsage {
     if (state?.active?.id !== turnId) return undefined;
     const active = state.active;
     delete state.active;
-    return active.invalid ? undefined : active.outputTokens;
+    return active.invalid ? undefined : active.tokens;
   }
 }

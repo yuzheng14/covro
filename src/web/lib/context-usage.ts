@@ -27,5 +27,16 @@ export function contextUsageStatus(usage?: SessionTokenUsage, offline = false): 
   return t('settings:context_recent');
 }
 
-export const formatTokenCount = (value?: number | null): string =>
-  value == null ? t('common:not_reported') : formatNumber(value);
+/** Decimal K/M/B units shared by context and per-turn usage. */
+export function formatTokenCount(value?: number | null): string {
+  if (value == null || !Number.isSafeInteger(value) || value < 0) return t('common:not_reported');
+  const unit =
+    value >= 999_950_000
+      ? ([1e9, 'B'] as const)
+      : value >= 999_950
+        ? ([1e6, 'M'] as const)
+        : value >= 1e3
+          ? ([1e3, 'K'] as const)
+          : ([1, ''] as const);
+  return `${formatNumber(value / unit[0], { maximumFractionDigits: unit[0] === 1 ? 0 : 1 })}${unit[1]}`;
+}

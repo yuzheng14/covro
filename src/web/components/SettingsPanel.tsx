@@ -39,10 +39,8 @@ export function SettingsPanel({
   onSaveModelDefaults,
   savingModelDefaults,
   offline,
-  onRefresh,
 }: {
   offline: boolean;
-  onRefresh: () => Promise<void>;
   settings: Settings;
   attachmentControl: ReactNode;
   children: ReactNode;
@@ -506,14 +504,7 @@ export function SettingsPanel({
               </button>
             </ControlHint>
           </ModelSettingsPopover>
-          {thread && (
-            <ContextUsage
-              key={thread.id}
-              usage={thread.tokenUsage}
-              offline={offline}
-              onRefresh={onRefresh}
-            />
-          )}
+          {thread && <ContextUsage key={thread.id} usage={thread.tokenUsage} offline={offline} />}
           {children}
         </div>
       </div>
