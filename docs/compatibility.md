@@ -2,13 +2,13 @@
 
 <!-- codex-compatibility:start -->
 
-推荐 Codex CLI：**0.164.0**。已验证版本：`0.164.0`。
+推荐 Codex CLI：**0.166.0**。已验证版本：`0.166.0`。
 
 <!-- codex-compatibility:end -->
 
-当前基线为 `codex-cli 0.164.0`，核验日期：2026-10-24（Asia/Shanghai）。稳定协议由显式指定的官方完整安装重新生成，单一 verified 版本提升为 0.164.0；0.163.0 与其他版本继续走 unverified 确认。来源与实验字段差异见 [协议审查](codex-0.164.0-protocol.md)，本轮范围与限制见 [升级验证](codex-0.164.0-verification.md)。此前 [0.163.0 验证](codex-0.163.0-verification.md) 保留为历史证据。
+当前基线为 `codex-cli 0.166.0`，核验日期：2026-11-02（Asia/Shanghai）。稳定协议由显式指定的官方完整安装重新生成，单一 verified 版本为 0.166.0；0.164.0、未单独适配的 0.165.0 与其他版本继续走 unverified 确认。来源与实验字段差异见 [协议审查](codex-0.166.0-protocol.md)，本轮范围与限制见 [升级验证](codex-0.166.0-verification.md)。此前 [0.164.0 验证](codex-0.164.0-verification.md) 与 [0.163.0 验证](codex-0.163.0-verification.md) 保留为历史证据。
 
-以下映射继续适用于 0.164.0；下文保留的旧版本实测日期与版本表示历史证据，不扩大为新版完整验证。
+以下映射适用于 0.166.0；下文保留的旧版本实测日期与版本仍表示历史证据，不扩大为新版完整验证。
 
 `src/codex/generated/` 是本机该版本执行 `codex app-server generate-ts --out ./src/codex/generated` 的原始产物，未手工修改。`src/codex/protocol-version.json` 记录来源。更新协议需显式执行 `pnpm codex:generate -- --config ./config.local.json`，使用配置中的 `codex.binary`；安装与启动不会更新 CLI 或重新生成协议。生成文件仅用于服务端适配和模拟器的静态类型约束，浏览器使用 `src/shared/types.ts`。
 
@@ -16,7 +16,7 @@
 
 会话创建方 `Thread.originator` 原样进入详情与列表摘要，缺失时返回 `null`。来源展示优先精确识别 `codex_web_ui`、`codex-tui`、`codex_vscode` 和 `Codex Desktop`，其他非空创建方原样显示。仅有 `source: vscode` 时不能判断具体客户端：0.162.1 的独立 app-server 启动路径固定使用 VSCode 来源，网页和连接共享后台服务的终端会话也可能属于此类，因此显示“交互客户端”。协议 `source: appServer` 映射内部 MCP 来源，显示 MCP；原始 `source` 保留以兼容已有接口、关联记录和未知来源兜底。依据为上游 [CLI 启动代码](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/cli/src/main.rs)、[来源映射](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs)、[客户端身份示例](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/app-server-protocol/src/protocol/common.rs)及[初始化处理](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/app-server/src/request_processors/initialize_processor.rs)。这些字段描述创建入口，与当前执行进程、任务状态和连接状态分别展示。
 
-| 项目         | 0.164.0 的映射                                                                                                                                                                                                       |
+| 项目         | 0.166.0 的映射                                                                                                                                                                                                       |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 握手         | `initialize` 成功后发送 `initialized`，随后读认证和模型；`experimentalApi: true` 允许结构化用户请求                                                                                                                  |
 | 历史来源     | `thread/list.sourceKinds` 显式为 `cli`、`appServer`、`vscode`；`cwd` 使用项目的 `canonicalRoot` 精确过滤，每页最多 30 条，按更新时间倒序，不扫描全局历史；其他路径别名和子目录历史不自动收集，服务层继续校验项目归属 |

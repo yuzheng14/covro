@@ -3,6 +3,56 @@ import { describe, expect, it } from 'vitest';
 import { JsonLineReader, RpcTransport } from '../../src/codex/transport.js';
 
 describe('Codex JSONL and bidirectional RPC', () => {
+  it.each([
+    { type: 'modelProviderMismatch', modelProvider: 'gcp', currentModelProvider: 'openai' },
+    { type: 'modelProviderNotConfigured', modelProvider: 'gcp' },
+    { type: 'modelProviderPolicyConflict', modelProvider: 'gcp', requiredModelProvider: 'openai' },
+  ])(
+    'preserves public provider diagnostics for $type without arbitrary error data',
+    async (data) => {
+      const input = new PassThrough();
+      const output = new PassThrough();
+      const rpc = new RpcTransport(input, output);
+      const pending = rpc.request('thread/resume', {});
+      output.write(
+        JSON.stringify({
+          id: 0,
+          error: {
+            code: -32600,
+            message: 'Restore provider configuration',
+            data: { ...data, token: 'private' },
+          },
+        }) + '\n',
+      );
+      await expect(pending).rejects.toMatchObject({
+        code: 'CODEX_REQUEST_FAILED',
+        uncertain: false,
+        details: { modelProviderError: data },
+      });
+      await pending.catch((error) => expect(JSON.stringify(error)).not.toContain('private'));
+      input.destroy();
+      output.destroy();
+    },
+  );
+  it.each([
+    { type: 'unknown', token: 'private' },
+    { type: 'modelProviderMismatch', modelProvider: 'gcp' },
+    { type: 'modelProviderNotConfigured', modelProvider: 'x'.repeat(257) },
+  ])('keeps unknown or malformed provider data out of diagnostics: %j', async (data) => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const rpc = new RpcTransport(input, output);
+    const pending = rpc.request('thread/resume', {});
+    output.write(
+      JSON.stringify({ id: 0, error: { code: -32600, message: 'Provider error', data } }) + '\n',
+    );
+    await pending.catch((error) => {
+      expect(error.message).toBe('Provider error');
+      expect(error.details.modelProviderError).toBeUndefined();
+    });
+    input.destroy();
+    output.destroy();
+  });
   it('preserves UTF-8 split across every byte, half lines and multiple messages', () => {
     const values: unknown[] = [];
     const reader = new JsonLineReader((value) => values.push(value));

@@ -1374,11 +1374,36 @@ describe('verified protocol adapter with a real subprocess', () => {
     } as unknown as ThreadItem;
     expect(mapItem(item)).toEqual({ id: 'new-tool', type: 'futureTool', details: item });
   });
+  it.each([
+    {},
+    { startedAtMs: 1700000000123, completedAtMs: 1700000000456 },
+    { startedAtMs: null, completedAtMs: null },
+  ])(
+    'accepts flat optional item lifecycle fields without inferring a turn terminal: %j',
+    (timing) => {
+      const item: ThreadItem = {
+        type: 'agentMessage',
+        id: 'timed-message',
+        text: 'Still working',
+        phase: 'commentary',
+        memoryCitation: null,
+        delivery: null,
+        questions: null,
+        ...timing,
+      };
+      expect(mapItem(item)).toEqual({
+        type: 'agentMessage',
+        id: 'timed-message',
+        text: 'Still working',
+      });
+    },
+  );
   it.each([{ fileId: 'attachment-image' }, { result: 'legacy-inline-image' }])(
     'preserves generated image references and legacy inline results without assuming result exists: %j',
     (image) => {
       const item: ThreadItem = {
         id: 'generated-image',
+        generationId: 'generation-166',
         type: 'imageGeneration',
         status: 'completed',
         revisedPrompt: null,

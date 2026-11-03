@@ -175,6 +175,9 @@ try {
       model: 'gpt-6-astra',
       effort: 'high',
       serviceTier: 'priority',
+      approvalPolicy: 'never',
+      approvalsReviewer: 'user',
+      sandboxPolicy: { type: 'readOnly', networkAccess: true },
     });
     const profiled = await rpc.request<ThreadStartResponse>('thread/start', {
       cwd: project,
@@ -241,11 +244,11 @@ try {
     const resumed = await adapter.resumeThread(saved.thread.id, project);
     report[historyMode] = {
       savedTurnSandbox: { type: 'readOnly', networkAccess: true },
-      savedApprovalPolicy: saved.approvalPolicy,
+      savedApprovalPolicy: 'never',
       resumed: resumed.runtimeSettings,
     };
     assert.equal(resumed.runtimeSettings?.sandbox, 'read-only');
-    assert.equal(resumed.runtimeSettings?.approvalPolicy, 'on-request');
+    assert.equal(resumed.runtimeSettings?.approvalPolicy, 'never');
     assert.equal(resumed.runtimeSettings?.networkAccess, true);
     assert.equal(resumed.runtimeSettings?.model, 'gpt-6-astra');
     assert.equal(resumed.runtimeSettings?.reasoningEffort, 'high');

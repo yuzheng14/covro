@@ -58,37 +58,45 @@ async function setup(
 }
 
 describe('bounded capacity recovery', () => {
-  it('waits on the server, survives reads, and continues with empty input and the original settings', async () => {
-    const ctx = await setup();
-    ctx.fail();
-    const waiting = (await ctx.read()).capacityRetry!;
-    expect(waiting).toMatchObject({
-      status: 'waiting',
-      attempt: 1,
-      limit: 3,
-      nextAttemptAt: Date.now() + 5000,
-    });
-    expect((await ctx.read()).capacityRetry).toEqual(waiting);
-    expect(ctx.store.activeForThread(ctx.id)).toBeUndefined();
-    ctx.settings.model = 'changed-after-send';
-    await vi.advanceTimersByTimeAsync(4999);
-    expect(ctx.starts).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(ctx.starts).toHaveBeenCalledTimes(2);
-    expect(ctx.starts.mock.calls[1]).toEqual([
-      ctx.id,
-      ctx.starts.mock.calls[0]![1],
-      '',
-      { ...ctx.settings, model: 'original-model' },
-      undefined,
-    ]);
-    expect(ctx.store.activeForThread(ctx.id)?.turnId).toBe(ctx.turn().id);
-    expect((await ctx.read()).turns.at(-1)?.retryOf).toBe(waiting.rootTurnId);
-    expect(ctx.store.capacityRetryTurns(ctx.id).get(ctx.turn().id)).toBe(waiting.rootTurnId);
-    ctx.codex.complete(ctx.id, ctx.turn().id);
-    expect((await ctx.read()).capacityRetry).toBeUndefined();
-    expect((await ctx.read()).status).toBe('completed');
-  });
+  it.each(['serverOverloaded', 'policyCapacityUnavailable'])(
+    'recovers %s with empty input and the original settings',
+    async (code) => {
+      const ctx = await setup();
+      ctx.fail(
+        code === 'policyCapacityUnavailable'
+          ? 'Policy-restricted capacity is unavailable. Please try again later.'
+          : MODEL_CAPACITY_MESSAGE,
+        code,
+      );
+      const waiting = (await ctx.read()).capacityRetry!;
+      expect(waiting).toMatchObject({
+        status: 'waiting',
+        attempt: 1,
+        limit: 3,
+        nextAttemptAt: Date.now() + 5000,
+      });
+      expect((await ctx.read()).capacityRetry).toEqual(waiting);
+      expect(ctx.store.activeForThread(ctx.id)).toBeUndefined();
+      ctx.settings.model = 'changed-after-send';
+      await vi.advanceTimersByTimeAsync(4999);
+      expect(ctx.starts).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(ctx.starts).toHaveBeenCalledTimes(2);
+      expect(ctx.starts.mock.calls[1]).toEqual([
+        ctx.id,
+        ctx.starts.mock.calls[0]![1],
+        '',
+        { ...ctx.settings, model: 'original-model' },
+        undefined,
+      ]);
+      expect(ctx.store.activeForThread(ctx.id)?.turnId).toBe(ctx.turn().id);
+      expect((await ctx.read()).turns.at(-1)?.retryOf).toBe(waiting.rootTurnId);
+      expect(ctx.store.capacityRetryTurns(ctx.id).get(ctx.turn().id)).toBe(waiting.rootTurnId);
+      ctx.codex.complete(ctx.id, ctx.turn().id);
+      expect((await ctx.read()).capacityRetry).toBeUndefined();
+      expect((await ctx.read()).status).toBe('completed');
+    },
+  );
 
   it('uses 5, 10 and 20 second delays and never starts a fourth retry', async () => {
     const ctx = await setup();
@@ -180,6 +188,18 @@ describe('bounded capacity recovery', () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(ctx.starts).toHaveBeenCalledTimes(2);
   });
+
+  it.each(['modelNotFound', 'badRequest', 'cyberPolicy', 'unauthorized'])(
+    'does not retry %s even when its text resembles capacity advice',
+    async (code) => {
+      const ctx = await setup();
+      ctx.fail(MODEL_CAPACITY_MESSAGE, code);
+      await vi.advanceTimersByTimeAsync(120000);
+      expect(ctx.starts).toHaveBeenCalledTimes(1);
+      expect((await ctx.read()).capacityRetry).toBeUndefined();
+      expect((await ctx.read()).turns.at(-1)?.errorCode).toBe(code);
+    },
+  );
 
   it('cancels a scheduled retry and accepts a user replacement without a race', async () => {
     const ctx = await setup();

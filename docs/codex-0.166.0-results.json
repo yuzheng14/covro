@@ -1,0 +1,194 @@
+{
+  "date": "2026-11-02",
+  "reports": {
+    "upgrade": {
+      "codexVersion": "codex-cli 0.166.0",
+      "inference": false,
+      "model": "local HTTP stub",
+      "checks": [
+        "legacy: native rollout/compress and compressed thread/read preserve saved turns",
+        "legacy: cold resume restores post-turn model, effort, tier, permissions and network access over changed defaults",
+        "legacy: exact writer conflict, release, and explicit model/tier/permission overrides",
+        "legacy: fork preserves saved messages and parent identity",
+        "legacy: continuation and automatic title use a tool-free ephemeral thread",
+        "legacy: named profile re-resolves tightened config and automatic title preserves its identity",
+        "legacy: failed compaction preserves messages without partial summaries and allows continuation",
+        "paginated: native rollout/compress and compressed thread/read preserve saved turns",
+        "paginated: cold resume restores post-turn model, effort, tier, permissions and network access over changed defaults",
+        "paginated: exact writer conflict, release, and explicit model/tier/permission overrides",
+        "paginated: fork preserves saved messages and parent identity",
+        "paginated: continuation and automatic title use a tool-free ephemeral thread",
+        "paginated: named profile re-resolves tightened config and automatic title preserves its identity",
+        "paginated: failed compaction preserves messages without partial summaries and allows continuation",
+        "config/read uses explicit cwd across projects and nested trusted configuration, independent of app-server launch cwd"
+      ],
+      "legacy": {
+        "savedTurnSandbox": {
+          "type": "readOnly",
+          "networkAccess": true
+        },
+        "savedApprovalPolicy": "never",
+        "resumed": {
+          "model": "gpt-6-astra",
+          "collaborationMode": "default",
+          "reasoningEffort": "high",
+          "serviceTier": "fast",
+          "sandbox": "read-only",
+          "approvalPolicy": "never",
+          "approvalReviewer": "user",
+          "networkAccess": true,
+          "permissionProfile": null,
+          "writableRoots": null,
+          "excludeTmpdirEnvVar": null,
+          "excludeSlashTmp": null,
+          "permissionMode": "custom",
+          "permissionCapabilities": {
+            "autoReview": true,
+            "allowedSandboxModes": null,
+            "allowedApprovalPolicies": null,
+            "allowedReviewers": null,
+            "allowedProfiles": null,
+            "autoReviewRequiredModels": []
+          },
+          "liveSettingsCapabilities": {
+            "fast": false,
+            "reviewer": true
+          }
+        }
+      },
+      "paginated": {
+        "savedTurnSandbox": {
+          "type": "readOnly",
+          "networkAccess": true
+        },
+        "savedApprovalPolicy": "never",
+        "resumed": {
+          "model": "gpt-6-astra",
+          "collaborationMode": "default",
+          "reasoningEffort": "high",
+          "serviceTier": "fast",
+          "sandbox": "read-only",
+          "approvalPolicy": "never",
+          "approvalReviewer": "user",
+          "networkAccess": true,
+          "permissionProfile": null,
+          "writableRoots": null,
+          "excludeTmpdirEnvVar": null,
+          "excludeSlashTmp": null,
+          "permissionMode": "custom",
+          "permissionCapabilities": {
+            "autoReview": true,
+            "allowedSandboxModes": null,
+            "allowedApprovalPolicies": null,
+            "allowedReviewers": null,
+            "allowedProfiles": null,
+            "autoReviewRequiredModels": []
+          },
+          "liveSettingsCapabilities": {
+            "fast": false,
+            "reviewer": true
+          }
+        }
+      }
+    },
+    "native-166": {
+      "version": "0.166.0",
+      "inference": false,
+      "localStub": true,
+      "checks": [
+        "legacy: modelNotFound is terminal once and preserved in history",
+        "legacy: policyCapacityUnavailable is terminal once and preserved in history",
+        "legacy: missing saved provider rejects resume with structured diagnostics",
+        "paginated: modelNotFound is terminal once and preserved in history",
+        "paginated: policyCapacityUnavailable is terminal once and preserved in history",
+        "paginated: missing saved provider rejects resume with structured diagnostics",
+        "GCP account/read works without ChatGPT auth or resolving provider credentials"
+      ]
+    },
+    "live-settings": {
+      "version": "0.166.0",
+      "inference": false,
+      "localStub": true,
+      "checks": [
+        "Fast acknowledged while first model request is still in flight",
+        "Reviewer publication preserves the existing human approval, which is explicitly denied",
+        "Later model request in the same turn uses priority; model/effort stay unchanged",
+        "New model/effort and explicit standard speed appear in the next actual model request"
+      ],
+      "requests": [
+        {
+          "model": "gpt-6.1-sol",
+          "reasoning": {
+            "effort": "low",
+            "context": "all_turns"
+          }
+        },
+        {
+          "model": "gpt-6.1-sol",
+          "service_tier": "priority",
+          "reasoning": {
+            "effort": "low",
+            "context": "all_turns"
+          }
+        },
+        {
+          "model": "gpt-6-astra",
+          "reasoning": {
+            "effort": "high",
+            "context": "all_turns"
+          }
+        }
+      ]
+    },
+    "inference": {
+      "date": "2026-11-02T09:50:38.754Z",
+      "inference": true,
+      "checks": [
+        "actual binary version",
+        "initialize -> initialized handshake",
+        "account/read (no credentials printed)",
+        "model/list",
+        "thread/start",
+        "turn/start and completed history",
+        "verified real temporary file content",
+        "unchanged child PID while event subscription absent",
+        "history restored after resubscribe",
+        "continued conversation turn",
+        "thread/list includes created appServer history"
+      ],
+      "codexVersion": "0.166.0",
+      "compatibility": "verified",
+      "authenticated": true,
+      "modelCount": 8,
+      "fileChangeObserved": true,
+      "commandOutputObserved": false,
+      "browserAndTunnel": "Not exercised by this adapter smoke; use browser and deployed-origin checks separately"
+    },
+    "interaction": {
+      "inference": true,
+      "checks": [
+        "actual steer accepted with expectedTurnId while a nested shell tool is active",
+        "Code Mode/nested shell interruption confirmed by turn/completed",
+        "steer of ended turn rejected without replay",
+        "next turn completes immediately after confirmed interruption",
+        "actual user-routed command approval declined; stale response rejected"
+      ],
+      "codexVersion": "0.166.0"
+    },
+    "browser": {
+      "version": "0.166.0",
+      "inference": true,
+      "simulated": false,
+      "checks": [
+        "production frontend + actual gateway + actual CLI",
+        "browser task completed with exact reply",
+        "desktop and narrow real-page screenshots"
+      ]
+    }
+  },
+  "localBrowserRegression": {
+    "passed": 46,
+    "failed": 3,
+    "failures": "Existing account quota dialog Tab-focus assertion; reproduced on untouched main; see PR CI for Linux result"
+  }
+}
