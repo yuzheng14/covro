@@ -1,6 +1,7 @@
 import { displayMessage } from '../i18n/messages';
 import { t } from '../i18n';
 import type { ItemView } from '../../shared/types';
+import { MarkdownContent } from './MarkdownContent';
 
 export function UserMessage({ item }: { item: ItemView }) {
   return (
@@ -14,8 +15,12 @@ export function UserMessage({ item }: { item: ItemView }) {
         {item.questionReplies?.length ? (
           item.questionReplies.map((reply, index) => (
             <div className="user-question-reply" key={index}>
-              <blockquote>{reply.question}</blockquote>
-              <p className="user-text">{reply.answer}</p>
+              <blockquote>
+                <MarkdownContent text={reply.question} />
+              </blockquote>
+              <div className="user-text">
+                <MarkdownContent text={reply.answer} />
+              </div>
             </div>
           ))
         ) : (

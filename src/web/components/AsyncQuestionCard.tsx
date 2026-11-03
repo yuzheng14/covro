@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Icon } from './Icon';
 import { ControlHint } from './ControlHint';
 import { usesMobileInput } from '../lib/mobile-input';
+import { MarkdownContent } from './MarkdownContent';
 
 export interface AsyncQuestionControls {
   disabled: boolean;
@@ -49,7 +50,7 @@ export function AsyncQuestionCard({
   const answers = questions.map(
     (q, index) =>
       recorded[index] ??
-      (choices[index] === -1 ? texts[index] : q.options?.[choices[index] ?? 0])?.trim() ??
+      (choices[index] === -1 ? texts[index]?.trim() : q.options?.[choices[index] ?? 0]) ??
       '',
   );
   const locked = disabled || sending || Boolean(resolved);
@@ -106,17 +107,42 @@ export function AsyncQuestionCard({
         }}
       >
         {questions.map((question, index) => (
-          <fieldset key={index} disabled={locked || recorded[index] !== undefined}>
-            <legend>{question.title}</legend>
+          <fieldset
+            key={index}
+            disabled={locked || recorded[index] !== undefined}
+            aria-labelledby={`${id}-question-${index}`}
+          >
+            <div className="async-question-title" id={`${id}-question-${index}`}>
+              <MarkdownContent text={question.title} />
+            </div>
             {recorded[index] !== undefined ? (
-              <p className="async-question-answer">{recorded[index]}</p>
+              <div className="async-question-answer">
+                <MarkdownContent text={recorded[index]} />
+              </div>
             ) : (
               <>
                 {question.options?.map((option, choice) => (
-                  <label className="question-option" key={choice}>
+                  <div
+                    className="question-option"
+                    key={choice}
+                    onClick={(event) => {
+                      // Keep links, previews and code actions independent of radio selection.
+                      if (
+                        locked ||
+                        (event.target instanceof Element &&
+                          event.target.closest('a, button, input, textarea, select, summary'))
+                      )
+                        return;
+                      setChoices((previous) =>
+                        previous.map((value, i) => (i === index ? choice : value)),
+                      );
+                      event.currentTarget.querySelector('input')?.focus();
+                    }}
+                  >
                     <input
                       type="radio"
                       name={`${id}-${index}`}
+                      aria-labelledby={`${id}-option-${index}-${choice}`}
                       checked={choices[index] === choice}
                       onChange={() =>
                         setChoices((previous) =>
@@ -124,8 +150,10 @@ export function AsyncQuestionCard({
                         )
                       }
                     />
-                    <span>{option}</span>
-                  </label>
+                    <div id={`${id}-option-${index}-${choice}`} className="async-option-content">
+                      <MarkdownContent text={option} />
+                    </div>
+                  </div>
                 ))}
                 {Boolean(question.options?.length) && (
                   <label className="question-option">
