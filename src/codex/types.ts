@@ -12,6 +12,7 @@ import type {
   SystemInfo,
   ThreadPage,
   ThreadView,
+  SessionTokenUsage,
   TurnView,
   TurnErrorMetadata,
 } from '../shared/types.js';
@@ -21,6 +22,7 @@ export type CodexEvent =
   | { type: 'goal'; threadId: string; goal: import('../shared/thread-goal.js').ThreadGoal | null }
   | { type: 'thread'; thread: ThreadView }
   | { type: 'threadSettings'; threadId: string; settings: RuntimeSettings }
+  | { type: 'tokenUsage'; threadId: string; usage: SessionTokenUsage }
   | { type: 'threadName'; threadId: string; name?: string }
   | { type: 'threadArchive'; threadId: string; archived: boolean }
   | { type: 'threadStatus'; threadId: string; status: RunStatus }

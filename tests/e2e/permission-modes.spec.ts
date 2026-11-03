@@ -96,10 +96,7 @@ test('one permission menu supports keyboard selection, actual confirmation and a
       networkAccess: mode === 'full-access',
     });
     if (mode === 'auto-review') {
-      await page.getByRole('button', { name: '权限详情', exact: true }).click();
-      await expect(page.locator('.settings-observed')).toContainText('审批执行方：auto_review');
       await screenshot(page, 'desktop-confirmed-auto-review');
-      await page.getByRole('button', { name: '权限详情', exact: true }).click();
     }
   }
   await page.reload();
@@ -166,9 +163,6 @@ test('custom profile details and unavailable modes stay readable on desktop and 
   await open(page);
   await expect(modeControl(page)).toHaveAttribute('data-value', 'custom');
   await expect(modeControl(page)).toContainText('自定义 · company-review');
-  await page.getByRole('button', { name: '权限详情', exact: true }).click();
-  await expect(page.locator('.permission-values')).toContainText('/workspace/shared-assets');
-  await expect(page.locator('.settings-observed')).toContainText('当前网络权限：允许');
   await expect(page.locator('.settings-pending')).toHaveCount(0);
   await screenshot(page, 'desktop-custom-details');
   await modeControl(page).click();
@@ -210,8 +204,6 @@ test('keeps a rejected mode pending and keeps the actual permissions visible', a
   ).toBeVisible();
   await expect(page.locator('.settings-pending')).toContainText('当前：只读');
   await expect(page.locator('.settings-pending')).toContainText('权限待生效：帮我批准');
-  await page.getByRole('button', { name: '权限详情', exact: true }).click();
-  await expect(page.locator('.settings-note').first()).toContainText('当前模式：只读');
   await screenshot(page, 'rejected-selection');
   await page.getByRole('button', { name: '撤销修改', exact: true }).click();
   await expect(modeControl(page)).toHaveAttribute('data-value', 'read-only');

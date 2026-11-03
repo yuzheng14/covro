@@ -2298,25 +2298,6 @@ html.composer-resizing * {
 .composer-send-controls > :not(.settings-model-summary) {
   flex-shrink: 0;
 }
-.composer-target {
-  display: flex;
-  flex: 0 1 auto;
-  align-items: center;
-  gap: 6px;
-  color: #8d9b90;
-  font-size: 11px;
-  min-width: 0;
-  max-width: 180px;
-}
-.composer-target svg {
-  flex-shrink: 0;
-}
-.composer-target > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .control-hint {
   display: inline-flex;
 }
@@ -2626,24 +2607,6 @@ html.composer-resizing * {
   background: #ac7d2e;
   flex-shrink: 0;
 }
-.settings-details-toggle {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 28px;
-  height: 30px;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  color: #748479;
-  background: transparent;
-  cursor: pointer;
-}
-.settings-details-toggle:hover,
-.settings-details-toggle[aria-expanded='true'] {
-  background: #edf3ee;
-  color: #415e49;
-}
 .permission-mode-menu {
   width: min(350px, calc(100vw - 24px));
   max-height: min(440px, var(--radix-select-content-available-height));
@@ -2672,76 +2635,6 @@ html.composer-resizing * {
 }
 .permission-mode-menu .select-item[data-disabled] {
   opacity: 0.7;
-}
-.permission-values {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px 20px;
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.6;
-}
-.permission-values > div {
-  min-width: 0;
-}
-.permission-values dt {
-  color: #748479;
-}
-.permission-values dd {
-  margin: 2px 0 0;
-  color: #415e49;
-  overflow-wrap: anywhere;
-}
-.settings-fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
-  background: #f8faf8;
-  border: 1px solid #e3e9e4;
-  padding: 14px;
-  border-radius: 10px;
-  margin: 0 12px 8px;
-}
-.settings-heading {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 11px;
-}
-.settings-heading span {
-  color: #748479;
-}
-.settings-fields label {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  font-size: 11px;
-  min-width: 0;
-}
-.settings-fields .select-trigger {
-  padding: 7px 8px;
-  border: 1px solid #dee5df;
-  border-radius: 5px;
-  background: #fff;
-  font-size: 11px;
-  color: #415e49;
-  width: 100%;
-}
-.settings-note,
-.settings-observed {
-  grid-column: 1 / -1;
-  margin: 0;
-  font-size: 10px;
-  line-height: 1.6;
-  color: #6b7c6f;
-  overflow-wrap: anywhere;
-}
-.settings-observed {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 18px;
 }
 .settings-pending,
 .settings-defaults,
@@ -2801,13 +2694,6 @@ html.composer-resizing * {
     padding: 6px;
     justify-content: center;
   }
-  .settings-details-toggle {
-    width: 28px;
-    min-height: 32px;
-  }
-  .permission-values {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .composer-context,
   .composer-send-controls {
     gap: 3px;
@@ -2832,21 +2718,6 @@ html.composer-resizing * {
   .settings-speed {
     width: 24px;
     padding: 3px;
-  }
-  .settings-fields {
-    grid-template-columns: minmax(0, 1fr);
-    padding: 12px;
-  }
-}
-@container (max-width: 330px) {
-  .composer-target {
-    flex: 0 0 auto;
-  }
-  .composer-target > span {
-    display: none;
-  }
-  .settings-model {
-    width: 60px;
   }
 }
 .pending-actions {
@@ -3556,13 +3427,6 @@ dd {
   .composer-highlights {
     font-size: 13px;
     padding: 14px 48px 5px 13px;
-  }
-  .composer-target {
-    max-width: 120px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 9px;
   }
   .composer-actions {
     padding: 5px 9px 9px;
@@ -5052,8 +4916,9 @@ dd {
   border-radius: 50%;
 }
 .settings-model-summary {
-  width: 240px;
-  flex: 0 1 240px;
+  width: max-content;
+  max-width: min(210px, 48cqw);
+  flex: 0 1 auto;
   min-width: 0;
 }
 .settings-model-toggle {
@@ -5189,17 +5054,12 @@ dd {
     flex: 1 1 0;
   }
   .settings-model-summary {
-    flex: 1 1 0;
-    max-width: 240px;
+    flex: 0 1 auto;
+    max-width: min(210px, 48cqw);
   }
   .settings-model-toggle {
     padding: 8px;
     gap: 4px;
-  }
-}
-@container (max-width: 380px) {
-  .composer-target {
-    display: none;
   }
 }
 
@@ -5714,4 +5574,95 @@ dd {
   color: transparent;
   background: #dfeee4;
   box-shadow: 0 0 0 1px #dfeee4;
+}
+
+.context-usage-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 32px;
+  padding: 2px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: #5c7867;
+  cursor: pointer;
+}
+.context-usage-trigger:hover {
+  background: #edf3ee;
+}
+.context-usage-trigger:focus-visible {
+  outline: 2px solid #52735a;
+  outline-offset: 2px;
+}
+.context-usage-trigger[data-stale='true'] {
+  color: #8c958f;
+}
+.context-usage-trigger circle {
+  fill: none;
+  stroke-width: 2.5;
+}
+.context-usage-track {
+  stroke: currentColor;
+  opacity: 0.18;
+}
+.context-usage-progress {
+  stroke: currentColor;
+}
+.context-usage-trigger text {
+  fill: currentColor;
+  font-size: 10px;
+}
+.context-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.context-usage-table th,
+.context-usage-table td {
+  padding: 5px 7px;
+  text-align: right;
+  white-space: nowrap;
+}
+.context-usage-table th:first-child {
+  padding-left: 0;
+  text-align: left;
+  font-weight: 400;
+  white-space: normal;
+}
+.context-usage-table thead th {
+  white-space: normal;
+}
+.context-usage-table thead {
+  opacity: 0.7;
+  font-size: 0.9em;
+}
+.context-usage-table tbody tr:first-child {
+  font-weight: 600;
+}
+.context-usage-window {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid currentColor;
+}
+.context-usage-dialog {
+  width: min(460px, calc(100vw - 24px));
+}
+.context-usage-status {
+  color: #52735a;
+  margin: 0 0 12px;
+}
+.context-usage-note {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #748479;
+  overflow-wrap: anywhere;
+}
+.context-usage-dialog time {
+  margin-right: auto;
+  font-size: 11px;
+  color: #748479;
 }

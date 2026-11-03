@@ -13,10 +13,10 @@ import type {
 } from '../../shared/types';
 import { useRuntimeDefaults } from '../hooks/useRuntimeDefaults';
 import { chooseModel, pendingSettings, selectedModelDefaults, speedLabel } from '../lib/settings';
-import { Icon } from './Icon';
-import { PermissionDetails, PermissionModeSelect } from './PermissionModeSelect';
+import { PermissionModeSelect } from './PermissionModeSelect';
 import { permissionModes } from '../lib/permissions';
 import { permissionLabel } from '../lib/settings';
+import { ContextUsage } from './ContextUsage';
 import { ModelSettingsPopover } from './ModelSettingsPopover';
 import { CollaborationModeSelect } from './CollaborationModeSelect';
 import { ReasoningGauge } from './ReasoningGauge';
@@ -25,7 +25,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 
 export function SettingsPanel({
   settings,
-  projectName,
   attachmentControl,
   children,
   models,
@@ -39,9 +38,12 @@ export function SettingsPanel({
   liveSettingsPending,
   onSaveModelDefaults,
   savingModelDefaults,
+  offline,
+  onRefresh,
 }: {
+  offline: boolean;
+  onRefresh: () => Promise<void>;
   settings: Settings;
-  projectName?: string;
   attachmentControl: ReactNode;
   children: ReactNode;
   models: ModelInfo[];
@@ -56,10 +58,8 @@ export function SettingsPanel({
   onSaveModelDefaults: (settings: ModelDefaults) => Promise<ModelDefaultsResult | undefined>;
   savingModelDefaults: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [effortMenuOpen, setEffortMenuOpen] = useState(false);
-  const advancedId = useId();
   const effortHintId = useId();
   const speedHintId = useId();
   const scope = JSON.stringify([projectId, thread?.id]);
@@ -74,7 +74,6 @@ export function SettingsPanel({
     setModelMenuOpen(false);
     setEffortMenuOpen(false);
   }, [disabled, thread?.id, projectId]);
-  useEffect(() => setExpanded(false), [thread?.id, projectId]);
   const defaults = useRuntimeDefaults(
     thread?.managed || threadLoading ? undefined : projectId,
     runtimeKey,
@@ -155,11 +154,6 @@ export function SettingsPanel({
     if (liveFast && (value === null || currentModel?.serviceTiers?.includes('fast')))
       onLiveSettings({ serviceTier: value });
   }
-  const source = thread
-    ? thread.managed
-      ? t('settings:current_session_settings')
-      : t('settings:saved_session_settings')
-    : t('settings:new_session_defaults');
   async function saveModelDefaults(selection: ModelDefaults) {
     setSaveNotice({ scope, settings: selection, state: 'saving' });
     try {
@@ -307,26 +301,9 @@ export function SettingsPanel({
           </button>
         </p>
       )}
-      {expanded && (
-        <div className="settings-fields" id={advancedId}>
-          <PermissionDetails
-            current={observedPermissions}
-            source={source}
-            settings={changes}
-            thread={Boolean(thread)}
-            unknown={unknown}
-          />
-        </div>
-      )}
       <div className="composer-actions">
         <div className="composer-context">
           {attachmentControl}
-          <ControlHint asChild content={projectName ?? t('common:unassigned')}>
-            <span className="composer-target">
-              <Icon name="folder" size={14} />
-              <span>{projectName ?? t('common:unassigned')}</span>
-            </span>
-          </ControlHint>
           <PermissionModeSelect
             settings={changes}
             current={permissions}
@@ -335,18 +312,6 @@ export function SettingsPanel({
             scope={`${projectId}:${thread?.id ?? ''}:${runtimeKey}`}
             onChange={changePermission}
           />
-          <ControlHint asChild content={t('common:permission_details')}>
-            <button
-              className="settings-details-toggle"
-              type="button"
-              aria-label={t('common:permission_details')}
-              aria-expanded={expanded}
-              aria-controls={advancedId}
-              onClick={() => setExpanded(!expanded)}
-            >
-              <Icon name="settings" size={14} />
-            </button>
-          </ControlHint>
         </div>
         <div className="composer-send-controls">
           <ModelSettingsPopover
@@ -541,6 +506,14 @@ export function SettingsPanel({
               </button>
             </ControlHint>
           </ModelSettingsPopover>
+          {thread && (
+            <ContextUsage
+              key={thread.id}
+              usage={thread.tokenUsage}
+              offline={offline}
+              onRefresh={onRefresh}
+            />
+          )}
           {children}
         </div>
       </div>

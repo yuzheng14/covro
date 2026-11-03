@@ -17,6 +17,7 @@ import {
   type CollaborationProvenance,
 } from './collaboration.js';
 import { TurnTokenUsage } from './turn-token-usage.js';
+import { mapSessionTokenUsage } from './session-token-usage.js';
 import { AppError } from '../shared/errors.js';
 import { threadNameError } from '../shared/thread-name.js';
 import { permissionModeUnavailable, permissionReviewerUnavailable } from '../shared/permissions.js';
@@ -1442,6 +1443,11 @@ export class CodexAdapter implements CodexClient {
           event.params.turnId,
           event.params.tokenUsage?.total?.outputTokens,
         );
+        this.emit({
+          type: 'tokenUsage',
+          threadId: event.params.threadId,
+          usage: mapSessionTokenUsage(event.params.tokenUsage, event.params.turnId),
+        });
         break;
       case 'thread/compacted':
         this.tokenUsage.compacted(event.params.threadId, event.params.turnId);

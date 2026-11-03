@@ -42,6 +42,8 @@ import { usesMobileInput } from '../lib/mobile-input';
 import { IMAGE_TYPES } from '../../shared/images';
 
 interface Props {
+  offline: boolean;
+  onRefresh: () => Promise<void>;
   focusRequest?: number;
   skillsRequest?: number;
   commands: SlashCommand[];
@@ -51,7 +53,6 @@ interface Props {
   draftCreationId: string;
   skillsUnavailable?: string;
   sentDrafts: Record<string, SentDraft>;
-  projectName?: string;
   projectId?: string;
   runtimeKey?: string;
   settings: Settings;
@@ -738,6 +739,8 @@ export function Composer(props: Props) {
         />
         {mobileInput && <p className="composer-input-hint">{inputHint}</p>}
         <SettingsPanel
+          offline={props.offline}
+          onRefresh={props.onRefresh}
           attachmentControl={
             <ControlHint content={t('composer:add_images')}>
               <Button
@@ -765,7 +768,6 @@ export function Composer(props: Props) {
             </ControlHint>
           }
           settings={props.settings}
-          projectName={props.projectName}
           models={props.models}
           onChange={props.onSettings}
           onLiveSettings={props.onLiveSettings}

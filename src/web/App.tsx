@@ -1010,6 +1010,8 @@ export function App() {
             />
           )}
           <Composer
+            offline={offline || !system?.ready}
+            onRefresh={workspace.refreshThread}
             focusRequest={composerFocusRequest}
             skillsRequest={skillsRequest}
             commands={slashCommands}
@@ -1025,7 +1027,6 @@ export function App() {
                   : undefined
             }
             sentDrafts={workspace.sentDrafts}
-            projectName={project?.name}
             projectId={
               workspace.projectId === UNASSIGNED_SCOPE
                 ? UNASSIGNED_SCOPE
