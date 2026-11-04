@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.0](https://github.com/yuzheng14/covro/compare/v0.7.0...v0.8.0) (2026-11-03)
+
+
+### Features
+
+* **codex:** support CLI 0.166.0 ([#305](https://github.com/yuzheng14/covro/issues/305)) ([9a823d7](https://github.com/yuzheng14/covro/commit/9a823d79a584b119877e42ddff74e87dbee91329)), closes [#301](https://github.com/yuzheng14/covro/issues/301)
+* **composer:** show context usage and compact session controls ([#308](https://github.com/yuzheng14/covro/issues/308)) ([9f29a38](https://github.com/yuzheng14/covro/commit/9f29a388180168f491c6f45a07d5d13ad6e4d65e)), closes [#266](https://github.com/yuzheng14/covro/issues/266)
+* **questions:** render Markdown in async prompts and replies ([#306](https://github.com/yuzheng14/covro/issues/306)) ([0c33854](https://github.com/yuzheng14/covro/commit/0c338542db09a1b9b90541c75a8b0df6052bcf49)), closes [#301](https://github.com/yuzheng14/covro/issues/301)
+* **session:** adjust settings while tasks are running ([#294](https://github.com/yuzheng14/covro/issues/294)) ([543186f](https://github.com/yuzheng14/covro/commit/543186f9ef47e5c173cdfc9dc569f3e09882ea75)), closes [#271](https://github.com/yuzheng14/covro/issues/271)
+
 ## [0.7.0](https://github.com/yuzheng14/covro/compare/v0.6.0...v0.7.0) (2026-10-28)
 
 
