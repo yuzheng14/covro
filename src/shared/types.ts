@@ -374,6 +374,10 @@ export interface ConfirmCompatibilityInput extends OperationInput {
 export interface CreateThreadInput extends OperationInput {
   settings?: Settings;
 }
+/** Create a managed conversation and submit its required first user message. */
+export interface CreateSessionInput extends OperationInput {
+  prompt: string;
+}
 export type ForkThreadInput = CreateThreadInput;
 export interface RenameThreadInput extends OperationInput {
   name: string;

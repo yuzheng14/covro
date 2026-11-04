@@ -29,6 +29,7 @@ import type {
   CreateProjectInput,
   CloneProjectInput,
   CreateThreadInput,
+  CreateSessionInput,
   Cursor,
   ForkThreadInput,
   InterruptInput,
@@ -72,6 +73,8 @@ import { temporaryFileRoots, type FileScope } from './local-files.js';
 import { readLocalMarkdown } from './markdown.js';
 import { readLocalText } from './text-files.js';
 import { readLocalJson } from './json-files.js';
+import { sessionCreationResult } from './session-creation.js';
+import { createSessionSchema } from '../shared/validation.js';
 
 export interface GatewayOptions {
   store: OperationStore;
@@ -937,6 +940,58 @@ export class GatewayService {
     } finally {
       this.reads.delete(threadId);
     }
+  }
+
+  async createSession(projectId: string, input: CreateSessionInput): Promise<Operation> {
+    const parsed = createSessionSchema.safeParse(input);
+    if (!parsed.success)
+      throw new AppError(
+        'VALIDATION_FAILED',
+        'A non-blank prompt of at most 100,000 characters and a valid operation ID are required',
+        400,
+      );
+    input = parsed.data;
+    return this.perform('session.create', projectId, input, async () => {
+      this.projects.get(projectId);
+      this.ensureReady();
+      this.ensureCompatibilityConfirmed();
+      this.store.associateProject(input.clientOperationId, projectId);
+      this.store.dispatch(input.clientOperationId);
+      const steps = {
+        creationOperationId: randomUUID(),
+        promptOperationId: randomUUID(),
+        stage: 'creating' as const,
+      };
+      this.store.checkpoint(input.clientOperationId, steps);
+      try {
+        const created = await this.createThread(projectId, {
+          clientOperationId: steps.creationOperationId,
+        });
+        const result = sessionCreationResult(this.store, steps);
+        if (created.status !== 'acknowledged' || !result.threadId)
+          throw new Error('Session creation has no confirmed thread receipt');
+        await this.startTurn(result.threadId, {
+          clientOperationId: steps.promptOperationId,
+          text: input.prompt,
+        });
+        return { result: sessionCreationResult(this.store, steps) };
+      } catch (error) {
+        if (
+          this.store.get(steps.creationOperationId)?.state === 'unknown' ||
+          this.store.get(steps.promptOperationId)?.state === 'unknown'
+        )
+          this.store.fail(
+            input.clientOperationId,
+            {
+              code: 'RESULT_UNKNOWN',
+              message:
+                'Session creation or initial prompt submission needs reconciliation; do not create another session',
+            },
+            true,
+          );
+        throw error;
+      }
+    });
   }
 
   async createThread(projectId: string | null, input: CreateThreadInput): Promise<Operation> {
@@ -1984,7 +2039,14 @@ export class GatewayService {
       status: row.state,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-      ...(row.result === null ? {} : { result: row.result }),
+      ...(row.result === null
+        ? {}
+        : {
+            result:
+              row.kind === 'session.create'
+                ? sessionCreationResult(this.store, row.result)
+                : row.result,
+          }),
       ...(row.error === null
         ? {}
         : { error: { ...row.error, clientOperationId: row.clientOperationId } }),
