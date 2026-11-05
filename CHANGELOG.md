@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.0](https://github.com/yuzheng14/covro/compare/v0.8.0...v0.9.0) (2026-11-05)
+
+
+### Features
+
+* **mcp:** expose managed project and session tools ([#310](https://github.com/yuzheng14/covro/issues/310)) ([97b0eb8](https://github.com/yuzheng14/covro/commit/97b0eb822f8a029aeb35f27e4f79f08ff93628df)), closes [#295](https://github.com/yuzheng14/covro/issues/295)
+* **sessions:** create managed sessions with an initial prompt ([#309](https://github.com/yuzheng14/covro/issues/309)) ([e01b7d7](https://github.com/yuzheng14/covro/commit/e01b7d74cd51678ff28aeeedd4917fd5b9bb3469))
+
+
+### Bug Fixes
+
+* **chat:** persist user messages until native confirmation ([#314](https://github.com/yuzheng14/covro/issues/314)) ([999dea7](https://github.com/yuzheng14/covro/commit/999dea76b6c26f3b7df20c49d0dd1061e2727495))
+* **chat:** show submitted prompts during context compaction ([#315](https://github.com/yuzheng14/covro/issues/315)) ([3d0b586](https://github.com/yuzheng14/covro/commit/3d0b586f8340f59b0e010e354f6f20787b2d6c83)), closes [#313](https://github.com/yuzheng14/covro/issues/313)
+* **sidebar:** deduplicate waiting input indicators ([#320](https://github.com/yuzheng14/covro/issues/320)) ([0be9354](https://github.com/yuzheng14/covro/commit/0be9354c358b02064539eabf6c17e0439d75abbc))
+* **sidebar:** keep long title tooltips from blocking navigation ([#317](https://github.com/yuzheng14/covro/issues/317)) ([cfcc456](https://github.com/yuzheng14/covro/commit/cfcc45651d7701d46228d045142ced6a284df881))
+
 ## [0.8.0](https://github.com/yuzheng14/covro/compare/v0.7.0...v0.8.0) (2026-11-03)
 
 
