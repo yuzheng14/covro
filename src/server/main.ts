@@ -20,6 +20,7 @@ import { createApp } from './http.js';
 import { startHeartbeat } from './websocket.js';
 import { UpdateManager } from '../updates/manager.js';
 import type { UpdateController } from '../shared/updates.js';
+import { startManagedMcp } from './mcp/server.js';
 export async function startGateway(
   config: AppConfig,
   overrides: {
@@ -34,6 +35,7 @@ export async function startGateway(
   const release = await acquireInstanceLock(config.dataDir);
   let closeDatabase: (() => void) | undefined;
   let codex: CodexClient | undefined;
+  let mcp: Awaited<ReturnType<typeof startManagedMcp>> | undefined;
   let backups: BackupController | undefined = overrides.backups;
   const updates =
     overrides.updates ??
@@ -51,7 +53,14 @@ export async function startGateway(
       db.database,
       overrides.migrationsDir ?? (existsSync(packagedMigrations) ? packagedMigrations : undefined),
     );
-    codex = overrides.codex ?? new CodexAdapter(config.codex);
+    let gateway: GatewayService | undefined;
+    mcp = await startManagedMcp({ service: () => gateway, publicOrigin: config.publicOrigin[0]! });
+    codex =
+      overrides.codex ??
+      new CodexAdapter({
+        ...config.codex,
+        managedMcp: { name: mcp.name, url: mcp.url },
+      });
     const service = new GatewayService({
       store: new OperationStore(db.database),
       projects: new ProjectRegistry(config.projects, db.database),
@@ -61,6 +70,7 @@ export async function startGateway(
       authMode: config.auth.mode,
       demo: config.demo,
     });
+    gateway = service;
     service.setMaintenance(overrides.maintenance ?? false);
     backups ??= backupStore ? new BackupManager(backupStore, service) : undefined;
     try {
@@ -91,6 +101,7 @@ export async function startGateway(
     const close = (): Promise<void> =>
       (closing ??= (async () => {
         stopHeartbeat();
+        gateway = undefined;
         updates.close();
         const closed = new Promise<void>((resolveClosed) => server.close(() => resolveClosed()));
         for (const ws of wss.clients) {
@@ -99,6 +110,7 @@ export async function startGateway(
         }
         wss.close();
         try {
+          await mcp?.close();
           await backups?.close();
           await service.shutdown();
         } finally {
@@ -111,8 +123,9 @@ export async function startGateway(
           }
         }
       })());
-    return { app, server, service, codex, close, updates, backups };
+    return { app, server, service, codex, close, updates, backups, mcp };
   } catch (error) {
+    await mcp?.close();
     updates.close();
     await backups?.close();
     try {

@@ -1,0 +1,15 @@
+{
+  "codexVersion": "0.166.0",
+  "inference": false,
+  "model": "local HTTP stub",
+  "checks": [
+    "Declining the native MCP write approval creates no session",
+    "Native Code Mode discovers and calls list_projects and create_session through MCP",
+    "Parent waiting on MCP can create and submit a child in the selected project on the same app-server",
+    "Covro continues the MCP-created conversation without writer conflict",
+    "Managed app-server restart reapplies the local MCP entry to resumed history",
+    "User configuration, including an existing covro MCP entry, remains byte-for-byte unchanged",
+    "Gateway shutdown closes the local MCP endpoint",
+    "Independent app-server with the same CODEX_HOME and resumed history has no injected Covro tools"
+  ]
+}
