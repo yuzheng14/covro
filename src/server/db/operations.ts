@@ -1,3 +1,4 @@
+import { nullLogger, type Logger } from '../../logging/logger.js';
 import { createHash } from 'node:crypto';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import type { AppDatabase } from './index.js';
@@ -36,7 +37,10 @@ export function requestDigest(value: unknown): string {
 
 /** Every transaction is synchronous; no process/network work occurs inside one. */
 export class OperationStore {
-  constructor(public readonly database: AppDatabase) {}
+  constructor(
+    public readonly database: AppDatabase,
+    private readonly logger: Logger = nullLogger,
+  ) {}
 
   accept(
     clientOperationId: string,
@@ -162,6 +166,7 @@ export class OperationStore {
           .values({ operationId: id, ...marker, state: 'active', createdAt: Date.now() })
           .run();
     });
+    this.logger.info('operation.dispatched', { operationId: id, state: 'dispatching' });
   }
 
   /** Save child operation references before a multi-step operation starts any effects. */
@@ -230,6 +235,7 @@ export class OperationStore {
 
   /** Includes acknowledged requests with unfinished turns; none of these are retried. */
   recover(): void {
+    this.logger.info('operation.recovery_started');
     this.database.transaction((tx) => {
       tx.update(operations)
         .set({
@@ -317,7 +323,7 @@ export class OperationStore {
   }
 
   finishTurn(threadId: string, turnId: string, codexEpoch: string): void {
-    this.database
+    const changed = this.database
       .update(executionMarkers)
       .set({ state: 'terminal', endedAt: Date.now() })
       .where(
@@ -329,6 +335,7 @@ export class OperationStore {
         ),
       )
       .run();
+    if (changed.changes) this.logger.info('execution.finished', { threadId, turnId, codexEpoch });
   }
 
   /** Keys the release to the original execution; an old decision cannot unlock a later turn. */
@@ -363,6 +370,10 @@ export class OperationStore {
           ),
         )
         .run();
+    });
+    this.logger.info('operation.reconciled', {
+      operationId: targetOperationId,
+      jobId: reconciliationOperationId,
     });
   }
 

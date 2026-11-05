@@ -1,3 +1,5 @@
+import { nullLogger, type Logger } from '../logging/logger.js';
+import { logContext } from '../logging/context.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { accessSync, constants, lstatSync, readdirSync, realpathSync } from 'node:fs';
@@ -156,6 +158,7 @@ export class ProjectClones {
   constructor(
     private readonly register: (input: CreateProjectInput) => Project,
     private readonly registered: (path: string) => boolean,
+    private readonly logger: Logger = nullLogger,
   ) {}
 
   get hasActive(): boolean {
@@ -283,6 +286,13 @@ export class ProjectClones {
   }
 
   private async run(job: Job, repository: string): Promise<void> {
+    const logger = this.logger.child({
+      ...logContext(),
+      cloneId: job.view.id,
+      operationId: job.view.id,
+    });
+    const started = performance.now();
+    logger.info('clone.started');
     let output = '';
     let pending = '';
     let missingGit = false;
@@ -376,6 +386,13 @@ export class ProjectClones {
       job.view.errorCode = problem.code;
       job.view.error = `${problem.message} 未添加项目；目标目录可能残留文件，请检查后使用新的空目录重试。`;
     } else this.finishRegistration(job);
+    logger[job.view.status === 'failed' ? 'warn' : 'info']('clone.finished', {
+      outcome: job.view.status,
+      stage: job.view.progressStage,
+      errorCode: job.view.errorCode,
+      exitCode: code,
+      durationMs: Math.round(performance.now() - started),
+    });
   }
 
   async close(): Promise<void> {
