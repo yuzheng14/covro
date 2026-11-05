@@ -86,8 +86,13 @@ export async function createEmptyThread(page: Page, projectName = '测试项目'
   await group.getByRole('button', { name: '新建会话', exact: true }).click();
   const projectId = await group.getAttribute('data-project-id');
   expect(projectId).toBeTruthy();
+  // Fast is a project-draft proposal, unlike model/effort defaults saved by Codex.
+  const fast = await page.locator('.settings-speed').getAttribute('aria-pressed');
   const response = await page.request.post(`/api/projects/${projectId}/threads`, {
-    data: { clientOperationId: randomUUID() },
+    data: {
+      clientOperationId: randomUUID(),
+      ...(fast === 'true' ? { settings: { serviceTier: 'fast' } } : {}),
+    },
     headers: { Origin: testOrigin },
   });
   expect(response.ok()).toBe(true);
