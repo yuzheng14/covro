@@ -5,6 +5,7 @@ const identifiers = new Set([
   'requestId',
   'operationId',
   'threadId',
+  'sourceThreadId',
   'turnId',
   'jobId',
   'codexEpoch',

@@ -1,3 +1,5 @@
+import { nullLogger, type Logger } from '../logging/logger.js';
+import { errorFields } from '../logging/fields.js';
 import { CODEX_COMPATIBILITY } from './compatibility.js';
 import { AccountUsageReader } from './account-usage.js';
 import type { GetAccountRateLimitsResponse } from './generated/v2/GetAccountRateLimitsResponse.js';
@@ -180,6 +182,7 @@ type Responses = {
   'turn/interrupt': TurnInterruptResponse;
 };
 export interface CodexAdapterOptions {
+  logger?: Logger;
   binary: string;
   home?: string;
   /** Explicit argument override for the test simulator; production leaves this unset. */
@@ -276,7 +279,10 @@ export class CodexAdapter implements CodexClient {
     models: [],
     capabilities: [],
   };
-  constructor(private readonly options: CodexAdapterOptions) {}
+  private readonly logger: Logger;
+  constructor(private readonly options: CodexAdapterOptions) {
+    this.logger = (options.logger ?? nullLogger).child({ component: 'codex' });
+  }
   get pid(): number | undefined {
     return this.child?.pid;
   }
@@ -334,6 +340,7 @@ export class CodexAdapter implements CodexClient {
       });
       const version = stdout.trim().replace(/^codex-cli\s+/, '');
       this.state.codexVersion = version;
+      this.logger.info('codex.starting', { codexEpoch: this.epoch, codexVersion: version });
       this.permissionState.clear();
       this.liveCapabilities.clear();
       this.denials.clear();
@@ -354,9 +361,14 @@ export class CodexAdapter implements CodexClient {
       const rpc = new RpcTransport(child.stdin, child.stdout, {
         timeoutMs: this.options.requestTimeoutMs,
         maxLineBytes: this.options.maxLineBytes,
+        logger: this.logger.child({ codexEpoch: this.epoch, component: 'codex.rpc' }),
       });
       this.rpc = rpc;
-      this.titles = new ThreadTitles(rpc, this.options.titleTimeoutMs);
+      this.titles = new ThreadTitles(
+        rpc,
+        this.options.titleTimeoutMs,
+        this.logger.child({ codexEpoch: this.epoch, component: 'codex.titles' }),
+      );
       child.stderr.on('data', (chunk: Buffer) => {
         const max = this.options.maxStderrBytes ?? 64 * 1024;
         this.stderrTail = Buffer.concat([this.stderrTail, chunk.subarray(-max)]).subarray(-max);
@@ -365,6 +377,12 @@ export class CodexAdapter implements CodexClient {
         rpc.fail(new CodexError('CODEX_UNAVAILABLE', `Cannot start Codex: ${error.message}`, true)),
       );
       child.on('exit', (code, signal) => {
+        this.logger[this.stopped ? 'info' : 'error']('codex.exited', {
+          codexEpoch: this.epoch,
+          exitCode: code,
+          signal,
+          receivedBytes: this.stderrTail.length,
+        });
         rpc.fail(
           new CodexError(
             'CODEX_UNAVAILABLE',
@@ -404,9 +422,9 @@ export class CodexAdapter implements CodexClient {
         child.once('exit', () => clearTimeout(kill));
         if (wasReady && !this.stopped) {
           // Only metadata is logged: never RPC params, results, or session contents.
-          console.error('Codex transport failed', {
-            code: error.code,
-            ...(error.details as object),
+          this.logger.error('codex.connection_failed', {
+            codexEpoch: this.epoch,
+            ...errorFields(error),
           });
           this.scheduleRestart();
         }
@@ -484,12 +502,17 @@ export class CodexAdapter implements CodexClient {
       );
       this.state.ready = true;
       this.state.connection = 'ready';
+      this.logger.info('codex.ready', {
+        codexEpoch: this.epoch,
+        codexVersion: this.state.codexVersion,
+      });
       this.state.capabilities = CAPABILITIES.filter((method) => !this.disabled.has(method));
       this.publishRuntime();
       // Quota service latency must not hold up the gateway or normal Codex work.
       void this.refreshAccountUsage();
     } catch (error) {
       const failure = asCodexError(error);
+      this.logger.error('codex.start_failed', { codexEpoch: this.epoch, ...errorFields(failure) });
       this.state.ready = false;
       this.state.connection = 'unavailable';
       this.state.error = failure.message;
@@ -1162,6 +1185,7 @@ export class CodexAdapter implements CodexClient {
   ): Promise<TurnView> {
     this.validateSettings(settings, this.permissionState.get(id));
     await this.validatePermissionSettings(cwd, settings, id);
+    this.titles?.trackUserInput(id);
     const turn = mapTurn(
       id,
       (
@@ -1451,6 +1475,20 @@ export class CodexAdapter implements CodexClient {
             ...(outputTokens !== undefined ? { outputTokens } : {}),
             ...(totalTokens !== undefined ? { totalTokens } : {}),
           },
+        });
+        this.logger.info(event.method === 'turn/completed' ? 'turn.completed' : 'turn.started', {
+          threadId,
+          turnId: turn.id,
+          codexEpoch: this.epoch,
+          outcome: turn.status,
+          ...(turn.error
+            ? {
+                errorCode:
+                  turn.error.codexErrorInfo && typeof turn.error.codexErrorInfo === 'string'
+                    ? turn.error.codexErrorInfo
+                    : 'TURN_FAILED',
+              }
+            : {}),
         });
         if (event.method === 'turn/completed')
           this.expireActions(event.params.threadId, event.params.turn.id);

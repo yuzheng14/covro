@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { nullLogger, type Logger } from '../logging/logger.js';
+import { errorFields } from '../logging/fields.js';
+import { withLogContext } from '../logging/context.js';
 import type { BackupController } from '../shared/backups.js';
 import { backupIdSchema } from '../shared/backups.js';
 import { backupRequestSchema } from '../backups/manager.js';
@@ -24,6 +28,7 @@ import { settingsSchema, updateRequestSchema } from '../updates/manager.js';
 import { createReleaseNotesLookup, releaseNotesQuery } from '../updates/release-notes.js';
 import { startShellSchema } from '../shared/shell.js';
 export interface HttpDependencies {
+  logger?: Logger;
   config: AppConfig;
   service: GatewayService;
   staticDir: string;
@@ -38,11 +43,41 @@ export function createApp({
   authenticate = createAuthenticator(config),
   updates,
   backups,
+  logger = nullLogger,
 }: HttpDependencies) {
   const app = new Hono<{
     Bindings: HttpBindings;
     Variables: { identity: Identity; operationId?: string };
   }>();
+  app.use('*', async (c, next) => {
+    const requestId = randomUUID();
+    c.header('X-Request-Id', requestId);
+    const started = performance.now();
+    await withLogContext({ requestId }, async () => {
+      try {
+        await next();
+      } finally {
+        const route = c.req.routePath;
+        const status = c.res.status;
+        logger[
+          status >= 500
+            ? 'error'
+            : status >= 400
+              ? 'warn'
+              : route === '/api/health' || route.includes('account') || c.req.method === 'GET'
+                ? 'debug'
+                : 'info'
+        ]('http.completed', {
+          requestId,
+          operationId: c.get('operationId'),
+          method: c.req.method,
+          route,
+          status,
+          durationMs: Math.round(performance.now() - started),
+        });
+      }
+    });
+  });
   app.onError((error, c) => {
     const failure =
       error instanceof AppError
@@ -50,6 +85,13 @@ export function createApp({
         : error instanceof ZodError || error instanceof SyntaxError
           ? new AppError('VALIDATION_FAILED', 'Invalid request data', 400)
           : new AppError('INTERNAL_ERROR', 'An internal error occurred', 500);
+    logger[failure.status >= 500 ? 'error' : 'warn']('http.failed', {
+      ...errorFields(error),
+      status: failure.status,
+      operationId: c.get('operationId'),
+      route: c.req.routePath,
+      method: c.req.method,
+    });
     return c.json({ error: failure.toJSON(c.get('operationId')) }, failure.status as 400);
   });
   app.get('/api/health', (c) => c.json({ ok: true }));
@@ -531,7 +573,13 @@ export function createApp({
   app.get(
     '/ws',
     upgradeWebSocket((c) =>
-      socketHandlers(service, config, c.get('identity'), c.req.query('overview') === '1'),
+      socketHandlers(
+        service,
+        config,
+        c.get('identity'),
+        c.req.query('overview') === '1',
+        logger.child({ component: 'websocket' }),
+      ),
     ),
   );
   app.all('/api/*', () => {

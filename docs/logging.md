@@ -11,3 +11,9 @@ Default policy: rotate daily or at 10 MiB, retain at most 14 days and a 200 MiB 
 The buffer is bounded to 1 MiB. Overflow increments a dropped-record count and emits a rate-limited safe warning to stderr. File initialization/write errors degrade to rate-limited sanitized warning/error records on stderr without blocking user operations or building an unbounded queue. Normal shutdown waits up to three seconds for the stream to close; forced process termination cannot guarantee buffered records are saved.
 
 `COVRO_LOG_LEVEL` accepts `debug`, `info` (default), `warn`, `error`, or `fatal`. Debug increases metadata detail without recording conversation content.
+
+## Instrumented events
+
+Gateway, database migrations, HTTP completion/errors, WebSocket subscription/backpressure, local MCP requests, Codex lifecycle/RPC failures, durable operation acceptance/dispatch/acknowledgement/reconciliation, turn boundaries, capacity retries, automatic titles/recaps, clones, backups and upgrade workers use the same logger interface. Successful polling/RPC details are debug-level; failures and significant state transitions are recorded by default. No streaming token events are logged.
+
+An HTTP request receives a server-generated `X-Request-Id`. Its existing `operationId` follows the service and RPC calls. Automatic naming captures the submitting turn's context before asynchronous upstream notifications arrive; `jobId`, `sourceThreadId` and `temporaryThreadId` connect its internal inference to the source thread. Every naming attempt records one `thread_title.started` and one `thread_title.finished` outcome, with its last stage, duration and a bounded failure code. Naming retries and task semantics are unchanged.

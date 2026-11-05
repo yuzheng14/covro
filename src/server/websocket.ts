@@ -1,3 +1,6 @@
+import { nullLogger, type Logger } from '../logging/logger.js';
+import { errorFields } from '../logging/fields.js';
+import { logContext } from '../logging/context.js';
 import type { WSEvents, WSContext } from 'hono/ws';
 import type { WebSocketLike } from '@hono/node-server';
 import type { WebSocketServer, WebSocket } from 'ws';
@@ -17,7 +20,12 @@ export interface SocketSink {
   terminate?(): void;
 }
 /** Bounds both individual snapshots and queued bytes, including runtime broadcasts. */
-export function sendBounded(socket: SocketSink, message: ServerMessage, limit: number): void {
+export function sendBounded(
+  socket: SocketSink,
+  message: ServerMessage,
+  limit: number,
+  logger: Logger = nullLogger,
+): void {
   if (socket.readyState !== 1) return;
   let outgoing = message;
   const budget = Math.max(512, Math.floor(limit / 2));
@@ -48,14 +56,25 @@ export function sendBounded(socket: SocketSink, message: ServerMessage, limit: n
     message.kind === 'threadPatch' &&
     Buffer.byteLength(encoded) > budget
   ) {
+    logger.debug('websocket.resync_required', {
+      threadId: message.threadId,
+      receivedBytes: Buffer.byteLength(encoded),
+      limitBytes: budget,
+    });
     sendBounded(
       socket,
       { type: 'resync', threadId: message.threadId!, cursor: message.cursor },
       limit,
+      logger,
     );
     return;
   }
   if (socket.bufferedAmount + Buffer.byteLength(encoded) > limit) {
+    logger.warn('websocket.buffer_exceeded', {
+      bufferedBytes: socket.bufferedAmount,
+      receivedBytes: Buffer.byteLength(encoded),
+      limitBytes: limit,
+    });
     socket.close(4008, 'Slow connection; reconnect for snapshot');
     socket.terminate?.();
     return;
@@ -67,7 +86,9 @@ export function socketHandlers(
   config: AppConfig,
   identity: Identity,
   overview = false,
+  logger: Logger = nullLogger,
 ): WSEvents<WebSocketLike> {
+  logger = logger.child({ ...logContext(), connectionId: crypto.randomUUID() });
   let unsubscribe: (() => void) | undefined;
   let stopRuntime: (() => void) | undefined;
   let stopOverview: (() => void) | undefined;
@@ -84,10 +105,12 @@ export function socketHandlers(
       },
       message,
       config.limits.wsBytes,
+      logger,
     );
   };
   return {
     onOpen(_event, ws) {
+      logger.debug('websocket.connected');
       stopRuntime = service.subscribeRuntime((message) => send(ws, message));
       if (overview) stopOverview = service.subscribeOverview((message) => send(ws, message));
       if (identity.expiresAt)
@@ -118,6 +141,7 @@ export function socketHandlers(
         if (current !== generation || ws.readyState !== 1) stop();
         else unsubscribe = stop;
       } catch (error) {
+        logger.warn('websocket.subscription_failed', errorFields(error));
         deliver({
           type: 'error',
           error:
@@ -128,6 +152,7 @@ export function socketHandlers(
       }
     },
     onClose() {
+      logger.debug('websocket.disconnected');
       generation++;
       unsubscribe?.();
       stopRuntime?.();
@@ -135,6 +160,7 @@ export function socketHandlers(
       clearTimeout(expiry);
     },
     onError() {
+      logger.warn('websocket.failed');
       generation++;
       unsubscribe?.();
       stopRuntime?.();
