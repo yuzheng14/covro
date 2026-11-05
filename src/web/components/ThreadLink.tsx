@@ -120,7 +120,7 @@ export function ThreadLink({
         }
       }}
     >
-      <ControlHint asChild content={title}>
+      <ControlHint asChild content={title} tooltipClassName="thread-title-tooltip">
         <button
           className={cn('thread-link', selected && 'thread-selected')}
           data-thread-id={thread.id}

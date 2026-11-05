@@ -2327,6 +2327,18 @@ html.composer-resizing * {
 .tooltip-arrow {
   fill: #243d33;
 }
+/* Radix's positioning wrapper must also let clicks reach neighboring rows. */
+[data-radix-popper-content-wrapper]:has(> .thread-title-tooltip),
+.thread-title-tooltip {
+  pointer-events: none;
+}
+.thread-title-tooltip .control-hint-content {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  max-height: max(0px, calc(var(--radix-tooltip-content-available-height) - 14px));
+  overflow: hidden;
+}
 .composer-note {
   text-align: center;
   font-size: 9px;
