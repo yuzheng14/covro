@@ -95,6 +95,12 @@ export const confirmCompatibilitySchema = operationSchema.extend({
   confirm: z.literal(true),
 });
 export const createThreadSchema = operationSchema.extend({ settings: settingsSchema.optional() });
+export const createSessionSchema = operationSchema.extend({
+  prompt: z
+    .string()
+    .max(100_000)
+    .refine((value) => Boolean(value.trim()), 'Prompt is required'),
+});
 export const forkThreadSchema = createThreadSchema;
 export const renameThreadSchema = operationSchema.extend({
   name: z

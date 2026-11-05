@@ -110,6 +110,7 @@ export class OperationStore {
       .filter((operation) => {
         if (
           ![
+            'session.create',
             'thread.create',
             'thread.resume',
             'thread.fork',
@@ -120,7 +121,7 @@ export class OperationStore {
           return false;
         const owner =
           operation.projectId ??
-          (operation.kind === 'thread.create'
+          (operation.kind === 'thread.create' || operation.kind === 'session.create'
             ? operation.target === '@unassigned'
               ? null
               : operation.target
@@ -161,6 +162,15 @@ export class OperationStore {
           .values({ operationId: id, ...marker, state: 'active', createdAt: Date.now() })
           .run();
     });
+  }
+
+  /** Save child operation references before a multi-step operation starts any effects. */
+  checkpoint(id: string, result: unknown): void {
+    this.database
+      .update(operations)
+      .set({ result, updatedAt: Date.now() })
+      .where(and(eq(operations.clientOperationId, id), eq(operations.state, 'dispatching')))
+      .run();
   }
 
   acknowledge(id: string, result: unknown, turnId?: string): OperationRow {
