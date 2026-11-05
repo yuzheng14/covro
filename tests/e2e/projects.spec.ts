@@ -281,7 +281,12 @@ test('project overview drafts and execution settings remain independent before a
     (request) =>
       request.method() === 'POST' && request.url().endsWith('/api/projects/fixture-other/threads'),
   );
-  await createInPage(page, second, '另一个项目');
+  // This assertion concerns the browser's real first-message creation, not fixture setup.
+  await projectGroup(page, '另一个项目')
+    .getByRole('button', { name: '新建会话', exact: true })
+    .click();
+  await expect(input).toHaveValue('项目 B 概览草稿');
+  await page.getByRole('button', { name: '发送任务', exact: true }).click();
   expect((await creation).postDataJSON().settings).toEqual({ permissionMode: 'ask' });
   await expect(input).toHaveValue('');
 });

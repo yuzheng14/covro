@@ -145,8 +145,9 @@ for (const viewport of [
     await send(page, first);
     await expect(page.locator('.turn-heading .status')).toHaveText('已完成');
     await send(page, second);
-    // The previous completed turn can still be last while the second request is in flight.
+    // The immediate prompt preview can precede its native turn; wait before measuring geometry.
     await expect(prompts(page)).toHaveCount(2);
+    await expect(page.locator('.turn')).toHaveCount(2);
     await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
     await movePrompt(prompts(page).first(), -300);
     await expect(sticky(page)).toContainText(first);
