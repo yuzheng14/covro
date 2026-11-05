@@ -1,3 +1,4 @@
+import { nullLogger, type Logger } from '../logging/logger.js';
 import { randomUUID } from 'node:crypto';
 import type { CodexEvent } from '../codex/types.js';
 import type { CapacityRetryView, Settings, TurnView } from '../shared/types.js';
@@ -30,6 +31,7 @@ export class CapacityRetries {
   constructor(
     private readonly run: (job: CapacityAttempt) => Promise<void>,
     private readonly changed: (threadId: string) => void,
+    private readonly logger: Logger = nullLogger,
   ) {}
 
   begin(threadId: string, operationId: string, settings: Settings, epoch: string) {
@@ -76,6 +78,11 @@ export class CapacityRetries {
   }
 
   cancel(job: CapacityAttempt) {
+    this.logger.info('capacity_retry.cancelled', {
+      threadId: job.threadId,
+      operationId: job.operationId,
+      attempt: job.attempt,
+    });
     if (job.timer) clearTimeout(job.timer);
     delete job.timer;
     job.cancelled = true;
@@ -177,6 +184,12 @@ export class CapacityRetries {
       attempt: job.attempt + 1,
       nextAttemptAt: Date.now() + delay,
     };
+    this.logger.info('capacity_retry.scheduled', {
+      threadId: job.threadId,
+      operationId: job.operationId,
+      attempt: job.attempt + 1,
+      timeoutMs: delay,
+    });
     job.timer = setTimeout(() => {
       delete job.timer;
       if (!this.owns(job)) return;
@@ -191,6 +204,11 @@ export class CapacityRetries {
         nextAttemptAt: undefined,
       };
       this.changed(job.threadId);
+      this.logger.info('capacity_retry.dispatching', {
+        threadId: job.threadId,
+        operationId: job.operationId,
+        attempt: job.attempt,
+      });
       void this.run(job).catch(() => {
         // A failed or uncertain dispatch is never an invitation to replay the RPC.
         if (this.owns(job)) {
@@ -209,6 +227,12 @@ export class CapacityRetries {
   }
 
   private stop(job: CapacityAttempt, reason: NonNullable<CapacityRetryView['reason']>) {
+    this.logger.info('capacity_retry.stopped', {
+      threadId: job.threadId,
+      operationId: job.operationId,
+      attempt: job.attempt,
+      reason,
+    });
     if (job.timer) clearTimeout(job.timer);
     delete job.timer;
     if (job.view) job.view = { ...job.view, status: 'stopped', reason, nextAttemptAt: undefined };

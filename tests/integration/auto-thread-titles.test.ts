@@ -1,3 +1,4 @@
+import { captureLogger } from '../fixtures/logging.js';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -15,7 +16,9 @@ afterEach(async () => {
 async function fixture(options: SimulatorOptions = {}, titleTimeoutMs = 3000) {
   const directory = await mkdtemp(join(tmpdir(), 'codex-auto-title-'));
   const logPath = join(directory, 'requests.jsonl');
+  const logs = captureLogger();
   const adapter = new CodexAdapter({
+    logger: logs.logger,
     binary: process.execPath,
     args: [
       '--import',
@@ -42,7 +45,7 @@ async function fixture(options: SimulatorOptions = {}, titleTimeoutMs = 3000) {
             error?: unknown;
           },
       );
-  return { adapter, events, requests };
+  return { adapter, events, requests, logs };
 }
 
 it('generates once outside the user history, persists the title, and hides temporary events', async () => {
@@ -375,3 +378,50 @@ it('times out a recap without interrupting or writing to the source thread', asy
   ).toBe(true);
   expect((await adapter.readThread(thread.id)).turns).toHaveLength(0);
 });
+
+it.each([
+  ['complete', undefined, undefined],
+  ['invalid', undefined, 'not json'],
+  ['fail', 'fail', undefined],
+  ['timeout', 'hang', undefined],
+  ['renamed', 'rename', undefined],
+] as const)(
+  'records a private correlated terminal outcome for %s naming',
+  async (mode, titleBehavior, titleOutput) => {
+    const { adapter, logs } = await fixture(
+      { titleBehavior, titleOutput },
+      mode === 'timeout' ? 150 : 3000,
+    );
+    const thread = await adapter.createThread('/tmp');
+    await adapter.startTurn(thread.id, thread.cwd, 'SECRET_USER_PROMPT');
+    await vi.waitFor(() =>
+      expect(
+        logs.records.some((r) => r.event === 'thread_title.finished' && r.threadId === thread.id),
+      ).toBe(true),
+    );
+    const started = logs.records.find(
+      (r) => r.event === 'thread_title.started' && r.threadId === thread.id,
+    )!;
+    const finished = logs.records.filter(
+      (r) => r.event === 'thread_title.finished' && r.threadId === thread.id,
+    );
+    expect(finished).toHaveLength(1);
+    expect(finished[0]).toMatchObject({
+      jobId: started.jobId,
+      outcome: mode === 'complete' ? 'succeeded' : mode === 'renamed' ? 'cancelled' : 'failed',
+      durationMs: expect.any(Number),
+    });
+    if (mode === 'invalid')
+      expect(finished[0]).toMatchObject({
+        stage: 'output_validation',
+        errorCode: 'INVALID_TITLE_OUTPUT',
+      });
+    if (mode === 'timeout') expect(finished[0]).toMatchObject({ errorCode: 'TITLE_TIMEOUT' });
+    const serialized = JSON.stringify(logs.records);
+    expect(serialized).not.toContain('SECRET_USER_PROMPT');
+    expect(serialized).not.toContain('Codex 配置继承与运行设置');
+    expect(logs.records.some((r) => r.event === 'rpc.started' && r.jobId === started.jobId)).toBe(
+      true,
+    );
+  },
+);

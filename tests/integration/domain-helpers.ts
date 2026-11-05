@@ -13,6 +13,7 @@ import type {
 import { ProjectRegistry } from '../../src/server/projects.js';
 import { GatewayService } from '../../src/server/service.js';
 import { databaseHarness } from './domain-db-helpers.js';
+import type { Logger } from '../../src/logging/logger.js';
 
 export const operationId = () => randomUUID();
 export function deferred<T>() {
@@ -242,12 +243,12 @@ export class DomainCodex implements CodexClient {
   }
 }
 
-export function harness() {
-  const { directory, filename, db, store, close } = databaseHarness();
+export function harness(logger?: Logger) {
+  const { directory, filename, db, store, close } = databaseHarness(logger);
   const project = join(directory, 'project');
   mkdirSync(project);
   const codex = new DomainCodex();
   const projects = new ProjectRegistry([{ id: 'project', name: '测试项目', path: project }]);
-  const service = new GatewayService({ store, projects, codex });
+  const service = new GatewayService({ store, projects, codex, logger });
   return { directory, project, filename, db, store, codex, projects, service, close };
 }

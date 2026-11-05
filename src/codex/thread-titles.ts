@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { nullLogger, type Logger } from '../logging/logger.js';
+import { errorFields } from '../logging/fields.js';
+import { logContext, withLogContext } from '../logging/context.js';
 import type { ClientRequest } from './generated/ClientRequest.js';
 import type { ServerNotification } from './generated/ServerNotification.js';
 import type { ConfigReadResponse } from './generated/v2/ConfigReadResponse.js';
@@ -30,6 +34,12 @@ type TemporaryThreadParams = ThreadStartParams & {
   selectedCapabilityRoots: [];
 };
 type Job = {
+  logger?: Logger;
+  stage?: string;
+  reason?: string;
+  detail?: string;
+  outcome?: string;
+  started?: number;
   cancelled: boolean;
   threadId?: string;
   turnId?: string;
@@ -53,6 +63,7 @@ export class ThreadTitles {
   private readonly candidates = new Map<string, TitleSource>();
   private readonly jobs = new Map<string, Job>();
   private readonly internal = new Map<string, Job | undefined>();
+  private readonly inputContexts = new Map<string, ReturnType<typeof logContext>>();
   private readonly manualNames = new Set<string>();
   private readonly nameWrites = new Map<string, Promise<unknown>>();
   private closed = false;
@@ -62,11 +73,13 @@ export class ThreadTitles {
   constructor(
     private readonly rpc: RpcTransport,
     private readonly timeoutMs = 30_000,
+    private readonly logger: Logger = nullLogger,
   ) {
     rpc.once('failure', () => {
       this.closed = true;
       this.candidates.clear();
-      for (const job of this.jobs.values()) this.cancel(job);
+      this.inputContexts.clear();
+      for (const job of this.jobs.values()) this.cancel(job, 'TRANSPORT_CLOSED');
       this.internal.clear();
     });
   }
@@ -84,14 +97,22 @@ export class ThreadTitles {
       !result.thread.ephemeral
     )
       this.candidates.set(result.thread.id, { ...result, thread: { ...result.thread, turns: [] } });
-    else this.candidates.delete(result.thread.id);
+    else {
+      this.candidates.delete(result.thread.id);
+      this.inputContexts.delete(result.thread.id);
+    }
+  }
+
+  trackUserInput(id: string): void {
+    if (this.candidates.has(id)) this.inputContexts.set(id, { ...logContext() });
   }
 
   async prepareManualName(id: string): Promise<void> {
     this.manualNames.add(id);
+    this.inputContexts.delete(id);
     this.candidates.delete(id);
     const job = this.jobs.get(id);
-    if (job) this.cancel(job);
+    if (job) this.cancel(job, 'MANUAL_NAME');
     // A timeout does not cancel the upstream write. Retain that failure until a new
     // transport lifetime, rather than let a late generated title overwrite a manual name.
     await this.nameWrites.get(id);
@@ -100,22 +121,66 @@ export class ThreadTitles {
   private start(id: string, text: string): void {
     const candidate = this.candidates.get(id);
     // Retry only on a later user-message event, never while another attempt is pending.
-    if (!candidate || this.closed || !text.trim() || this.jobs.has(id) || this.nameWrites.has(id))
+    const reason = !candidate
+      ? 'not_candidate'
+      : this.closed
+        ? 'transport_closed'
+        : !text.trim()
+          ? 'empty_message'
+          : this.jobs.has(id)
+            ? 'already_running'
+            : this.nameWrites.has(id)
+              ? 'name_write_pending'
+              : undefined;
+    if (reason) {
+      this.logger.debug('thread_title.skipped', { threadId: id, reason });
       return;
+    }
     let finish!: Job['finish'];
     const completed = new Promise<Turn | null>((resolve) => {
       finish = resolve;
     });
-    const job: Job = { cancelled: false, terminal: false, finish };
+    const jobId = randomUUID();
+    const context = this.inputContexts.get(id) ?? logContext();
+    const logger = this.logger.child({ ...context, threadId: id, jobId });
+    const job: Job = {
+      cancelled: false,
+      terminal: false,
+      finish,
+      logger,
+      stage: 'source_read',
+      started: performance.now(),
+    };
+    logger.info('thread_title.started');
     this.jobs.set(id, job);
     this.armTimeout(job);
-    void this.generate(id, text, candidate, job, completed)
-      .catch(() => {
-        /* Keep the upstream preview; naming must never fail the user's task. */
+    void withLogContext({ ...context, threadId: id, sourceThreadId: id, jobId }, () =>
+      this.generate(id, text, candidate!, job, completed),
+    )
+      .catch((error: unknown) => {
+        job.reason ??= 'TITLE_RPC_FAILED';
+        logger.warn('thread_title.error', { stage: job.stage, ...errorFields(error) });
       })
       .finally(() => {
         clearTimeout(job.timer);
         this.jobs.delete(id);
+        const outcome =
+          job.outcome ??
+          (['MANUAL_NAME', 'NAME_UPDATED', 'CANCELLED', 'TRANSPORT_CLOSED'].includes(
+            job.reason ?? '',
+          )
+            ? 'cancelled'
+            : job.reason
+              ? 'failed'
+              : 'skipped');
+        logger[outcome === 'failed' ? 'warn' : 'info']('thread_title.finished', {
+          stage: job.stage,
+          outcome,
+          errorCode: job.reason,
+          reason: job.detail,
+          durationMs: Math.round(performance.now() - job.started!),
+          temporaryThreadId: job.threadId,
+        });
       });
   }
 
@@ -134,7 +199,8 @@ export class ThreadTitles {
     if (this.internal.has(id)) {
       const job = this.internal.get(id);
       if (job && event.method === 'item/completed' && event.params.item.type === 'agentMessage') {
-        if (Buffer.byteLength(event.params.item.text) > TITLE_RESPONSE_MAX_BYTES) this.cancel(job);
+        if (Buffer.byteLength(event.params.item.text) > TITLE_RESPONSE_MAX_BYTES)
+          this.cancel(job, 'TITLE_OUTPUT_TOO_LARGE');
         else job.output = event.params.item.text;
       }
       if (job && (event.method === 'turn/started' || event.method === 'turn/completed')) {
@@ -144,18 +210,35 @@ export class ThreadTitles {
           job.finish(event.params.turn);
         }
       }
-      if (job && event.method === 'error' && !event.params.willRetry) this.cancel(job);
+      if (job && event.method === 'error') {
+        const info = event.params.error.codexErrorInfo;
+        const errorCode =
+          typeof info === 'string' ? info : info ? Object.keys(info)[0] : 'UPSTREAM_ERROR';
+        job.logger?.warn('thread_title.upstream_failed', {
+          temporaryThreadId: id,
+          stage: job.stage,
+          errorCode,
+          willRetry: event.params.willRetry,
+        });
+        if (!event.params.willRetry) this.cancel(job, 'UPSTREAM_ERROR');
+      }
       if (event.method === 'thread/closed') this.internal.delete(id);
       return true;
     }
     if (event.method === 'thread/name/updated') {
       const source = this.candidates.get(id);
       if (source) source.thread.name = event.params.threadName ?? null;
-      if (event.params.threadName) this.candidates.delete(id);
+      if (event.params.threadName) {
+        this.candidates.delete(id);
+        this.inputContexts.delete(id);
+      }
       const job = this.jobs.get(id);
-      if (job) this.cancel(job);
+      if (job) this.cancel(job, 'NAME_UPDATED');
     }
-    if (event.method === 'thread/closed') this.candidates.delete(id);
+    if (event.method === 'thread/closed') {
+      this.candidates.delete(id);
+      this.inputContexts.delete(id);
+    }
     if (event.method === 'item/completed' && event.params.item.type === 'userMessage') {
       const text = event.params.item.content
         .flatMap((input) => {
@@ -173,14 +256,15 @@ export class ThreadTitles {
     return typeof threadId === 'string' && this.internal.has(threadId);
   }
 
-  private cancel(job: Job): void {
+  private cancel(job: Job, reason = 'CANCELLED'): void {
+    job.reason ??= reason;
     job.cancelled = true;
     job.finish(null);
   }
 
   private armTimeout(job: Job): void {
     clearTimeout(job.timer);
-    job.timer = setTimeout(() => this.cancel(job), this.timeoutMs);
+    job.timer = setTimeout(() => this.cancel(job, 'TITLE_TIMEOUT'), this.timeoutMs);
     job.timer.unref();
   }
 
@@ -196,7 +280,9 @@ export class ThreadTitles {
     model: string,
     threadSource: string,
     permissions?: string,
+    job?: Job,
   ) {
+    if (job) job.stage = 'config_read';
     // Config reads may redact values to empty strings. Override only enabled flags,
     // never round-trip the returned server definitions (timeouts/credentials/etc.).
     // The filesystem sandbox does not constrain MCP tools.
@@ -259,6 +345,7 @@ export class ThreadTitles {
       selectedCapabilityRoots: [],
       config: overrides,
     };
+    if (job) job.stage = 'temporary_thread_start';
     return this.call('thread/start', params);
   }
 
@@ -272,6 +359,10 @@ export class ThreadTitles {
       finish = resolve;
     });
     const job: Job = { cancelled: false, terminal: false, finish };
+    const logger = this.logger.child({ ...logContext(), threadId: id, jobId: randomUUID() });
+    const started = performance.now();
+    logger.info('recap.started');
+    let succeeded = false;
     this.jobs.set(key, job);
     this.armTimeout(job);
     try {
@@ -320,8 +411,17 @@ export class ThreadTitles {
         Buffer.byteLength(value.summary) > TITLE_RESPONSE_MAX_BYTES
       )
         throw new CodexError('RECAP_FAILED', 'Recap returned an invalid response');
+      succeeded = true;
       return value.summary.trim();
+    } catch (error) {
+      logger.warn('recap.failed', errorFields(error));
+      throw error;
     } finally {
+      logger.info('recap.finished', {
+        outcome: succeeded ? 'succeeded' : 'failed',
+        reason: job.reason,
+        durationMs: Math.round(performance.now() - started),
+      });
       clearTimeout(job.timer);
       this.jobs.delete(key);
       if (job.threadId && !this.closed) {
@@ -344,8 +444,13 @@ export class ThreadTitles {
   ): Promise<void> {
     try {
       const before = await this.call('thread/read', { threadId: id, includeTurns: false });
-      if (job.cancelled || before.thread.id !== id) return;
+      if (job.cancelled || before.thread.id !== id) {
+        job.reason ??= 'SOURCE_MISMATCH';
+        return;
+      }
       if (before.thread.name) {
+        job.outcome = 'skipped';
+        job.reason = 'NAME_EXISTS';
         this.candidates.delete(id);
         return;
       }
@@ -355,6 +460,10 @@ export class ThreadTitles {
         this.hasChatgptAccount,
         this.models,
       );
+      job.logger?.info('thread_title.model_selected', {
+        model,
+        provider: before.thread.modelProvider,
+      });
       const profile = source.activePermissionProfile?.id;
       const permissions = profile && !profile.startsWith(':') ? profile : undefined;
       const generated = await this.startTemporary(
@@ -362,17 +471,22 @@ export class ThreadTitles {
         model,
         'thread_title',
         permissions,
+        job,
       );
       job.threadId = generated.thread.id;
+      job.logger?.debug('thread_title.temporary_created', { temporaryThreadId: job.threadId });
       this.internal.set(job.threadId, job);
       if (job.cancelled) return;
       if (
         permissions
           ? generated.activePermissionProfile?.id !== permissions
           : generated.sandbox.type !== 'readOnly'
-      )
+      ) {
+        job.reason = 'ISOLATION_MISMATCH';
         return;
+      }
       this.armTimeout(job);
+      job.stage = 'turn_start';
       const { turn } = await this.call('turn/start', {
         threadId: job.threadId,
         input: [
@@ -390,16 +504,43 @@ export class ThreadTitles {
         job.terminal = true;
         job.finish(turn);
       }
+      job.stage = 'generation';
       const result = await completed;
       clearTimeout(job.timer);
-      if (job.cancelled || result?.status !== 'completed') return;
+      if (job.cancelled || result?.status !== 'completed') {
+        job.reason ??= 'TITLE_TURN_FAILED';
+        return;
+      }
+      job.stage = 'output_validation';
       const output =
         result.items.filter((item) => item.type === 'agentMessage').at(-1)?.text ?? job.output;
       const title = output ? parseTitle(output) : undefined;
-      if (!title) return;
+      if (!title) {
+        job.reason = 'INVALID_TITLE_OUTPUT';
+        job.detail = 'invalid_schema';
+        if (!output) job.detail = 'missing_output';
+        else
+          try {
+            const value: unknown = JSON.parse(output);
+            if (isRecord(value) && typeof value.title === 'string' && !value.title.trim())
+              job.detail = 'empty_title';
+          } catch {
+            job.detail = 'invalid_json';
+          }
+        return;
+      }
+      job.logger?.debug('thread_title.output_validated', {
+        outputBytes: Buffer.byteLength(output!),
+      });
+      job.stage = 'name_read';
       // An explicit name always wins, including one set while inference was running.
       const latest = await this.call('thread/read', { threadId: id, includeTurns: false });
-      if (job.cancelled || latest.thread.id !== id || latest.thread.name) return;
+      if (job.cancelled || latest.thread.id !== id || latest.thread.name) {
+        job.reason ??= latest.thread.name ? 'NAME_EXISTS' : 'SOURCE_MISMATCH';
+        job.outcome = 'skipped';
+        return;
+      }
+      job.stage = 'name_write';
       const write = this.call('thread/name/set', { threadId: id, name: title });
       this.nameWrites.set(id, write);
       void write.then(
@@ -409,6 +550,9 @@ export class ThreadTitles {
         },
       );
       await write;
+      this.inputContexts.delete(id);
+      job.outcome = 'succeeded';
+      job.reason = undefined;
       this.candidates.delete(id);
     } finally {
       if (job.threadId && !this.closed) {

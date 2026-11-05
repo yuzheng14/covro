@@ -1,3 +1,6 @@
+import { nullLogger, type Logger } from '../logging/logger.js';
+import { errorFields } from '../logging/fields.js';
+import { logContext } from '../logging/context.js';
 import { EventEmitter } from 'node:events';
 import { AppError } from '../shared/errors.js';
 import type { Readable, Writable } from 'node:stream';
@@ -77,6 +80,7 @@ type Pending = {
   timer: NodeJS.Timeout;
 };
 export type TransportOptions = {
+  logger?: Logger;
   timeoutMs?: number;
   maxLineBytes?: number;
   maxPending?: number;
@@ -134,10 +138,25 @@ export class RpcTransport extends EventEmitter {
       return Promise.reject(new CodexError('PROTOCOL_ERROR', 'Duplicate outgoing RPC id'));
     if (this.pending.size >= (this.options.maxPending ?? 256))
       return Promise.reject(new CodexError('CODEX_BUSY', 'Too many pending Codex requests'));
+    const logger = (this.options.logger ?? nullLogger).child({
+      ...logContext(),
+      method,
+      rpcId: id,
+      ...(isRecord(params) ? { threadId: params.threadId } : {}),
+    });
+    const started = performance.now();
+    logger.debug('rpc.started');
     return new Promise<T>((resolve, reject) => {
+      const rejectLogged = (error: Error) => {
+        logger.warn('rpc.failed', {
+          ...errorFields(error),
+          durationMs: Math.round(performance.now() - started),
+        });
+        reject(error);
+      };
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(
+        rejectLogged(
           new CodexError(
             'RESULT_UNKNOWN',
             `Codex ${method} acknowledgement timed out; it may have executed`,
@@ -145,7 +164,15 @@ export class RpcTransport extends EventEmitter {
           ),
         );
       }, timeoutMs);
-      this.pending.set(id, { method, resolve: (result) => resolve(result as T), reject, timer });
+      this.pending.set(id, {
+        method,
+        timer,
+        reject: rejectLogged,
+        resolve: (result) => {
+          logger.debug('rpc.completed', { durationMs: Math.round(performance.now() - started) });
+          resolve(result as T);
+        },
+      });
       void this.write({ id, method, params }).catch((error: unknown) => {
         const pending = this.pending.get(id);
         if (!pending) return;
@@ -171,6 +198,10 @@ export class RpcTransport extends EventEmitter {
       pendingRequests: [...this.pending].map(([id, pending]) => ({ id, method: pending.method })),
     });
     this.failure = error;
+    (this.options.logger ?? nullLogger).error('rpc.transport_failed', {
+      ...errorFields(error),
+      pendingRequests: this.pending.size,
+    });
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(error);

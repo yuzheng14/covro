@@ -5,6 +5,7 @@ import { AppError } from '../../src/shared/errors.js';
 import { submittedUserMessage } from '../../src/shared/user-message.js';
 import type { TurnView } from '../../src/shared/types.js';
 import { deferred, harness, operationId } from './domain-helpers.js';
+import { captureLogger } from '../fixtures/logging.js';
 
 const resources: ReturnType<typeof harness>[] = [];
 afterEach(async () => {
@@ -14,7 +15,8 @@ afterEach(async () => {
   }
 });
 async function setup() {
-  const ctx = harness();
+  const logs = captureLogger();
+  const ctx = harness(logs.logger);
   resources.push(ctx);
   const created = await ctx.service.createThread('project', { clientOperationId: operationId() });
   const id = (created.result as { threadId: string }).threadId;
@@ -46,7 +48,7 @@ async function setup() {
     turn.items.push(item);
     ctx.codex.emit({ type: 'item', threadId: id, turnId, item });
   };
-  return { ...ctx, id, gate, entered, turn, start, input, send, echo };
+  return { ...ctx, id, gate, entered, turn, start, input, send, echo, logs };
 }
 
 it.each([true, false])(
@@ -87,6 +89,20 @@ it.each([true, false])(
     expect(confirmed.turns[0]!.items.filter((i) => i.type === 'userMessage')).toHaveLength(1);
     expect(ctx.store.pendingMessages(ctx.id)).toEqual([]);
     expect(ctx.store.get(ctx.input.clientOperationId)).not.toHaveProperty('text');
+    const messages = ctx.logs.records.filter(
+      (record) =>
+        record.operationId === ctx.input.clientOperationId &&
+        String(record.event).startsWith('user_message.'),
+    );
+    expect(messages.map((record) => record.event)).toEqual(
+      echoFirst
+        ? ['user_message.pending', 'user_message.confirmed']
+        : ['user_message.pending', 'user_message.submitted', 'user_message.confirmed'],
+    );
+    expect(messages).toEqual(messages.map(() => expect.objectContaining({ threadId: ctx.id })));
+    expect(messages.at(-1)).toMatchObject({ turnId: ctx.turn.id });
+    expect(JSON.stringify(ctx.logs.records)).not.toContain(ctx.input.text);
+    expect(JSON.stringify(ctx.logs.records)).not.toContain(ctx.input.images[0]);
   },
 );
 
@@ -131,6 +147,15 @@ it('recovers persisted content and attachments as unknown without replaying a su
       { status: 'unknown', item: { text: ctx.input.text, images: ctx.input.images } },
     ]);
     expect(ctx.start).toHaveBeenCalledTimes(1);
+    expect(ctx.logs.records.filter((record) => record.event === 'user_message.unknown')).toEqual([
+      expect.objectContaining({
+        operationId: ctx.input.clientOperationId,
+        threadId: ctx.id,
+        state: 'unknown',
+        reason: 'runtime_recovery',
+        level: 40,
+      }),
+    ]);
     ctx.echo();
     expect((await restored.getThread(ctx.id)).pendingMessages).toBeUndefined();
   } finally {
@@ -138,19 +163,44 @@ it('recovers persisted content and attachments as unknown without replaying a su
   }
 });
 
-it('retains a definite rejection across recovery until native evidence confirms delivery', async () => {
-  const ctx = await setup();
-  const sending = ctx.send();
-  const rejected = expect(sending).rejects.toMatchObject({ code: 'CODEX_REQUEST_FAILED' });
-  await ctx.entered.promise;
-  ctx.gate.reject(new AppError('CODEX_REQUEST_FAILED', 'rejected', 400));
-  await rejected;
-  expect((await ctx.service.getThread(ctx.id)).pendingMessages?.[0]?.status).toBe('failed');
-  ctx.store.recover();
-  expect(ctx.store.pendingMessages(ctx.id)[0]?.status).toBe('failed');
-  ctx.echo();
-  expect((await ctx.service.getThread(ctx.id)).pendingMessages).toBeUndefined();
-});
+it.each([false, true])(
+  'retains a rejection across recovery until native confirmation; uncertain=%s',
+  async (uncertain) => {
+    const ctx = await setup();
+    const sending = ctx.send();
+    const rejected = expect(sending).rejects.toMatchObject({
+      code: uncertain ? 'RESULT_UNKNOWN' : 'CODEX_REQUEST_FAILED',
+    });
+    await ctx.entered.promise;
+    ctx.gate.reject(
+      Object.assign(new AppError('CODEX_REQUEST_FAILED', 'PRIVATE_REJECTION', 400), { uncertain }),
+    );
+    await rejected;
+    expect((await ctx.service.getThread(ctx.id)).pendingMessages?.[0]?.status).toBe(
+      uncertain ? 'unknown' : 'failed',
+    );
+    ctx.store.recover();
+    expect(ctx.store.pendingMessages(ctx.id)[0]?.status).toBe(uncertain ? 'unknown' : 'failed');
+    expect(
+      ctx.logs.records.filter(
+        (record) =>
+          record.event === 'user_message.failed' || record.event === 'user_message.unknown',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        operationId: ctx.input.clientOperationId,
+        threadId: ctx.id,
+        event: uncertain ? 'user_message.unknown' : 'user_message.failed',
+        errorCode: uncertain ? 'RESULT_UNKNOWN' : 'CODEX_REQUEST_FAILED',
+        uncertain,
+        level: 40,
+      }),
+    ]);
+    expect(JSON.stringify(ctx.logs.records)).not.toContain('PRIVATE_REJECTION');
+    ctx.echo();
+    expect((await ctx.service.getThread(ctx.id)).pendingMessages).toBeUndefined();
+  },
+);
 
 it('persists steering with its exact turn and never creates a prompt for empty capacity continuations', async () => {
   const ctx = await setup();
@@ -179,6 +229,14 @@ it('persists steering with its exact turn and never creates a prompt for empty c
   ]);
   ctx.codex.emit({ type: 'turn', threadId: ctx.id, turn: { ...ctx.turn, status: 'interrupted' } });
   expect((await ctx.service.getThread(ctx.id)).pendingMessages?.[0]?.status).toBe('unknown');
+  ctx.codex.emit({ type: 'turn', threadId: ctx.id, turn: { ...ctx.turn, status: 'interrupted' } });
+  expect(ctx.logs.records.filter((record) => record.event === 'user_message.unknown')).toEqual([
+    expect.objectContaining({
+      operationId: input.clientOperationId,
+      reason: 'turn_finished',
+      turnId: ctx.turn.id,
+    }),
+  ]);
   const emptyId = operationId();
   await ctx.service.startTurn(ctx.id, { clientOperationId: emptyId, text: '' });
   expect(ctx.store.pendingMessages(ctx.id).some((message) => message.id === emptyId)).toBe(false);

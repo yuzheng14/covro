@@ -1,3 +1,5 @@
+import { nullLogger, type Logger } from '../logging/logger.js';
+import { errorFields } from '../logging/fields.js';
 import { BackupManager } from '../backups/manager.js';
 import { createBackupStore } from '../backups/factory.js';
 import { assertNoPendingRestore } from '../backups/restore.js';
@@ -24,6 +26,7 @@ import { startManagedMcp } from './mcp/server.js';
 export async function startGateway(
   config: AppConfig,
   overrides: {
+    logger?: Logger;
     codex?: CodexClient;
     staticDir?: string;
     migrationsDir?: string;
@@ -32,6 +35,9 @@ export async function startGateway(
     maintenance?: boolean;
   } = {},
 ) {
+  const logger = overrides.logger ?? nullLogger;
+  const started = performance.now();
+  logger.info('gateway.starting');
   const release = await acquireInstanceLock(config.dataDir);
   let closeDatabase: (() => void) | undefined;
   let codex: CodexClient | undefined;
@@ -39,7 +45,12 @@ export async function startGateway(
   let backups: BackupController | undefined = overrides.backups;
   const updates =
     overrides.updates ??
-    new UpdateManager(undefined, undefined, () => codex?.diagnostics().codexVersion ?? null);
+    new UpdateManager(
+      undefined,
+      undefined,
+      () => codex?.diagnostics().codexVersion ?? null,
+      logger.child({ component: 'updates' }),
+    );
   try {
     const source = configSource(config);
     const backupStore = source
@@ -49,20 +60,28 @@ export async function startGateway(
     const db = openDatabase(join(config.dataDir, 'app.sqlite'));
     closeDatabase = db.close;
     const packagedMigrations = fileURLToPath(new URL('../drizzle', import.meta.url));
+    logger.info('database.migration_started');
     migrateDatabase(
       db.database,
       overrides.migrationsDir ?? (existsSync(packagedMigrations) ? packagedMigrations : undefined),
     );
+    logger.info('database.migration_completed');
     let gateway: GatewayService | undefined;
-    mcp = await startManagedMcp({ service: () => gateway, publicOrigin: config.publicOrigin[0]! });
+    mcp = await startManagedMcp({
+      service: () => gateway,
+      publicOrigin: config.publicOrigin[0]!,
+      logger: logger.child({ component: 'mcp' }),
+    });
     codex =
       overrides.codex ??
       new CodexAdapter({
         ...config.codex,
+        logger,
         managedMcp: { name: mcp.name, url: mcp.url },
       });
     const service = new GatewayService({
-      store: new OperationStore(db.database),
+      logger,
+      store: new OperationStore(db.database, logger.child({ component: 'operations' })),
       projects: new ProjectRegistry(config.projects, db.database),
       codex,
       workspacesRoot: join(config.dataDir, 'workspaces'),
@@ -72,7 +91,9 @@ export async function startGateway(
     });
     gateway = service;
     service.setMaintenance(overrides.maintenance ?? false);
-    backups ??= backupStore ? new BackupManager(backupStore, service) : undefined;
+    backups ??= backupStore
+      ? new BackupManager(backupStore, service, { logger: logger.child({ component: 'backups' }) })
+      : undefined;
     try {
       await codex.start();
     } catch {
@@ -85,6 +106,7 @@ export async function startGateway(
       staticDir: overrides.staticDir ?? fileURLToPath(new URL('../web', import.meta.url)),
       updates,
       backups,
+      logger: logger.child({ component: 'http' }),
     });
     const server = serve({
       fetch: app.fetch,
@@ -100,6 +122,7 @@ export async function startGateway(
     let closing: Promise<void> | undefined;
     const close = (): Promise<void> =>
       (closing ??= (async () => {
+        logger.info('gateway.stopping');
         stopHeartbeat();
         gateway = undefined;
         updates.close();
@@ -120,11 +143,17 @@ export async function startGateway(
             db.close();
           } finally {
             await release();
+            logger.info('gateway.stopped');
           }
         }
       })());
+    logger.info('gateway.ready', {
+      durationMs: Math.round(performance.now() - started),
+      port: config.port,
+    });
     return { app, server, service, codex, close, updates, backups, mcp };
   } catch (error) {
+    logger.error('gateway.start_failed', errorFields(error));
     await mcp?.close();
     updates.close();
     await backups?.close();
