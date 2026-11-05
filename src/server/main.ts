@@ -1,3 +1,7 @@
+import { createLogging } from '../logging/logger.js';
+import { loggingOptions } from '../logging/config.js';
+import { monitorCrashes } from '../logging/lifecycle.js';
+import { paths, packageInfo } from '../cli/paths.js';
 import { nullLogger, type Logger } from '../logging/logger.js';
 import { errorFields } from '../logging/fields.js';
 import { BackupManager } from '../backups/manager.js';
@@ -170,25 +174,45 @@ export async function startGateway(
   }
 }
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  let logging: Awaited<ReturnType<typeof createLogging>> | undefined;
+  let removeMonitor: (() => void) | undefined;
   try {
     const config = await loadConfig();
-    const runtime = await startGateway(config);
-    console.log(`Codex Web UI listening on ${config.host}:${config.port}`);
-    console.log(`Allowed origins: ${config.publicOrigin.join(', ')}`);
+    logging = await createLogging(
+      loggingOptions(paths(configSource(config)?.path).logs, packageInfo.version),
+    );
+    removeMonitor = monitorCrashes(logging.logger, logging.flushSync);
+    const runtime = await startGateway(config, { logger: logging.logger });
     const stop = () => {
-      void runtime.close().then(
-        () => {
-          process.exitCode = 0;
-        },
-        () => {
-          process.exitCode = 1;
-        },
-      );
+      void runtime
+        .close()
+        .finally(async () => {
+          removeMonitor?.();
+          await logging?.close();
+        })
+        .then(
+          () => {
+            process.exitCode = 0;
+          },
+          () => {
+            process.exitCode = 1;
+          },
+        );
     };
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : 'Startup failed');
+    logging?.logger.error('process.start_failed', errorFields(error));
+    removeMonitor?.();
+    await logging?.close();
+    console.error(
+      JSON.stringify({
+        time: new Date().toISOString(),
+        level: 60,
+        event: 'process.start_failed',
+        ...errorFields(error),
+      }),
+    );
     process.exitCode = 1;
   }
 }

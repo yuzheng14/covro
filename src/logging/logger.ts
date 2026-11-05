@@ -1,3 +1,4 @@
+import { writeSync } from 'node:fs';
 import pino from 'pino';
 import roll from 'pino-roll';
 import { randomUUID } from 'node:crypto';
@@ -76,12 +77,14 @@ export async function createLogging(options: LoggingOptions) {
   const fallback =
     options.fallback ??
     ((line: string) => {
-      process.stderr.write(line);
+      // A failed stderr stream can emit an asynchronous unhandled error.
+      // This rare, rate-limited fallback must fail synchronously inside our catch.
+      writeSync(2, line);
     });
   let lastFallback = 0;
   let closed = false;
-  const report = (errorCode: string) => {
-    health.mode = 'stderr';
+  const report = (errorCode: string, disable = true) => {
+    if (disable) health.mode = 'stderr';
     health.errorCode = errorCode;
     if (Date.now() - lastFallback < 10_000) return;
     lastFallback = Date.now();
@@ -90,7 +93,7 @@ export async function createLogging(options: LoggingOptions) {
         JSON.stringify({
           time: new Date().toISOString(),
           level: 50,
-          event: 'logging.write_failed',
+          event: disable ? 'logging.write_failed' : 'logging.cleanup_failed',
           runId,
           errorCode,
         }) + '\n',
@@ -104,7 +107,7 @@ export async function createLogging(options: LoggingOptions) {
     cleanLogs(options.directory, {
       maxAgeDays: options.maxAgeDays ?? 14,
       maxTotalBytes: options.maxTotalBytes ?? 200 * 1024 * 1024,
-      activeRunIds: [runId],
+      activeRunIds: closed ? [] : [runId],
     });
   try {
     await mkdir(options.directory, { recursive: true, mode: 0o700 });
@@ -148,7 +151,7 @@ export async function createLogging(options: LoggingOptions) {
         stream!.once('error', reject);
       });
     stream.on('ready', () => {
-      void cleanup().catch(() => report('LOG_CLEANUP_FAILED'));
+      void cleanup().catch(() => report('LOG_CLEANUP_FAILED', false));
     });
   } catch {
     report('LOG_INIT_FAILED');
@@ -186,7 +189,7 @@ export async function createLogging(options: LoggingOptions) {
   );
   const logger = wrapLogger(output, { component: options.component ?? 'gateway' });
   const timer = setInterval(() => {
-    void cleanup().catch(() => report('LOG_CLEANUP_FAILED'));
+    void cleanup().catch(() => report('LOG_CLEANUP_FAILED', false));
   }, 60_000);
   timer.unref();
   let closing: Promise<void> | undefined;
@@ -217,9 +220,20 @@ export async function createLogging(options: LoggingOptions) {
       });
       closed = true;
       await unlink(marker).catch(() => {});
-      await cleanup().catch(() => report('LOG_CLEANUP_FAILED'));
+      await cleanup().catch(() => report('LOG_CLEANUP_FAILED', false));
     })());
-  return { logger, health: () => ({ ...health }), close };
+  return {
+    logger,
+    health: () => ({ ...health }),
+    close,
+    flushSync: () => {
+      try {
+        if (stream && !stream.destroyed) stream.flushSync();
+      } catch {
+        report('LOG_FLUSH_FAILED');
+      }
+    },
+  };
 }
 export function logLevel(env = process.env): LogLevel {
   const value = env.COVRO_LOG_LEVEL ?? 'info';

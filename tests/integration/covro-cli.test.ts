@@ -65,7 +65,7 @@ it('runs the real daemon, reuses its private control socket, and preserves its d
       await once(foreground, 'exit');
     }
   });
-  let first: { pid: number } | undefined;
+  let first: { pid: number; logging?: { directory: string; mode: string } } | undefined;
   for (let attempt = 0; attempt < 100; attempt++) {
     try {
       const result = await cli('status');
@@ -76,6 +76,15 @@ it('runs the real daemon, reuses its private control socket, and preserves its d
     }
   }
   expect(first?.pid).toBe(foreground.pid);
+  expect(first?.logging).toMatchObject({
+    mode: 'file',
+    directory: expect.stringContaining('logs'),
+  });
+  const logs = (await cli('logs', '--event', 'daemon.ready', '--json')).stdout
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line));
+  expect(logs).toContainEqual(expect.objectContaining({ event: 'daemon.ready' }));
   const again = JSON.parse((await cli('start')).stdout) as { pid: number };
   expect(again.pid).toBe(first?.pid);
   expect((await fetch(`${origin}/api/projects`)).ok).toBe(true);
@@ -92,6 +101,9 @@ it('runs the real daemon, reuses its private control socket, and preserves its d
   await cli('stop');
   if (foreground.exitCode === null) await once(foreground, 'exit');
   expect((await cli('status')).stdout).toContain('未运行');
+  expect((await cli('logs', '--event', 'gateway.stopped', '--json')).stdout).toContain(
+    'gateway.stopped',
+  );
   expect(JSON.parse((await cli('backup', 'verify', backup.id)).stdout).schemaVersion).toBe(
     verifyDatabaseContract().schemaVersion,
   );
