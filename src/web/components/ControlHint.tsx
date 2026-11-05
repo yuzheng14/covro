@@ -25,6 +25,7 @@ export function ControlHint({
   suppressed = false,
   toggleOnClick = false,
   className,
+  tooltipClassName,
   asChild = false,
   side = 'top',
   align = 'end',
@@ -35,6 +36,7 @@ export function ControlHint({
   suppressed?: boolean;
   toggleOnClick?: boolean;
   className?: string;
+  tooltipClassName?: string;
   asChild?: boolean;
   side?: ComponentProps<typeof TooltipContent>['side'];
   align?: ComponentProps<typeof TooltipContent>['align'];
@@ -106,6 +108,7 @@ export function ControlHint({
         {/* Keep descriptions available while closed without adding layout children. */}
         {asChild && <TooltipPortal forceMount>{description}</TooltipPortal>}
         <TooltipContent
+          className={tooltipClassName}
           container={portalContainer}
           side={side}
           align={align}
