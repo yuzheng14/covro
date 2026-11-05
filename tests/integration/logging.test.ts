@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { mkdtemp, readFile, rm, stat, utimes, writeFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -164,4 +165,34 @@ it('bounds buffered writes and reports dropped records', async () => {
 it('validates the configured level instead of silently enabling verbose output', () => {
   expect(logLevel({ COVRO_LOG_LEVEL: 'debug' })).toBe('debug');
   expect(() => logLevel({ COVRO_LOG_LEVEL: 'all' })).toThrow('COVRO_LOG_LEVEL');
+});
+
+it('degrades on an asynchronous disk error without exposing error text or failing the caller', async () => {
+  const root = await directory();
+  const lines: string[] = [];
+  const logging = await createLogging({
+    directory: root,
+    version: 'test',
+    fallback: (line) => lines.push(line),
+  });
+  const write = vi.spyOn(fs, 'write');
+  write.mockImplementationOnce(((...args: unknown[]) => {
+    const callback = args.findLast((value) => typeof value === 'function') as (
+      error: Error,
+    ) => void;
+    queueMicrotask(() =>
+      callback(Object.assign(new Error('SECRET_DISK_ERROR'), { code: 'ENOSPC' })),
+    );
+  }) as typeof fs.write);
+  try {
+    expect(() => logging.logger.info('test.disk_error', { prompt: 'SECRET_PROMPT' })).not.toThrow();
+    await vi.waitFor(() =>
+      expect(logging.health()).toMatchObject({ mode: 'stderr', errorCode: 'ENOSPC' }),
+    );
+    expect(lines.join('')).toContain('logging.write_failed');
+    expect(lines.join('')).not.toContain('SECRET');
+  } finally {
+    write.mockRestore();
+    await logging.close();
+  }
 });

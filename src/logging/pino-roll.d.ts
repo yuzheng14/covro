@@ -2,6 +2,7 @@ declare module 'pino-roll' {
   import type { EventEmitter } from 'node:events';
   interface RollingStream extends EventEmitter {
     write(data: string): boolean;
+    flushSync(): void;
     flush(callback: (error?: Error) => void): void;
     end(): void;
     destroyed: boolean;

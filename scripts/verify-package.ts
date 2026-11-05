@@ -1,3 +1,4 @@
+import { verifyLoggingWorker } from './verify-logging-worker.js';
 import { verifyDatabaseContract } from './verify-database-contract.js';
 import { npmPackageName } from '../src/shared/package.js';
 import { verifyCompatibility } from './sync-compatibility.js';
@@ -17,6 +18,9 @@ for (const required of [
   'dist/shared/codex-compatibility.js',
   'dist/shared/package.js',
   'dist/server/main.js',
+  'dist/logging/logger.js',
+  'dist/logging/config.js',
+  'dist/cli/logs.js',
   'dist/web/index.html',
   'dist/web/notification-worker.js',
   'dist/update-worker.cjs',
@@ -37,3 +41,5 @@ execFileSync(process.execPath, ['bin/covro.mjs', '--help'], { stdio: 'pipe' });
 console.log(
   `PASS: covro npm package includes ${files.length} intended files and a working CLI entry`,
 );
+
+await verifyLoggingWorker();

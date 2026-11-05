@@ -1,6 +1,7 @@
+import { readLogs, parseSince, validateQuery, type LogQuery } from './logs.js';
+import type { LogLevel } from '../logging/logger.js';
 import { backupCommand } from './backup.js';
 import type { UpdateStatus } from '../shared/updates.js';
-import { open } from 'node:fs/promises';
 import { join } from 'node:path';
 import { control, isNotRunning } from './control.js';
 import { startBackground as startManagedBackground, stopBackground } from './background.js';
@@ -17,11 +18,19 @@ export function parseArguments(args: string[]) {
   let channel: 'stable' | 'beta' | 'dev' | undefined;
   let confirm: string | undefined;
   let recoveryDataDir: string | undefined;
+  const logQuery: LogQuery = {};
   let allowDowngrade = false;
   let allowUnverifiedCodex = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
-    if (arg === '--config' && args[i + 1]) configPath = args[++i];
+    if (arg === '--follow') logQuery.follow = true;
+    else if (arg === '--json') logQuery.json = true;
+    else if (arg === '--thread' && args[i + 1]) logQuery.thread = args[++i];
+    else if (arg === '--event' && args[i + 1]) logQuery.event = args[++i];
+    else if (arg === '--level' && args[i + 1]) logQuery.level = args[++i] as LogLevel;
+    else if (arg === '--since' && args[i + 1]) logQuery.since = parseSince(args[++i]!);
+    else if (arg === '--lines' && args[i + 1]) logQuery.lines = Number(args[++i]);
+    else if (arg === '--config' && args[i + 1]) configPath = args[++i];
     else if (arg === '--channel' && ['stable', 'beta', 'dev'].includes(args[i + 1] ?? ''))
       channel = args[++i] as typeof channel;
     else if (arg === '--confirm' && args[i + 1]) confirm = args[++i];
@@ -37,6 +46,9 @@ export function parseArguments(args: string[]) {
     positional.length > (command === 'backup' ? 3 : ['service', 'update'].includes(command) ? 2 : 1)
   )
     throw new Error('Too many arguments');
+  if (Object.keys(logQuery).length && command !== 'logs')
+    throw new Error('Log options require covro logs');
+  validateQuery(logQuery);
   if ((channel || allowDowngrade || allowUnverifiedCodex) && command !== 'update')
     throw new Error('升级选项仅用于 update');
   if ((confirm || recoveryDataDir) && command !== 'backup')
@@ -51,6 +63,7 @@ export function parseArguments(args: string[]) {
     channel,
     allowDowngrade,
     allowUnverifiedCodex,
+    logQuery,
     location: paths(configPath),
   };
 }
@@ -76,6 +89,7 @@ export async function main(args = process.argv.slice(2)) {
     allowDowngrade,
     allowUnverifiedCodex,
     location,
+    logQuery,
   } = parseArguments(args);
   if (command === '--version') {
     console.log(packageInfo.version);
@@ -83,7 +97,7 @@ export async function main(args = process.argv.slice(2)) {
   }
   if (command === '--help' || command === 'help') {
     console.log(
-      'Covro\n\ncovro [start|run|stop|status|doctor|logs] [--config FILE]\ncovro update [status|repair] [--channel stable|beta|dev] [--allow-downgrade] [--allow-unverified-codex]\ncovro backup create|list|verify ID|restore ID|repair [--config FILE] [--confirm ID] [--data-dir DIR]\ncovro service install|uninstall [--config FILE]\n\n默认后台运行；service install 单独启用登录自启。doctor 从运行实例检查会话和 GitHub 凭证，不显示令牌。',
+      'Covro\n\ncovro [start|run|stop|status|doctor|logs] [--config FILE]\ncovro logs [--follow] [--thread ID] [--event EVENT] [--level LEVEL] [--since 1h] [--lines N] [--json]\ncovro update [status|repair] [--channel stable|beta|dev] [--allow-downgrade] [--allow-unverified-codex]\ncovro backup create|list|verify ID|restore ID|repair [--config FILE] [--confirm ID] [--data-dir DIR]\ncovro service install|uninstall [--config FILE]\n\n默认后台运行；service install 单独启用登录自启。doctor 从运行实例检查会话和 GitHub 凭证，不显示令牌。',
     );
     return;
   }
@@ -140,14 +154,24 @@ export async function main(args = process.argv.slice(2)) {
       console.log('Covro 未运行');
     }
   } else if (command === 'logs') {
-    const handle = await open(location.log, 'r');
+    const controller = new AbortController();
+    const stop = () => controller.abort();
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
     try {
-      const { size } = await handle.stat();
-      const buffer = Buffer.alloc(Math.min(size, 64 * 1024));
-      await handle.read(buffer, 0, buffer.length, Math.max(0, size - buffer.length));
-      console.log(buffer.toString('utf8'));
+      await readLogs(
+        location.logs,
+        logQuery,
+        async (line) => {
+          await new Promise<void>((resolve, reject) =>
+            process.stdout.write(line + '\n', (error) => (error ? reject(error) : resolve())),
+          );
+        },
+        controller.signal,
+      );
     } finally {
-      await handle.close();
+      process.removeListener('SIGINT', stop);
+      process.removeListener('SIGTERM', stop);
     }
   } else if (command === 'service' && ['install', 'uninstall'].includes(subcommand ?? '')) {
     await service(location, subcommand === 'install');

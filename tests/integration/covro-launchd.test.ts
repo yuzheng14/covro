@@ -44,6 +44,7 @@ beforeEach(async () => {
     key: 'test188',
     state: join(io.home, 'state'),
     log: join(io.home, 'state/covro.log'),
+    logs: join(io.home, 'state/logs'),
     socket: join(io.home, 'control.sock'),
   };
   await mkdir(location.state);

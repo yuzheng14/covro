@@ -1,3 +1,10 @@
+import { trimBootstrap } from '../logging/bootstrap.js';
+import { createLogging } from '../logging/logger.js';
+import { loggingOptions } from '../logging/config.js';
+import { monitorCrashes } from '../logging/lifecycle.js';
+import { errorFields } from '../logging/fields.js';
+import { withLogContext } from '../logging/context.js';
+import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { chmod, mkdir, rm } from 'node:fs/promises';
 import { acquireInstanceLock } from '../server/instance-lock.js';
@@ -12,13 +19,28 @@ import { runningRuntime } from './runtime.js';
 export async function runDaemon(configPath: string) {
   const location = paths(configPath);
   await mkdir(location.state, { recursive: true, mode: 0o700 });
+  const options = loggingOptions(location.logs, packageInfo.version);
   const release = await acquireInstanceLock(location.state);
+  await trimBootstrap(location.log).catch(() => {});
+  const logging = await createLogging(options);
+  const logger = logging.logger.child({ component: 'daemon' });
+  const removeMonitor = monitorCrashes(logger, logging.flushSync);
   let config: Awaited<ReturnType<typeof loadConfig>>;
   let runtime: Awaited<ReturnType<typeof startGateway>> | undefined;
   let updates: UpdateManager | undefined;
-  const context = await launchContext();
+  let context: Awaited<ReturnType<typeof launchContext>>;
+  let stage = 'config_read';
   const server = createServer((request, response) => {
-    void (async () => {
+    const requestId = randomUUID();
+    const requestLogger = logger.child({ requestId });
+    const started = performance.now();
+    response.once('finish', () =>
+      requestLogger.debug('control.completed', {
+        status: response.statusCode,
+        durationMs: Math.round(performance.now() - started),
+      }),
+    );
+    void withLogContext({ requestId }, async () => {
       response.setHeader('content-type', 'application/json');
       if (request.method !== 'POST') throw new Error('Expected POST');
       let body = '';
@@ -40,10 +62,11 @@ export async function runDaemon(configPath: string) {
             codexReady: runtime?.codex.ready ?? false,
             launchContext: context,
             runtime: runningRuntime(),
+            logging: logging.health(),
           }),
         );
       } else if (request.url === '/doctor') {
-        response.end(JSON.stringify(await doctor()));
+        response.end(JSON.stringify({ ...(await doctor()), logging: logging.health() }));
       } else if (request.url === '/stop') {
         await stop(() => response.end(JSON.stringify({ stopped: true })));
       } else if (request.url === '/prepare-update') {
@@ -81,7 +104,8 @@ export async function runDaemon(configPath: string) {
         response.statusCode = 404;
         response.end(JSON.stringify({ error: 'Unknown control action' }));
       }
-    })().catch((error: unknown) => {
+    }).catch((error: unknown) => {
+      requestLogger.warn('control.failed', errorFields(error));
       response.statusCode = 400;
       response.end(
         JSON.stringify({ error: error instanceof Error ? error.message : 'Control failed' }),
@@ -91,22 +115,41 @@ export async function runDaemon(configPath: string) {
   let stopping: Promise<void> | undefined;
   const stop = (respond?: () => void) =>
     (stopping ??= (async () => {
-      await runtime?.close();
-      respond?.();
-      await new Promise<void>((done) => server.close(() => done()));
-      if (process.platform !== 'win32') await rm(location.socket, { force: true });
-      await release();
+      let failure: unknown;
+      try {
+        await runtime?.close();
+      } catch (error) {
+        failure = error;
+        logger.error('daemon.stop_failed', errorFields(error));
+      }
+      try {
+        if (failure) server.closeAllConnections();
+        else respond?.();
+        await new Promise<void>((done) => server.close(() => done()));
+        if (process.platform !== 'win32') await rm(location.socket, { force: true });
+      } finally {
+        await release();
+        logger.info('daemon.stopped', { outcome: failure ? 'failed' : 'succeeded' });
+        removeMonitor();
+        await logging.close();
+      }
+      if (failure) throw failure;
     })());
   try {
+    context = await launchContext();
     config = await loadConfig({ configPath, development: false });
+    stage = 'update_initialize';
     updates = new UpdateManager(
       location,
       config.dataDir,
       () => runtime?.codex.diagnostics().codexVersion ?? null,
+      logger.child({ component: 'updates' }),
     );
     await updates.initialize();
     const maintenance = await updates.activationPending();
-    runtime = await startGateway(config, { updates, maintenance });
+    stage = 'gateway_start';
+    runtime = await startGateway(config, { updates, maintenance, logger });
+    stage = 'control_listener';
     if (process.platform !== 'win32') await rm(location.socket, { force: true });
     await new Promise<void>((done, reject) => {
       server.once('error', reject);
@@ -118,13 +161,36 @@ export async function runDaemon(configPath: string) {
       config: location.config,
       socket: location.socket,
     });
-    console.log(`Covro ${packageInfo.version} listening on ${config.publicOrigin[0]}`);
-    process.once('SIGINT', () => void stop());
-    process.once('SIGTERM', () => void stop());
+    logger.info('daemon.ready', { port: config.port });
+    process.once(
+      'SIGINT',
+      () =>
+        void stop().catch((error: unknown) => {
+          logger.error('daemon.stop_failed', errorFields(error));
+          process.exitCode = 1;
+        }),
+    );
+    process.once(
+      'SIGTERM',
+      () =>
+        void stop().catch((error: unknown) => {
+          logger.error('daemon.stop_failed', errorFields(error));
+          process.exitCode = 1;
+        }),
+    );
   } catch (error) {
+    logger.error('daemon.start_failed', { stage, ...errorFields(error) });
     updates?.close();
-    await runtime?.close();
-    await release();
-    throw error;
+    try {
+      await runtime?.close();
+    } finally {
+      await release();
+      removeMonitor();
+      await logging.close();
+    }
+    throw new Error(
+      'Covro startup failed; inspect covro logs for the failure stage and error code',
+      { cause: error },
+    );
   }
 }
