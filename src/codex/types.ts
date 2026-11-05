@@ -66,6 +66,11 @@ export interface CodexClient {
   start(): Promise<void>;
   stop(): Promise<void>;
   diagnostics(): CodexDiagnostics;
+  searchFiles?(
+    cwd: string,
+    query: string,
+    signal: AbortSignal,
+  ): Promise<import('./generated/FuzzyFileSearchResponse.js').FuzzyFileSearchResponse>;
   listSkills?(
     cwd: string,
     forceReload?: boolean,

@@ -400,6 +400,7 @@ export interface ResumeThreadInput extends CreateThreadInput {
   confirmExternalStopped?: boolean;
 }
 export interface TaskMessage {
+  files?: import('./file-references.js').FileReference[];
   skills?: import('./skills.js').SkillReference[];
   text: string;
   images?: string[];

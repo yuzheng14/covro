@@ -1261,6 +1261,7 @@ export function useWorkspace() {
       images?: string[],
       taskKind?: 'init',
       skills?: import('../../shared/skills').SkillReference[],
+      files?: import('../../shared/file-references').FileReference[],
     ) => {
       const project = projectRef.current;
       if (selectedRef.current || firstMessagesRef.current.has(project)) return false;
@@ -1288,8 +1289,8 @@ export function useWorkspace() {
           'send',
           id,
           `/api/threads/${encodeURIComponent(id)}/turns`,
-          { text, images, skills, settings, ...(taskKind ? { taskKind } : {}) },
-          { kind: 'send', key, text, images, skills },
+          { text, images, skills, files, settings, ...(taskKind ? { taskKind } : {}) },
+          { kind: 'send', key, text, images, skills, files },
         );
         return sent?.status === 'acknowledged';
       } finally {
