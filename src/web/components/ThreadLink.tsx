@@ -96,10 +96,13 @@ export function ThreadLink({
     ['completed', 'failed', 'interrupted'].includes(lastResult)
       ? lastResult
       : thread.status;
+  const questionCount = thread.pendingQuestionCount ?? 0;
+  const statusPendingCount =
+    thread.pendingActionCount + (status === 'waitingInput' ? questionCount : 0);
   const statusLabel = `${offline && isActive(status) ? t('common:last_known') : ''}${runStatusLabels[status]}${
     status === 'completed' && unreadCompletion ? t('sidebar:unread') : ''
-  }${thread.pendingActionCount > 0 ? t('sidebar:pending_requests_2', { count: thread.pendingActionCount, v0: thread.pendingActionCount }) : ''}`;
-  const questionCount = thread.pendingQuestionCount ?? 0;
+  }${statusPendingCount > 0 ? t('sidebar:pending_requests_2', { count: statusPendingCount, v0: statusPendingCount }) : ''}`;
+  const showQuestionIndicator = questionCount > 0 && status !== 'waitingInput';
   const questionLabel = `${t('conversation:awaiting_answer')}${t('sidebar:pending_requests_2', {
     count: questionCount,
     v0: questionCount,
@@ -136,13 +139,13 @@ export function ThreadLink({
             <span className="sr-only">
               {' · '}
               {statusLabel}
-              {questionCount > 0 ? ` · ${questionLabel}` : ''}
+              {showQuestionIndicator ? ` · ${questionLabel}` : ''}
             </span>
           </span>
         </button>
       </ControlHint>
       <div className="thread-row-actions">
-        {questionCount > 0 && (
+        {showQuestionIndicator && (
           <ThreadStatusIcon status="waitingInput" label={questionLabel} offline={offline} pending />
         )}
         {showStatus ? (
@@ -150,7 +153,7 @@ export function ThreadLink({
             status={status === 'completed' && !unreadCompletion ? 'idle' : status}
             label={statusLabel}
             offline={offline}
-            pending={thread.pendingActionCount > 0}
+            pending={statusPendingCount > 0}
           />
         ) : (
           <span className="thread-status-placeholder" aria-hidden="true" />
