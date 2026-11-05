@@ -241,6 +241,8 @@ test('uses a later user requirement in the same turn when it reaches the top', a
   await page.getByRole('textbox', { name: '追加要求', exact: true }).fill(requirement);
   await page.getByRole('button', { name: '追加要求', exact: true }).click();
   await expect(prompts(page)).toHaveCount(2);
+  // Submission now renders before the native echo; geometry assertions start after confirmation.
+  await expect(prompts(page).nth(1)).not.toHaveAttribute('data-submission-state');
   await movePrompt(prompts(page).first(), -1);
   await expect(sticky(page)).toContainText(original);
   await movePrompt(prompts(page).nth(1), -1);

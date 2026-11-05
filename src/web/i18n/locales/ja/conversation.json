@@ -127,5 +127,9 @@
   "capacity_cancelled_short": "キャンセル済み",
   "capacity_limit_short": "上限に到達",
   "turn_tokens": "このターン {{tokens}} トークン",
-  "turn_tokens_unknown": "ターンのトークン数は未報告"
+  "turn_tokens_unknown": "ターンのトークン数は未報告",
+  "submission_submitting": "送信中…",
+  "submission_submitted": "送信済み",
+  "submission_unknown": "送信結果の確認が必要",
+  "submission_failed": "送信に失敗しました"
 }

@@ -1,11 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {
-  expect,
-  type APIRequestContext,
-  type Locator,
-  type Page,
-  type Route,
-} from '@playwright/test';
+import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import type { SystemInfo } from '../../src/shared/types';
 export const testOrigin = `http://127.0.0.1:${process.env.E2E_PORT ?? 8788}`;
 export const compatibilityDialog = (page: Page) =>
@@ -85,40 +79,26 @@ export async function saveConversationHistory(page: Page) {
   await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
 }
 
-/** Fixture setup for regressions requiring an empty native session. The real first-message
- * creation path runs, but this setup-only send is acknowledged without dispatching a turn.
- * This keeps other in-memory drafts intact and avoids coupling fixtures to /new semantics. */
+/** Create a genuinely empty native session without fabricating a successful prompt receipt.
+ * Notification navigation selects it through the normal app flow and preserves other drafts. */
 export async function createEmptyThread(page: Page, projectName = '测试项目') {
-  await projectGroup(page, projectName)
-    .getByRole('button', { name: '新建会话', exact: true })
-    .click();
-  const setup = `empty-session-fixture:${randomUUID()}`;
-  const acknowledgeSetup = async (route: Route) => {
-    const input = route.request().postDataJSON() as { text: string; clientOperationId: string };
-    if (input.text !== setup) return route.fallback();
-    const target = new URL(route.request().url()).pathname.split('/')[3]!;
-    await route.fulfill({
-      json: {
-        clientOperationId: input.clientOperationId,
-        kind: 'turn.start',
-        target,
-        status: 'acknowledged',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      },
-    });
-  };
-  await page.route('**/api/threads/*/turns', acknowledgeSetup);
-  try {
-    const input = page.locator('.composer-box textarea');
-    await input.fill(setup);
-    await input.press('Enter');
-    await expectThreadReady(page);
-    await expect(input).toHaveValue('');
-    await expect(page.locator('.composer-resume-status')).toHaveCount(0);
-  } finally {
-    await page.unroute('**/api/threads/*/turns', acknowledgeSetup);
-  }
+  const group = projectGroup(page, projectName);
+  await group.getByRole('button', { name: '新建会话', exact: true }).click();
+  const projectId = await group.getAttribute('data-project-id');
+  expect(projectId).toBeTruthy();
+  const response = await page.request.post(`/api/projects/${projectId}/threads`, {
+    data: { clientOperationId: randomUUID() },
+    headers: { Origin: testOrigin },
+  });
+  expect(response.ok()).toBe(true);
+  const operation = await response.json();
+  expect(operation.status).toBe('acknowledged');
+  const destination = { projectId, threadId: operation.result.threadId };
+  await page.evaluate((destination) => {
+    window.location.hash = `notification=${encodeURIComponent(JSON.stringify(destination))}`;
+  }, destination);
+  await expectThreadReady(page);
+  await expect(page.locator('.composer-resume-status')).toHaveCount(0);
 }
 
 export async function openModelSettings(page: Page) {

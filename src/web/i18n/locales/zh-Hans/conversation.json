@@ -127,5 +127,9 @@
   "capacity_cancelled_short": "已取消",
   "capacity_limit_short": "已达上限",
   "turn_tokens": "本轮 {{tokens}} tokens",
-  "turn_tokens_unknown": "本轮 token 未报告"
+  "turn_tokens_unknown": "本轮 token 未报告",
+  "submission_submitting": "发送中…",
+  "submission_submitted": "已提交",
+  "submission_unknown": "提交结果待核对",
+  "submission_failed": "发送失败"
 }
