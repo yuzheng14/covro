@@ -115,6 +115,20 @@ export const resumeThreadSchema = createThreadSchema.extend({
   confirmExternalStopped: z.boolean().optional(),
 });
 const taskFields = {
+  files: z
+    .array(
+      z
+        .object({
+          cwd: z.string().min(1).max(4096),
+          path: z.string().min(1).max(4096),
+          start: z.number().int().min(0).max(100000),
+          end: z.number().int().min(1).max(100000),
+        })
+        .strict()
+        .refine((file) => file.end > file.start),
+    )
+    .max(32)
+    .optional(),
   skills: z
     .array(
       z
@@ -147,7 +161,9 @@ export const startTurnSchema = createThreadSchema
   })
   .refine(hasContent, 'Text or an image is required')
   .refine(
-    (input) => input.taskKind !== 'init' || (!input.images?.length && !input.skills?.length),
+    (input) =>
+      input.taskKind !== 'init' ||
+      (!input.images?.length && !input.skills?.length && !input.files?.length),
     'Project initialization cannot include images',
   );
 export const steerSchema = operationSchema
@@ -249,3 +265,24 @@ export const skillsQuerySchema = z
     (value) => value.projectId !== null || value.threadId || value.draftId,
     'A session or draft is required',
   );
+
+export const fileSearchQuerySchema = z
+  .object({
+    projectId: idSchema.nullable(),
+    threadId: idSchema.optional(),
+    draftId: z.string().uuid().optional(),
+    query: z
+      .string()
+      .max(512)
+      .refine((query) =>
+        Array.from(query).every(
+          (character) => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127,
+        ),
+      ),
+  })
+  .strict()
+  .refine(
+    (value) => value.projectId !== null || value.threadId || value.draftId,
+    'A session or draft is required',
+  )
+  .refine((value) => !(value.threadId && value.draftId), 'Choose a session or a draft');

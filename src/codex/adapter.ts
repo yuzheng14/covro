@@ -142,6 +142,7 @@ const CAPABILITIES = [
   'turn/interrupt',
   'model/list',
   'skills/list',
+  'fuzzyFileSearch',
   'config/read',
   'config/batchWrite',
   'configRequirements/read',
@@ -158,6 +159,7 @@ type Responses = {
   'account/rateLimits/read': GetAccountRateLimitsResponse;
   'model/list': ModelListResponse;
   'skills/list': import('./generated/v2/SkillsListResponse.js').SkillsListResponse;
+  fuzzyFileSearch: import('./generated/FuzzyFileSearchResponse.js').FuzzyFileSearchResponse;
   'config/read': ConfigReadResponse;
   'config/batchWrite': ConfigWriteResponse;
   'configRequirements/read': ConfigRequirementsReadResponse;
@@ -1168,6 +1170,45 @@ export class CodexAdapter implements CodexClient {
         true,
         failure.rpcCode,
       );
+    }
+  }
+  private fileSearches = 0;
+  async searchFiles(cwd: string, query: string, signal: AbortSignal) {
+    signal.throwIfAborted();
+    if (this.fileSearches >= 4)
+      throw new AppError('FILE_SEARCH_BUSY', 'File search is busy; retry shortly', 429);
+    const cancellationToken = crypto.randomUUID();
+    const epoch = this.epoch;
+    this.fileSearches++;
+    const pending = this.call(
+      'fuzzyFileSearch',
+      { query, roots: [cwd], cancellationToken },
+      false,
+      6500,
+    ).finally(() => {
+      this.fileSearches--;
+    });
+    let abort: () => void = () => {};
+    const cancelled = new Promise<never>((_, reject) => {
+      abort = () => {
+        // The native legacy endpoint cancels the previous request sharing this token.
+        // Empty query/roots performs no replacement traversal. Never cancel a new runtime.
+        if (this.ready && this.epoch === epoch)
+          void this.call(
+            'fuzzyFileSearch',
+            { query: '', roots: [], cancellationToken },
+            false,
+            1500,
+          ).catch(() => {});
+        reject(signal.reason);
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) abort();
+    });
+    try {
+      return await Promise.race([pending, cancelled]);
+    } finally {
+      signal.removeEventListener('abort', abort);
     }
   }
   async listSkills(cwd: string, forceReload = false) {

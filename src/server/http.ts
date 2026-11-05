@@ -220,6 +220,14 @@ export function createApp({
   app.post('/api/skills/list', async (c) =>
     c.json(await service.listSkills(schemas.skillsQuerySchema.parse(await c.req.json()))),
   );
+  app.post('/api/files/search', async (c) =>
+    c.json(
+      await service.searchFiles(
+        schemas.fileSearchQuerySchema.parse(await c.req.json()),
+        c.req.raw.signal,
+      ),
+    ),
+  );
   app.get('/api/system', (c) => c.json(service.getSystem()));
   app.get('/api/account/usage', async (c) => {
     c.header('Cache-Control', 'no-store');

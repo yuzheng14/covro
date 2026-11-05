@@ -1,5 +1,5 @@
 import type { ActionResolution } from '../../src/shared/types.js';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -79,6 +79,35 @@ async function waitFor<T>(get: () => T | undefined): Promise<T> {
 }
 
 describe('verified protocol adapter with a real subprocess', () => {
+  it('uses native fuzzy file search roots and cancels only its own token without starting another scan', async () => {
+    const { adapter, dir, requests } = await fixture();
+    await writeFile(join(dir, '中文 space.txt'), 'fixture');
+    const result = await adapter.searchFiles(dir, '中文', new AbortController().signal);
+    expect(result.files[0]).toMatchObject({
+      root: dir,
+      path: '中文 space.txt',
+      match_type: 'file',
+    });
+    const controller = new AbortController();
+    const pending = adapter.searchFiles(dir, 'space', controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    await expect
+      .poll(
+        async () =>
+          (await requests()).filter((request) => request.method === 'fuzzyFileSearch').length,
+      )
+      .toBe(3);
+    const searches = (await requests()).filter((request) => request.method === 'fuzzyFileSearch');
+    expect(searches.at(-1)?.params).toEqual({
+      query: '',
+      roots: [],
+      cancellationToken: searches.at(-2)?.params.cancellationToken,
+    });
+    expect(searches[0]?.params.cancellationToken).not.toBe(
+      searches.at(-1)?.params.cancellationToken,
+    );
+  });
   it.each(['account/read', 'model/list'])(
     'preserves the %s startup error in diagnostics after process cleanup',
     async (method) => {

@@ -30,7 +30,7 @@
 ## ✨ What you can do
 
 - 📱 **Follow tasks from any device.** Review changes, handle approvals, answer questions, and check [account quotas](docs/account-usage.md) and [session context usage](docs/runtime-settings.md#会话上下文与-token266) on desktop or mobile. Tasks keep running when you close the page; adjust session settings while work continues.
-- 🗂️ **Keep projects and conversations together.** Start without a project, track parallel tasks, and resume or fork your Codex CLI conversations. Agents in managed sessions can start a new task in a registered project through Covro.
+- 🗂️ **Keep projects and conversations together.** Start without a project, track parallel tasks, resume or fork your Codex CLI conversations, and reference server workspace files with [@](docs/file-references.md) or skills with [$](docs/skills.md). Agents in managed sessions can start a new task in a registered project through Covro.
 - 📖 **Read results while you chat.** Preview documents, diagrams, and code changes beside the conversation on desktop, or full-screen on mobile. Submitted messages stay visible during context compaction, and loaded history stays complete as new responses stream in.
 - 🔔 **Know when your attention is needed.** Enable browser notifications for completed work, questions, and approvals in a supported desktop or Android browser. Keep the page online; notifications are not pushed while it is frozen or closed.
 
@@ -115,7 +115,7 @@ See the [contribution guide](docs/contributing.md) for development setup, checks
 
 | Topic                      | Guides                                                                                                                                                                                                                                   |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Everyday use               | [Usage · 中文](docs/usage.zh-CN.md) · [Commands](docs/slash-commands.md) · [Skills and explicit references](docs/skills.md) · [Questions](docs/async-questions.md) · [Shell](docs/shell.md) · [Capacity retries](docs/capacity-retry.md) |
+| Everyday use               | [Usage · 中文](docs/usage.zh-CN.md) · [Commands](docs/slash-commands.md) · [Skills](docs/skills.md) · [File references](docs/file-references.md) · [Questions](docs/async-questions.md) · [Shell](docs/shell.md) · [Capacity retries](docs/capacity-retry.md) |
 | Projects and conversations | [Import and clone](docs/project-clone.md) · [Workspaces](docs/workspaces.md) · [History loading](docs/session-history.md) · [Managed MCP tools](docs/managed-mcp.md)                                                                     |
 | Setup and access           | [Install and update](docs/distribution.md) · [Deployment](docs/deployment.md) · [Logs and diagnostics](docs/logging.md) · [Interface languages](docs/i18n.md)                                                                            |
 | Data and compatibility     | [Backups](docs/backups.md) · [Database](docs/database.md) · [Codex compatibility](docs/compatibility.md)                                                                                                                                 |

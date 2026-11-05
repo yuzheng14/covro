@@ -1,11 +1,10 @@
+import { fileToken, literalMessage, type FileReference } from '../../shared/file-references';
+import { fileTrigger, useFileSearch } from '../lib/file-references';
+import { FileReferenceMenu } from './FileReferenceMenu';
 import { filterSkills, type SkillMetadata, type SkillReference } from '../../shared/skills';
-import {
-  skillTrigger,
-  editBindings,
-  selectedReferences,
-  replaceSkillRange,
-} from '../lib/skill-references';
-import { SkillInput } from './SkillInput';
+import { skillTrigger, selectedReferences } from '../lib/skill-references';
+import { editBindings, replaceReferenceRange } from '../lib/input-references';
+import { ReferenceInput } from './ReferenceInput';
 import { SkillReferenceMenu } from './SkillReferenceMenu';
 import { useSkills } from '../lib/skills';
 import { SkillsBrowser } from './SkillsBrowser';
@@ -66,6 +65,7 @@ interface Props {
     steer: boolean,
     images?: string[],
     skills?: SkillReference[],
+    files?: FileReference[],
   ) => Promise<boolean>;
   onInterrupt: () => void;
   onResume: () => void;
@@ -122,6 +122,9 @@ export function Composer(props: Props) {
   const [caret, setCaret] = useState({ key: '', start: 0, end: 0 });
   const [skillMenu, setSkillMenu] = useState({ identity: '', selected: 0, dismissed: false });
   const skillMenuId = useId();
+  const fileMenuId = useId();
+  const [fileMenu, setFileMenu] = useState({ identity: '', selected: 0, dismissed: false });
+  const [composing, setComposing] = useState(false);
   const skillCaret = useRef<{ key: string; text: string; position: number } | undefined>(undefined);
   const key = props.draftKey;
   const skillsScope = JSON.stringify([props.projectId, props.thread?.id, key]);
@@ -143,6 +146,7 @@ export function Composer(props: Props) {
     trigger &&
     focused &&
     !parseSlashCommand(draft.text) &&
+    !draft.files?.some((file) => trigger.start >= file.start && trigger.start < file.end) &&
     !(skillMenu.identity === skillIdentity && skillMenu.dismissed),
   );
   const skills = useSkills(
@@ -154,6 +158,87 @@ export function Composer(props: Props) {
       : undefined,
     props.runtimeKey,
   );
+  const fileTarget =
+    caret.key === key ? fileTrigger(draft.text, caret.start, caret.end) : undefined;
+  const fileIdentity = JSON.stringify([
+    skillsScope,
+    props.runtimeKey,
+    draft.text,
+    caret.start,
+    caret.end,
+  ]);
+  const fileMenuOpen = Boolean(
+    fileTarget &&
+    focused &&
+    !composing &&
+    !parseSlashCommand(draft.text) &&
+    !draft.files?.some((file) => fileTarget!.start >= file.start && fileTarget!.start < file.end) &&
+    !(fileMenu.identity === fileIdentity && fileMenu.dismissed),
+  );
+  const fileUnavailable = props.offline
+    ? t('composer:files_offline')
+    : props.skillsUnavailable
+      ? t('composer:files_not_ready')
+      : undefined;
+  const fileSearch = useFileSearch(
+    fileMenuOpen && !fileUnavailable && props.projectId && !props.threadLoading
+      ? {
+          projectId: props.projectId === UNASSIGNED_SCOPE ? null : props.projectId,
+          ...(props.thread ? { threadId: props.thread.id } : { draftId: props.draftCreationId }),
+          query: fileTarget!.search,
+        }
+      : undefined,
+    fileIdentity,
+  );
+  const fileMatches = fileSearch.result?.paths ?? [];
+  const fileSelected = Math.min(
+    fileMenu.identity === fileIdentity ? fileMenu.selected : 0,
+    Math.max(0, fileMatches.length - 1),
+  );
+  function chooseFile(path: string) {
+    if (!fileTarget || !fileSearch.result || composingRef.current || fileUnavailable) return;
+    if ((draft.files?.length ?? 0) >= 32) {
+      setFeedback((previous) => ({
+        ...previous,
+        [key]: { message: t('composer:files_limit'), error: true },
+      }));
+      return;
+    }
+    const token = fileToken(path);
+    const next =
+      draft.text.slice(0, fileTarget.start) + token + ' ' + draft.text.slice(fileTarget.end);
+    if (next.length > 100000) return;
+    const position = fileTarget.start + token.length + 1;
+    skillCaret.current = { key, text: next, position };
+    updateDraft(key, (previous) => ({
+      ...previous,
+      text: next,
+      skills: replaceReferenceRange(
+        previous.text,
+        fileTarget.start,
+        fileTarget.end,
+        token + ' ',
+        previous.skills,
+      ).bindings,
+      files: [
+        ...replaceReferenceRange(
+          previous.text,
+          fileTarget.start,
+          fileTarget.end,
+          token + ' ',
+          previous.files,
+        ).bindings,
+        {
+          path,
+          cwd: fileSearch.result!.cwd,
+          start: fileTarget.start,
+          end: fileTarget.start + token.length,
+        },
+      ],
+    }));
+    setCaret({ key, start: position, end: position });
+    setFileMenu({ identity: fileIdentity, selected: 0, dismissed: true });
+  }
   const consumedReceipts = useRef(new WeakSet<SentDraft>());
   useEffect(() => {
     for (const sent of Object.values(props.sentDrafts)) {
@@ -162,13 +247,20 @@ export function Composer(props: Props) {
       if (
         submittedDrafts.current.get(sent.key)?.text.replace(/^(\s*)\/\//, '$1/') === sent.text &&
         JSON.stringify(selectedReferences(submittedDrafts.current.get(sent.key)?.skills)) ===
-          JSON.stringify(sent.skills ?? [])
+          JSON.stringify(sent.skills ?? []) &&
+        JSON.stringify(
+          literalMessage(
+            submittedDrafts.current.get(sent.key)?.text ?? '',
+            submittedDrafts.current.get(sent.key)?.files,
+          ).files ?? [],
+        ) === JSON.stringify(sent.files ?? [])
       )
         clearSubmittedDraft(sent.key);
     }
   }, [props.sentDrafts]);
   useEffect(() => {
     composingRef.current = false;
+    setComposing(false);
     compositionEndedAtRef.current = -Infinity;
     setMenu({ key: '', text: '', selectedIndex: 0, dismissed: false });
   }, [key]);
@@ -192,14 +284,21 @@ export function Composer(props: Props) {
     updateDraft(key, (previous) => ({
       ...previous,
       text: next,
+      files: replaceReferenceRange(
+        previous.text,
+        trigger.start,
+        trigger.end,
+        token + ' ',
+        previous.files,
+      ).bindings,
       skills: [
-        ...replaceSkillRange(
+        ...replaceReferenceRange(
           previous.text,
           trigger.start,
           trigger.end,
           token + ' ',
           previous.skills,
-        ).skills,
+        ).bindings,
         {
           name: skill.name,
           path: skill.path,
@@ -245,11 +344,13 @@ export function Composer(props: Props) {
     const input = command
       ? `/${command.name}${parsed.arguments ? ` ${parsed.arguments}` : ''}`
       : current.text;
-    const problem = current.skills?.length
-      ? t('composer:skills_slash')
-      : current.images.length
-        ? t('composer:slash_commands_cannot_include_images_remove_the_images')
-        : validateSlashCommand(input, props.commands);
+    const problem = current.files?.length
+      ? t('composer:files_slash')
+      : current.skills?.length
+        ? t('composer:skills_slash')
+        : current.images.length
+          ? t('composer:slash_commands_cannot_include_images_remove_the_images')
+          : validateSlashCommand(input, props.commands);
     if (problem) {
       setFeedback((previous) => ({ ...previous, [key]: { message: problem, error: true } }));
       return;
@@ -303,8 +404,24 @@ export function Composer(props: Props) {
     submittedDrafts.current.delete(draftKey);
     sent.images.forEach((image) => imageFiles.current.delete(image.id));
     updateDraft(draftKey, (previous) => ({
-      text: previous.text === sent.text && previous.skills === sent.skills ? '' : previous.text,
-      skills: previous.text === sent.text && previous.skills === sent.skills ? [] : previous.skills,
+      text:
+        previous.text === sent.text &&
+        previous.skills === sent.skills &&
+        previous.files === sent.files
+          ? ''
+          : previous.text,
+      skills:
+        previous.text === sent.text &&
+        previous.skills === sent.skills &&
+        previous.files === sent.files
+          ? []
+          : previous.skills,
+      files:
+        previous.text === sent.text &&
+        previous.skills === sent.skills &&
+        previous.files === sent.files
+          ? []
+          : previous.files,
       images: previous.images.filter(
         (image) => !sent.images.some((entry) => entry.id === image.id),
       ),
@@ -342,6 +459,18 @@ export function Composer(props: Props) {
     }));
     updateDraft(draftKey, (previous) => ({
       ...previous,
+      files: pasted?.text
+        ? editBindings(
+            previous.text,
+            (
+              previous.text.slice(0, pasted.start) +
+              pasted.text +
+              previous.text.slice(pasted.end)
+            ).slice(0, 100000),
+            previous.files,
+            Math.min(pasted.start + pasted.text.length, 100000),
+          )
+        : previous.files,
       skills: pasted?.text
         ? editBindings(
             previous.text,
@@ -433,13 +562,15 @@ export function Composer(props: Props) {
     submittedDrafts.current.set(key, current);
     const sent = current.text;
     const sentImages = current.images;
+    const outgoing = literalMessage(sent, current.files);
     try {
       if (
         await props.onSend(
-          sent.replace(/^(\s*)\/\//, '$1/'),
+          outgoing.text,
           active,
           sentImages.length ? sentImages.map((image) => image.dataUrl!) : undefined,
           current.skills?.length ? selectedReferences(current.skills) : undefined,
+          outgoing.files?.length ? outgoing.files : undefined,
         )
       )
         clearSubmittedDraft(key);
@@ -525,6 +656,19 @@ export function Composer(props: Props) {
             }}
           />
         )}
+        {fileMenuOpen && (
+          <FileReferenceMenu
+            id={fileMenuId}
+            search={fileSearch}
+            selected={fileSelected}
+            unavailable={fileUnavailable}
+            emptyQuery={!fileTarget?.search}
+            onSelect={(selected) =>
+              setFileMenu({ identity: fileIdentity, selected, dismissed: false })
+            }
+            onChoose={chooseFile}
+          />
+        )}
         {skillMenuOpen && (
           <SkillReferenceMenu
             id={skillMenuId}
@@ -590,23 +734,28 @@ export function Composer(props: Props) {
             {displayMessage(draft.error)}
           </p>
         )}
-        <SkillInput
+        <ReferenceInput
           draftKey={key}
           skills={draft.skills}
+          files={draft.files}
           id={inputId}
           ref={textareaRef}
           enterKeyHint={mobileInput ? 'enter' : undefined}
           aria-describedby={shortcutId}
           aria-label={active ? t('composer:additional_instructions') : t('composer:task_content')}
           aria-haspopup="listbox"
-          aria-controls={skillMenuOpen ? skillMenuId : menuOpen ? menuId : undefined}
+          aria-controls={
+            fileMenuOpen ? fileMenuId : skillMenuOpen ? skillMenuId : menuOpen ? menuId : undefined
+          }
           aria-autocomplete="list"
           aria-activedescendant={
-            skillMenuOpen && skillMatches[skillSelected]
-              ? `${skillMenuId}-${skillSelected}`
-              : menuOpen && matches[selectedIndex]
-                ? `${menuId}-${matches[selectedIndex].name}`
-                : undefined
+            fileMenuOpen && fileMatches[fileSelected]
+              ? `${fileMenuId}-${fileSelected}`
+              : skillMenuOpen && skillMatches[skillSelected]
+                ? `${skillMenuId}-${skillSelected}`
+                : menuOpen && matches[selectedIndex]
+                  ? `${menuId}-${matches[selectedIndex].name}`
+                  : undefined
           }
           value={text}
           readOnly={Boolean(props.thread?.archived)}
@@ -618,10 +767,18 @@ export function Composer(props: Props) {
                 : t('composer:describe_a_task_paste_an_image_or_type')
           }
           maxLength={100000}
-          onChange={(event, restoredSkills) => {
+          onChange={(event, restoredSkills, restoredFiles) => {
             updateDraft(key, (previous) => ({
               ...previous,
               text: event.target.value,
+              files:
+                restoredFiles ??
+                editBindings(
+                  previous.text,
+                  event.target.value,
+                  previous.files,
+                  event.target.selectionStart,
+                ),
               skills:
                 restoredSkills ??
                 editBindings(
@@ -633,6 +790,7 @@ export function Composer(props: Props) {
             }));
             setCaret({ key, start: event.target.selectionStart, end: event.target.selectionEnd });
             setSkillMenu({ identity: '', selected: 0, dismissed: false });
+            setFileMenu({ identity: '', selected: 0, dismissed: false });
             setMenu({ key, text: event.target.value, selectedIndex: 0, dismissed: false });
             setFeedback((previous) => {
               const next = { ...previous };
@@ -651,20 +809,26 @@ export function Composer(props: Props) {
           onFocus={() => setFocused(true)}
           onCompositionStart={() => {
             composingRef.current = true;
+            setComposing(true);
           }}
           onCompositionEnd={() => {
             composingRef.current = false;
+            setComposing(false);
             compositionEndedAtRef.current = performance.now();
           }}
           onBlur={() => {
             setFocused(false);
             composingRef.current = false;
+            setComposing(false);
             compositionEndedAtRef.current = -Infinity;
           }}
           onKeyDown={(event) => {
             // A hovered Tooltip consumes Escape during document capture. The
             // focused editor must still close its own Slash menu on that key.
-            if (event.defaultPrevented && !((menuOpen || skillMenuOpen) && event.key === 'Escape'))
+            if (
+              event.defaultPrevented &&
+              !((menuOpen || skillMenuOpen || fileMenuOpen) && event.key === 'Escape')
+            )
               return;
             // Let the browser insert newlines, including immediately after an IME
             // commit. Mobile Enter must never reach the submission dispatcher.
@@ -680,6 +844,35 @@ export function Composer(props: Props) {
             if (performance.now() - compositionEndedAtRef.current < 100) {
               if (event.key === 'Enter' && !event.shiftKey) event.preventDefault();
               return;
+            }
+            if (
+              fileMenuOpen &&
+              !event.shiftKey &&
+              !event.altKey &&
+              !event.metaKey &&
+              !event.ctrlKey
+            ) {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setFileMenu({ identity: fileIdentity, selected: fileSelected, dismissed: true });
+                return;
+              }
+              if (fileMatches.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+                event.preventDefault();
+                setFileMenu({
+                  identity: fileIdentity,
+                  selected:
+                    (fileSelected + (event.key === 'ArrowDown' ? 1 : -1) + fileMatches.length) %
+                    fileMatches.length,
+                  dismissed: false,
+                });
+                return;
+              }
+              if (fileMatches.length && (event.key === 'Enter' || event.key === 'Tab')) {
+                event.preventDefault();
+                if (!event.repeat) chooseFile(fileMatches[fileSelected]!);
+                return;
+              }
             }
             if (
               skillMenuOpen &&

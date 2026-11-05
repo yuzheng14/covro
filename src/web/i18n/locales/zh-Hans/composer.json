@@ -59,5 +59,14 @@
   "skills_offline": "当前离线，恢复连接后可读取技能。",
   "skills_selected": "已选技能",
   "skills_slash": "请先移除技能引用再运行命令。",
-  "skills_steer_unsupported": "Codex 0.164.0 无法在运行中可靠应用所选技能。请等待当前任务结束，再发送此草稿。"
+  "skills_steer_unsupported": "Codex 0.164.0 无法在运行中可靠应用所选技能。请等待当前任务结束，再发送此草稿。",
+  "files_title": "工作区文件",
+  "files_type_path": "在 @ 后输入路径，空格路径可用 @\" 搜索。",
+  "files_no_match": "没有匹配的文件",
+  "files_limited": "最多显示 50 项，请细化路径。",
+  "files_offline": "当前离线，重新连接后可搜索文件。",
+  "files_not_ready": "Codex 尚未就绪，暂时无法搜索文件。",
+  "files_slash": "请先移除文件引用，再运行斜杠命令。",
+  "references_selected": "已选引用",
+  "files_limit": "每条消息最多引用 32 个文件。"
 }

@@ -161,5 +161,13 @@
   "SKILL_STEER_UNSUPPORTED": "Codex 0.164.0 无法在运行中可靠应用所选技能。请等待当前任务结束，再发送此草稿。",
   "QUESTION_EXPIRED": "该问题已不存在，请刷新会话。",
   "QUESTION_BUSY": "回答正在提交或回执待确认，请核对后继续。",
-  "QUESTION_CONFLICT": "该问题已处理或正在提交，请刷新会话。"
+  "QUESTION_CONFLICT": "该问题已处理或正在提交，请刷新会话。",
+  "FILE_REFERENCE_OUTSIDE": "所选文件不属于当前工作区，请重新选择。",
+  "FILE_REFERENCE_NOT_FOUND": "文件已移动或删除，请重新选择。",
+  "FILE_REFERENCE_UNREADABLE": "所选文件不可读取，请检查权限。",
+  "FILE_REFERENCE_NOT_FILE": "请选择工作区内的普通文件。",
+  "FILE_REFERENCE_CHANGED": "文件或工作区已变化，请重新选择文件。",
+  "FILE_SEARCH_BUSY": "文件搜索繁忙，请稍后重试。",
+  "FILE_SEARCH_TIMEOUT": "文件搜索超时，请细化路径后重试。",
+  "FILE_SEARCH_CANCELLED": "文件搜索已取消。"
 }

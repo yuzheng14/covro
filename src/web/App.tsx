@@ -406,11 +406,12 @@ export function App() {
     settings = workspace.settings,
     taskKind?: 'init',
     skills?: import('../shared/skills').SkillReference[],
+    files?: import('../shared/file-references').FileReference[],
   ) {
     if (!canOperate || workspace.restoringSelection || workspace.savingModelDefaults) return false;
     if (!thread) {
       if (workspace.selectedId) return false;
-      return workspace.sendFirstMessage(text, images, taskKind, skills);
+      return workspace.sendFirstMessage(text, images, taskKind, skills, files);
     }
     if (steer && !activeTurn) return false;
     const operation = await workspace.run(
@@ -418,9 +419,9 @@ export function App() {
       thread.id,
       `/api/threads/${encode(thread.id)}/${steer ? 'steer' : 'turns'}`,
       steer
-        ? { text, images, skills, expectedTurnId: activeTurn!.id }
-        : { text, images, skills, settings, ...(taskKind ? { taskKind } : {}) },
-      { kind: 'send', key: workspace.draftKey, text, images, skills },
+        ? { text, images, skills, files, expectedTurnId: activeTurn!.id }
+        : { text, images, skills, files, settings, ...(taskKind ? { taskKind } : {}) },
+      { kind: 'send', key: workspace.draftKey, text, images, skills, files },
     );
     return operation?.status === 'acknowledged';
   }
@@ -1098,8 +1099,8 @@ export function App() {
                   { expectedTurnId: activeTurn.id },
                 );
             }}
-            onSend={(text, steer, images, skills) =>
-              sendMessage(text, steer, images, workspace.settings, undefined, skills)
+            onSend={(text, steer, images, skills, files) =>
+              sendMessage(text, steer, images, workspace.settings, undefined, skills, files)
             }
           />
         </div>
