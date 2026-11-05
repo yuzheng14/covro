@@ -1,3 +1,7 @@
+import { createLogging, type Logger } from '../logging/logger.js';
+import { loggingOptions } from '../logging/config.js';
+import { errorFields } from '../logging/fields.js';
+import { packageInfo } from './paths.js';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
@@ -17,12 +21,13 @@ import { backupFailure } from '../backups/store.js';
 import { control, isNotRunning } from './control.js';
 import type { CovroPaths } from './paths.js';
 
-export async function backupCommand(
+async function backupCore(
   location: CovroPaths,
   subcommand = 'list',
   id?: string,
   confirm?: string,
   recoveryDataDir?: string,
+  logger?: Logger,
 ) {
   const dataDir = recoveryDataDir
     ? resolve(recoveryDataDir)
@@ -40,7 +45,10 @@ export async function backupCommand(
       } catch (error) {
         if (!isNotRunning(error)) throw error;
       }
-      return await restoreBackup(store, id, confirm);
+      logger?.info('restore.started', { backupId: id });
+      const result = await restoreBackup(store, id, confirm);
+      logger?.info('restore.finished', { backupId: id, outcome: 'succeeded' });
+      return result;
     }
     if (subcommand === 'repair') return await repairRestore(store);
     if (subcommand !== 'create' || id)
@@ -87,5 +95,36 @@ export async function backupCommand(
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError('BACKUP_FAILED', backupFailure(error), 500);
+  }
+}
+
+export async function backupCommand(
+  location: CovroPaths,
+  subcommand = 'list',
+  id?: string,
+  confirm?: string,
+  recoveryDataDir?: string,
+) {
+  const logging = await createLogging(loggingOptions(location.logs, packageInfo.version));
+  const logger = logging.logger.child({ component: 'backup_cli', backupId: id });
+  const started = performance.now();
+  logger.info('backup_cli.started', { kind: subcommand });
+  try {
+    const result = await backupCore(location, subcommand, id, confirm, recoveryDataDir, logger);
+    logger.info('backup_cli.finished', {
+      kind: subcommand,
+      outcome: 'succeeded',
+      durationMs: Math.round(performance.now() - started),
+    });
+    return result;
+  } catch (error) {
+    logger.warn('backup_cli.failed', {
+      kind: subcommand,
+      durationMs: Math.round(performance.now() - started),
+      ...errorFields(error),
+    });
+    throw error;
+  } finally {
+    await logging.close();
   }
 }

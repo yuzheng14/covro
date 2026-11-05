@@ -1,4 +1,6 @@
-import { createLogging, logLevel, type Logger } from '../logging/logger.js';
+import { loggingOptions } from '../logging/config.js';
+import { monitorCrashes } from '../logging/lifecycle.js';
+import { createLogging, type Logger } from '../logging/logger.js';
 import { errorFields } from '../logging/fields.js';
 import { BackupStore, backupDirectory, verifyLegacySnapshot } from '../backups/store.js';
 import { acquireMaintenanceLock } from '../backups/lock.js';
@@ -467,11 +469,10 @@ async function worker(directory: string) {
   if (!context) throw new Error('Missing update context');
   const record = await readJson<UpdateRun>(join(directory, 'run.json'));
   const logging = await createLogging({
-    directory: join(context.location.state, 'logs'),
-    version: record?.from ?? 'unknown',
+    ...loggingOptions(join(context.location.state, 'logs'), record?.from ?? 'unknown'),
     component: 'update_worker',
-    level: logLevel(),
   });
+  const removeMonitor = monitorCrashes(logging.logger, logging.flushSync);
   const logger = logging.logger.child({ updateId: record?.id, operationId: record?.id });
   logger.info('update.worker_started');
   try {
@@ -481,6 +482,7 @@ async function worker(directory: string) {
     throw error;
   } finally {
     logger.info('update.worker_finished');
+    removeMonitor();
     await logging.close();
   }
 }
