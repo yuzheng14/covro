@@ -47,6 +47,8 @@ it('creates in the selected registered directory and publishes the required firs
     prompt,
     undefined,
     undefined,
+    undefined,
+    expect.any(String),
   );
   expect(await ctx.service.getThread('thread-1')).toMatchObject({
     projectId: project.id,

@@ -1,4 +1,5 @@
 import { endCompactions, mergeCompaction, settleCompactions } from './compaction.js';
+import { mergeUserMessage } from '../shared/user-message.js';
 import type {
   AutoReviewView,
   ItemView,
@@ -278,7 +279,9 @@ export class Projection {
     const index = turn.items.findIndex((entry) => entry.id === item.id);
     if (index < 0) turn.items.push(this.limit(item));
     else if (!preserveCurrent)
-      turn.items[index] = this.limit(mergeCompaction(item, turn.items[index]));
+      turn.items[index] = this.limit(
+        mergeUserMessage(mergeCompaction(item, turn.items[index]), turn.items[index]),
+      );
     settleCompactions(turn);
     this.touch(threadId);
   }

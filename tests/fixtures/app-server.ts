@@ -2472,7 +2472,7 @@ function receive(request: ClientRequest): void {
       const input: ThreadItem = {
         id: randomUUID(),
         type: 'userMessage',
-        clientId: null,
+        clientId: request.params.clientUserMessageId ?? null,
         content: request.params.input,
       };
       const turn: Turn = {
@@ -2728,7 +2728,7 @@ function receive(request: ClientRequest): void {
       const item: ThreadItem = {
         id: randomUUID(),
         type: 'userMessage',
-        clientId: null,
+        clientId: request.params.clientUserMessageId ?? null,
         content: request.params.input,
       };
       turn.items.push(item);

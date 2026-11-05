@@ -8,7 +8,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
-import type { ApiError } from '../../shared/types.js';
+import type { ApiError, ItemView, PendingUserMessage } from '../../shared/types.js';
 
 export const operations = sqliteTable(
   'operations',
@@ -63,6 +63,28 @@ export const executionMarkers = sqliteTable(
     uniqueIndex('execution_markers_active_thread')
       .on(table.threadId)
       .where(sql`${table.endedAt} is null`),
+  ],
+);
+
+/** Temporary submission snapshots; native Codex history remains authoritative. */
+export const pendingUserMessages = sqliteTable(
+  'pending_user_messages',
+  {
+    id: text('id')
+      .primaryKey()
+      .references(() => operations.clientOperationId),
+    threadId: text('thread_id').notNull(),
+    turnId: text('turn_id'),
+    item: text('item', { mode: 'json' }).$type<ItemView>().notNull(),
+    status: text('status').$type<PendingUserMessage['status']>().notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    index('pending_user_messages_thread_idx').on(table.threadId),
+    check(
+      'pending_user_messages_status_check',
+      sql`${table.status} in ('submitting', 'submitted', 'unknown', 'failed')`,
+    ),
   ],
 );
 

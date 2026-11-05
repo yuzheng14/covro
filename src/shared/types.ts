@@ -142,6 +142,8 @@ export interface AutoReviewView {
 export interface ItemView {
   id: string;
   type: string;
+  /** Submission identity echoed by Codex, independent of its history item ID. */
+  clientId?: string;
   status?: string;
   text?: string;
   images?: string[];
@@ -157,6 +159,15 @@ export interface ItemView {
   delivery?: 'async';
   questions?: AsyncQuestion[];
   questionReplies?: AsyncQuestionReply[];
+}
+export interface PendingUserMessage {
+  id: string;
+  threadId: string;
+  kind: 'start' | 'steer';
+  turnId?: string;
+  item: ItemView;
+  status: 'submitting' | 'submitted' | 'unknown' | 'failed';
+  createdAt: number;
 }
 export interface AsyncQuestion {
   title: string;
@@ -243,6 +254,8 @@ export interface ThreadView {
   title: string;
   status: RunStatus;
   turns: TurnView[];
+  /** Submitted content awaiting a matching native user message; never execution evidence. */
+  pendingMessages?: PendingUserMessage[];
   managed: boolean;
   /** Last definite resume failure; cleared on retry, successful acquisition or runtime reset. */
   resumeError?: ApiError;

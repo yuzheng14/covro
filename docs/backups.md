@@ -40,3 +40,5 @@ A durable restore journal blocks gateway startup and `db:migrate` if replacement
 ## Web interface
 
 Open **Settings → Backups and recovery** from the sidebar. The page shows the target schema, completed snapshot count/size, host storage directory and each record's trigger, application/schema version, state and path. **立即备份** waits for a safe point; **取消备份** cancels a queued/incomplete snapshot without interrupting a task. Closing the page does not cancel server work. **重新验证** rechecks the backup against its files and the running version. Expand **恢复方式** for the exact backup-ID preflight command; apply recovery only from the stopped host's CLI. Failed, cancelled, interrupted and corrupt records remain distinguishable from completed backups.
+
+Pending user-message snapshots (including submitted image data) live in Covro’s database until a matching native message confirms delivery. Database backups therefore include these snapshots; they do not include the separate Codex conversation history.

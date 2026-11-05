@@ -57,6 +57,10 @@ export function compactThreadForTransport(thread: ThreadView, maxBytes: number):
     }
   }
   // Active and last turns retain their identities even if older history must be omitted.
+  for (const message of result.pendingMessages ?? []) {
+    if (size <= maxBytes) return result;
+    compactItem(message.item);
+  }
   const lastTurnId = result.turns.at(-1)?.id;
   for (let index = 0; size > maxBytes && index < result.turns.length;) {
     const turn = result.turns[index]!;

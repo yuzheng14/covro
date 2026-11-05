@@ -516,11 +516,21 @@ describe('verified protocol adapter with a real subprocess', () => {
     const { adapter, requests } = await fixture({ turnDelayMs: 2000 });
     const image = 'data:image/png;base64,iVBORw0KGgo=';
     const thread = await adapter.createThread('/tmp');
-    const turn = await adapter.startTurn(thread.id, thread.cwd, '', undefined, [image]);
-    await adapter.steerTurn(thread.id, turn.id, '  看第二张图\n', [image]);
+    const turn = await adapter.startTurn(
+      thread.id,
+      thread.cwd,
+      '',
+      undefined,
+      [image],
+      undefined,
+      'first-client',
+    );
+    await adapter.steerTurn(thread.id, turn.id, '  看第二张图\n', [image], 'steer-client');
     const calls = (await requests()).filter((entry) =>
       ['turn/start', 'turn/steer'].includes(entry.method),
     );
+    expect(calls[0]?.params.clientUserMessageId).toBe('first-client');
+    expect(calls[1]?.params.clientUserMessageId).toBe('steer-client');
     expect(calls[0]?.params.input).toEqual([{ type: 'image', url: image }]);
     expect(calls[1]?.params.input).toEqual([
       { type: 'text', text: '  看第二张图\n', text_elements: [] },
@@ -528,8 +538,8 @@ describe('verified protocol adapter with a real subprocess', () => {
     ]);
     const history = await adapter.readThread(thread.id);
     expect(history.turns[0]?.items.filter((item) => item.type === 'userMessage')).toMatchObject([
-      { text: '', images: [image], imageCount: 1 },
-      { text: '  看第二张图\n', images: [image], imageCount: 1 },
+      { clientId: 'first-client', text: '', images: [image], imageCount: 1 },
+      { clientId: 'steer-client', text: '  看第二张图\n', images: [image], imageCount: 1 },
     ]);
     const hidden = mapItem({
       id: 'external',
