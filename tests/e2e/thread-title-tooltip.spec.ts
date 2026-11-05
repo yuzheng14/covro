@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import { confirmCompatibility, controlRuntime, testOrigin } from './helpers';
+import { confirmCompatibility, controlRuntime, projectGroup, testOrigin } from './helpers';
 
 const prompt =
   '[title-fail] 任务：' +
@@ -71,6 +71,12 @@ for (const viewport of [
       const link = page.locator(`[data-thread-id="${id}"]`);
       const title = index === 0 ? prompt : unbrokenPrompt;
       await expect(link.locator('.thread-title')).toHaveText(title);
+      // Keep both rows visible: scrolling only the hovered row can leave its
+      // neighbor behind the sticky project heading in a short viewport.
+      await page.getByRole('searchbox', { name: '搜索项目与已加载会话' }).fill('[title-fail]');
+      const list = projectGroup(page).locator('.thread-list');
+      await list.scrollIntoViewIfNeeded();
+      await expect(list).toBeInViewport({ ratio: 1 });
       await link.hover();
       await expect(popup).toHaveText(title);
       const screenshot = testInfo.outputPath(`title-hover-${index}.png`);
@@ -90,18 +96,23 @@ for (const viewport of [
       expect(metrics.height).toBeLessThanOrEqual(metrics.lineHeight * 4 + 1);
       expect(metrics.clipped).toBe(true);
       // The title and neighboring row must receive clicks while the tooltip is open.
-      expect(
-        await page
-          .locator(ids.map((id) => `[data-thread-id="${id}"]`).join(','))
-          .evaluateAll((elements) =>
-            elements.every((element) => {
-              const box = element.getBoundingClientRect();
-              return element.contains(
-                document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2),
-              );
-            }),
-          ),
-      ).toBe(true);
+      const hits = await page
+        .locator(ids.map((id) => `[data-thread-id="${id}"]`).join(','))
+        .evaluateAll((elements) =>
+          elements.map((element) => {
+            const box = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+            const viewport = element.closest('.project-list')!.getBoundingClientRect();
+            return {
+              id: element.getAttribute('data-thread-id'),
+              receivesClick: element.contains(hit),
+              box: box.toJSON(),
+              viewport: viewport.toJSON(),
+              hit: hit?.outerHTML.slice(0, 300),
+            };
+          }),
+        );
+      expect(hits.filter((hit) => !hit.receivesClick)).toEqual([]);
       await link.click();
       await expect(link).toHaveAttribute('aria-current', 'page');
       await expect(page.locator('.topbar h1')).toHaveText(title);
