@@ -155,10 +155,13 @@ test('all execution states remain single-line with accessible icons and pending 
     label: string;
     lastTurnStatus?: RunStatus;
     pending?: number;
+    pendingQuestions?: number;
   }[] = [
     { status: 'running', label: '执行中' },
     { status: 'waitingApproval', label: '等待审批', pending: 2 },
     { status: 'waitingInput', label: '等待回答', pending: 1 },
+    { status: 'waitingInput', label: '等待回答', pending: 1, pendingQuestions: 2 },
+    { status: 'waitingInput', label: '等待回答', pendingQuestions: 2 },
     { status: 'idle', lastTurnStatus: 'failed', label: '失败' },
     { status: 'idle', lastTurnStatus: 'interrupted', label: '已中断' },
     { status: 'unknown', label: '状态待核对' },
@@ -185,6 +188,7 @@ test('all execution states remain single-line with accessible icons and pending 
                 lastTurnStatus: state.lastTurnStatus,
                 lastTurnId: state.lastTurnStatus ? `fixture-turn-${thread.id}` : undefined,
                 pendingActionCount: state.pending ?? 0,
+                pendingQuestionCount: state.pendingQuestions ?? 0,
               }
             : thread;
         }),
@@ -233,10 +237,15 @@ test('all execution states remain single-line with accessible icons and pending 
     if (state.status === 'running') await expect(glyph).toHaveClass(/thread-status-spinning/);
     else await expect(glyph).not.toHaveClass(/thread-status-spinning/);
 
+    const pendingCount = (state.pending ?? 0) + (state.pendingQuestions ?? 0);
+    if (pendingCount) {
+      const combinedLabel = `${pendingCount} 项待处理`;
+      await expect(indicator).toHaveAccessibleName(new RegExp(combinedLabel));
+      await expect(threadLink.locator('.sr-only')).toContainText(combinedLabel);
+      await expect(indicator.locator('.thread-status-notification')).toHaveCount(1);
+    }
     if (state.pending) {
       const pendingLabel = `${state.pending} 项待处理`;
-      await expect(indicator).toHaveAccessibleName(new RegExp(pendingLabel));
-      await expect(threadLink.locator('.sr-only')).toContainText(pendingLabel);
       await detailsButton.click();
       await expect(row.locator('.thread-details')).toContainText(state.label);
       await expect(row.locator('.thread-details')).toContainText(pendingLabel);
