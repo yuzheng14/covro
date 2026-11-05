@@ -2150,14 +2150,15 @@ export class GatewayService {
     const submissions = new Map(
       this.store.pendingMessages(thread.id).map((message) => [message.id, message]),
     );
-    for (const turn of thread.turns)
-      for (const item of turn.items) {
-        const pending = item.clientId ? submissions.get(item.clientId) : undefined;
-        if (pending && (!pending.turnId || pending.turnId === turn.id)) {
-          Object.assign(item, mergeUserMessage(item, pending.item));
-          this.store.confirmMessage(thread.id, turn.id, item);
+    if (submissions.size)
+      for (const turn of thread.turns)
+        for (const item of turn.items) {
+          const pending = item.clientId ? submissions.get(item.clientId) : undefined;
+          if (pending && (!pending.turnId || pending.turnId === turn.id)) {
+            Object.assign(item, mergeUserMessage(item, pending.item));
+            this.store.confirmMessage(thread.id, turn.id, item);
+          }
         }
-      }
     const result = copy ? structuredClone(thread) : { ...thread };
     const pendingMessages = this.store.pendingMessages(thread.id);
     if (pendingMessages.length) result.pendingMessages = pendingMessages;
