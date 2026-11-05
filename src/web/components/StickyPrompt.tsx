@@ -9,9 +9,10 @@ import { Icon } from './Icon';
 export function StickyPrompt({ thread, onJump }: { thread?: ThreadView; onJump: () => void }) {
   const slotRef = useRef<HTMLDivElement>(null);
   const [activeId, setActiveId] = useState<string>();
-  const activePrompt = thread?.turns
-    .flatMap((turn) => turn.items)
-    .find((item) => item.type === 'userMessage' && item.id === activeId);
+  const activePrompt = [
+    ...(thread?.turns.flatMap((turn) => turn.items) ?? []),
+    ...(thread?.pendingMessages?.map((message) => message.item) ?? []),
+  ].find((item) => item.type === 'userMessage' && (item.clientId ?? item.id) === activeId);
 
   const update = useCallback(() => {
     const scroll = slotRef.current?.parentElement?.querySelector('.conversation-scroll');
@@ -68,7 +69,10 @@ export function StickyPrompt({ thread, onJump }: { thread?: ThreadView; onJump: 
               const scroll = slotRef.current?.parentElement?.querySelector('.conversation-scroll');
               const prompt = [
                 ...(scroll?.querySelectorAll<HTMLElement>('[data-prompt-id]') ?? []),
-              ].find((element) => element.dataset.promptId === activePrompt.id);
+              ].find(
+                (element) =>
+                  element.dataset.promptId === (activePrompt.clientId ?? activePrompt.id),
+              );
               if (!scroll || !prompt) return;
               // An earlier prompt may remain pinned after jumping back to a later one.
               const offset = event.currentTarget.getBoundingClientRect().height + 8;

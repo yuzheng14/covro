@@ -17,6 +17,9 @@ import type {
   ThreadView,
 } from '../../shared/types';
 import { toThreadSummary } from '../../shared/thread-summary';
+import { submittedUserMessage } from '../../shared/user-message';
+import { messageConfirmed, withPendingMessages } from '../lib/pending-user-messages';
+import type { PendingUserMessage } from '../../shared/types';
 import { api, HttpError } from '../lib/api';
 import { pendingSettings } from '../lib/settings';
 import { readSessionSettings, saveSessionSettings } from '../lib/session-settings';
@@ -68,6 +71,20 @@ export function useWorkspace() {
   const [archiveView, setArchiveView] = useState(false);
   const [projectThreads, setProjectThreads] = useState(projectStore.current.snapshot);
   const [thread, setThread] = useState<ThreadView>();
+  const [localSubmissions, setLocalSubmissions] = useState<Record<string, PendingUserMessage>>({});
+  const settleSubmission = useCallback(
+    (id: string, status: PendingUserMessage['status'], turnId?: string) => {
+      setLocalSubmissions((previous) =>
+        previous[id]
+          ? {
+              ...previous,
+              [id]: { ...previous[id], status, ...(turnId ? { turnId } : {}) },
+            }
+          : previous,
+      );
+    },
+    [],
+  );
   const [threadReadFailure, setThreadReadFailure] = useState<{ id: string; status: number }>();
   const [selectedId, setSelectedId] = useState<string>();
   const [notificationTarget, setNotificationTarget] = useState<{
@@ -331,6 +348,16 @@ export function useWorkspace() {
         !projectsRef.current.some((project) => project.id === next.projectId)
       )
         return;
+      setLocalSubmissions((previous) => {
+        const owned = new Set(next.pendingMessages?.map((message) => message.id));
+        const entries = Object.entries(previous).filter(
+          ([id, message]) =>
+            message.threadId !== next.id || (!owned.has(id) && !messageConfirmed(next, message)),
+        );
+        return entries.length === Object.keys(previous).length
+          ? previous
+          : Object.fromEntries(entries);
+      });
       if (next.id === selectedRef.current && scopeKey(next.projectId) === projectRef.current) {
         setThreadReadFailure(undefined);
         const previous = selectedThreadRef.current;
@@ -648,6 +675,18 @@ export function useWorkspace() {
         (entry) => entry.clientOperationId === operation.clientOperationId,
       );
       if (!known) return;
+      const turnId = (operation.result as { turnId?: string } | undefined)?.turnId;
+      settleSubmission(
+        operation.clientOperationId,
+        operation.status === 'acknowledged'
+          ? 'submitted'
+          : operation.status === 'failed'
+            ? 'failed'
+            : operation.status === 'unknown'
+              ? 'unknown'
+              : 'submitting',
+        turnId,
+      );
       if (known.mutation && (isSettled(operation) || operation.reconciliation))
         settleMutation(
           operation.clientOperationId,
@@ -742,7 +781,7 @@ export function useWorkspace() {
           previous.filter((entry) => entry.clientOperationId !== operation.clientOperationId),
         );
     },
-    [refreshSystem, selectThread, track, loadProjectThreads, settleMutation],
+    [refreshSystem, selectThread, track, loadProjectThreads, settleMutation, settleSubmission],
   );
 
   useEffect(() => {
@@ -984,6 +1023,23 @@ export function useWorkspace() {
       const clientOperationId =
         draft?.kind === 'create' && draft.creationId ? draft.creationId : crypto.randomUUID();
       if (draft) conversationDrafts.current.track(clientOperationId, draft);
+      if (draft?.kind === 'send') {
+        const message = body as import('../../shared/types').TaskMessage & {
+          expectedTurnId?: string;
+        };
+        setLocalSubmissions((previous) => ({
+          ...previous,
+          [clientOperationId]: {
+            id: clientOperationId,
+            threadId: target,
+            kind: kind === 'steer' ? 'steer' : 'start',
+            ...(message.expectedTurnId ? { turnId: message.expectedTurnId } : {}),
+            item: submittedUserMessage(clientOperationId, message),
+            status: 'submitting',
+            createdAt: Date.now(),
+          },
+        }));
+      }
       const source =
         selectedThreadRef.current?.id === target
           ? toThreadSummary(selectedThreadRef.current)
@@ -1059,6 +1115,7 @@ export function useWorkspace() {
           problem.problem.code !== 'RESULT_UNKNOWN'
         ) {
           conversationDrafts.current.discard(clientOperationId);
+          settleSubmission(clientOperationId, 'failed');
           if (mutation) settleMutation(clientOperationId);
           track((previous) =>
             previous.filter((entry) => entry.clientOperationId !== clientOperationId),
@@ -1072,6 +1129,7 @@ export function useWorkspace() {
               : entry,
           ),
         );
+        settleSubmission(clientOperationId, 'unknown');
         // Query the same operation identity. Never automatically resend an uncertain intent.
         const entry = operationsRef.current.find(
           (current) => current.clientOperationId === clientOperationId,
@@ -1106,6 +1164,7 @@ export function useWorkspace() {
       clearSelection,
       changeArchiveView,
       settleMutation,
+      settleSubmission,
     ],
   );
 
@@ -1121,8 +1180,11 @@ export function useWorkspace() {
   };
 
   const visibleThread = useMemo(
-    () => (thread ? projectStore.current.project(thread) : undefined),
-    [thread, projectThreads, operations],
+    () =>
+      thread
+        ? withPendingMessages(projectStore.current.project(thread), Object.values(localSubmissions))
+        : undefined,
+    [thread, projectThreads, operations, localSubmissions],
   );
   return {
     notificationTarget,

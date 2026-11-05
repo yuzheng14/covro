@@ -145,8 +145,9 @@ for (const viewport of [
     await send(page, first);
     await expect(page.locator('.turn-heading .status')).toHaveText('已完成');
     await send(page, second);
-    // The previous completed turn can still be last while the second request is in flight.
+    // The immediate prompt preview can precede its native turn; wait before measuring geometry.
     await expect(prompts(page)).toHaveCount(2);
+    await expect(page.locator('.turn')).toHaveCount(2);
     await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
     await movePrompt(prompts(page).first(), -300);
     await expect(sticky(page)).toContainText(first);
@@ -241,6 +242,8 @@ test('uses a later user requirement in the same turn when it reaches the top', a
   await page.getByRole('textbox', { name: '追加要求', exact: true }).fill(requirement);
   await page.getByRole('button', { name: '追加要求', exact: true }).click();
   await expect(prompts(page)).toHaveCount(2);
+  // Submission now renders before the native echo; geometry assertions start after confirmation.
+  await expect(prompts(page).nth(1)).not.toHaveAttribute('data-submission-state');
   await movePrompt(prompts(page).first(), -1);
   await expect(sticky(page)).toContainText(original);
   await movePrompt(prompts(page).nth(1), -1);

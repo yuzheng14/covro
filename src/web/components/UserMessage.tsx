@@ -1,14 +1,21 @@
 import { displayMessage } from '../i18n/messages';
 import { t } from '../i18n';
-import type { ItemView } from '../../shared/types';
+import type { ItemView, PendingUserMessage } from '../../shared/types';
 import { MarkdownContent } from './MarkdownContent';
 
-export function UserMessage({ item }: { item: ItemView }) {
+export function UserMessage({
+  item,
+  status,
+}: {
+  item: ItemView;
+  status?: PendingUserMessage['status'];
+}) {
   return (
     <article
       className="message user-message"
       aria-label={t('conversation:your_message')}
-      data-prompt-id={item.id}
+      data-prompt-id={item.clientId ?? item.id}
+      data-submission-state={status}
       tabIndex={-1}
     >
       <div className="message-content">
@@ -47,6 +54,14 @@ export function UserMessage({ item }: { item: ItemView }) {
           </p>
         )}
         {item.error && <p className="inline-error">{displayMessage(item.error)}</p>}
+        {status && (
+          <p
+            className={`submission-status${status === 'failed' ? ' inline-error' : ''}`}
+            role="status"
+          >
+            {t(`conversation:submission_${status}`)}
+          </p>
+        )}
       </div>
     </article>
   );

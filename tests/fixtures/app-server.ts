@@ -379,6 +379,12 @@ function command(id: string, cwd: string): Extract<ThreadItem, { type: 'commandE
   };
 }
 const outputTotals = new Map<string, number>();
+const pendingInputs = new Map<string, () => void>();
+function commitPendingInput(turnId: string) {
+  const commit = pendingInputs.get(turnId);
+  pendingInputs.delete(turnId);
+  commit?.();
+}
 function complete(
   thread: Thread,
   turn: Turn,
@@ -387,6 +393,7 @@ function complete(
   clearTimeout(finishes.get(turn.id));
   finishes.delete(turn.id);
   if (turn.status !== 'inProgress') return;
+  commitPendingInput(turn.id);
   turn.status = status;
   turn.completedAt = Date.now() / 1000;
   turn.durationMs =
@@ -1175,6 +1182,7 @@ function contextCompaction(thread: Thread, turn: Turn, outcome: 'recover' | 'fai
       });
       // Some versions also emit this deprecated notification. It must not create a second record.
       notify({ method: 'thread/compacted', params: { threadId: thread.id, turnId: turn.id } });
+      commitPendingInput(turn.id);
       const reply: ThreadItem = {
         id: randomUUID(),
         type: 'agentMessage',
@@ -2478,7 +2486,11 @@ function receive(request: ClientRequest): void {
       const turn: Turn = {
         id: randomUUID(),
         rootTurnId: null,
-        items: request.params.input.length ? [input] : [],
+        items: text.includes('[pre-turn-compact-')
+          ? []
+          : request.params.input.length
+            ? [input]
+            : [],
         itemsView: 'full',
         status: 'inProgress',
         error: null,
@@ -2500,13 +2512,16 @@ function receive(request: ClientRequest): void {
           params: { threadId: thread.id, threadName: name || undefined },
         });
       }
-      const acceptedInput = () =>
-        request.params.input.length &&
+      const acceptedInput = () => {
+        if (!request.params.input.length) return;
+        if (!turn.items.some((item) => item.id === input.id)) turn.items.push(input);
         notify({
           method: 'item/completed',
           params: { threadId: thread.id, turnId: turn.id, item: input, completedAtMs: Date.now() },
         });
-      if (options.userMessageDelayMs && !thread.ephemeral)
+      };
+      if (text.includes('[pre-turn-compact-')) pendingInputs.set(turn.id, acceptedInput);
+      else if (options.userMessageDelayMs && !thread.ephemeral)
         setTimeout(acceptedInput, options.userMessageDelayMs);
       else acceptedInput();
       const receipt = structuredClone(turn);
@@ -2641,13 +2656,14 @@ function receive(request: ClientRequest): void {
         );
       else if (prompt.includes('[activity-retry]'))
         activityRetryScenario(thread, turn, prompt.includes('[turn-failure]'));
-      else if (prompt.includes('[context-compact-'))
+      else if (prompt.includes('[context-compact-') || prompt.includes('[pre-turn-compact-'))
         contextCompaction(
           thread,
           turn,
-          prompt.includes('[context-compact-fail]')
+          prompt.includes('[context-compact-fail]') || prompt.includes('[pre-turn-compact-fail]')
             ? 'fail'
-            : prompt.includes('[context-compact-hold]')
+            : prompt.includes('[context-compact-hold]') ||
+                prompt.includes('[pre-turn-compact-hold]')
               ? 'hold'
               : 'recover',
         );

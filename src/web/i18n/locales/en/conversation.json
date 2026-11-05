@@ -127,5 +127,9 @@
   "capacity_cancelled_short": "Cancelled",
   "capacity_limit_short": "Limit reached",
   "turn_tokens": "Turn {{tokens}} tokens",
-  "turn_tokens_unknown": "Turn tokens not reported"
+  "turn_tokens_unknown": "Turn tokens not reported",
+  "submission_submitting": "Sending…",
+  "submission_submitted": "Submitted",
+  "submission_unknown": "Submission needs checking",
+  "submission_failed": "Send failed"
 }

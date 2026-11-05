@@ -1513,6 +1513,11 @@ svg {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.submission-status {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
 .user-question-reply + .user-question-reply {
   margin-top: 16px;
 }

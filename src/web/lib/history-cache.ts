@@ -15,6 +15,10 @@ export function cachedReadingView(thread: ThreadView): ThreadView {
     runtimeSettings: undefined,
     liveSettings: undefined,
     capacityRetry: undefined,
+    pendingMessages: thread.pendingMessages?.map((message) => ({
+      ...message,
+      status: message.status === 'failed' ? 'failed' : 'unknown',
+    })),
     turns: thread.turns.map((turn) => ({
       ...turn,
       status: ['running', 'waitingApproval', 'waitingInput'].includes(turn.status)

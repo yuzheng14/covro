@@ -14,7 +14,11 @@ export function groupConversationItems(items: readonly ItemView[]): Conversation
       item.type === 'exitedReviewMode' ||
       item.type === 'contextCompaction'
     ) {
-      groups.push({ kind: 'message', key: `message:${item.id}`, item });
+      groups.push({
+        kind: 'message',
+        key: `message:${item.type === 'userMessage' ? (item.clientId ?? item.id) : item.id}`,
+        item,
+      });
       continue;
     }
     const previous = groups.at(-1);

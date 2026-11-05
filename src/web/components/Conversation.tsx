@@ -1,4 +1,4 @@
-import { capacityTurnViews } from '../lib/capacity-turns';
+import { submittedConversation, type SubmittedItem } from '../lib/pending-user-messages';
 import { CapacityRetryNotice, type CapacityRetryControls } from './CapacityRetryNotice';
 import { ModelCapacityNotice } from './ModelCapacityNotice';
 import {
@@ -167,7 +167,7 @@ function Item({
   replies,
   streaming = false,
 }: {
-  item: ItemView;
+  item: SubmittedItem;
   questionControls?: AsyncQuestionControls;
   replies?: AsyncQuestionReply[];
   streaming?: boolean;
@@ -175,7 +175,8 @@ function Item({
   if (item.type === 'contextCompaction') {
     return item.status === 'inProgress' ? null : <ContextCompaction item={item} />;
   }
-  if (item.type === 'userMessage') return <UserMessage item={item} />;
+  if (item.type === 'userMessage')
+    return <UserMessage item={item} status={item.submissionStatus} />;
   if (item.type === 'autoApprovalReview' && item.autoReview) {
     return <AutoReviewCard review={item.autoReview} />;
   }
@@ -333,7 +334,9 @@ function ConversationContent({
   const lastScrollTop = useRef(0);
   const scrollingUp = useRef(false);
   const userScrolled = useRef(false);
-  const displayTurns = thread ? capacityTurnViews(thread) : [];
+  const { turns: displayTurns, unbound } = thread
+    ? submittedConversation(thread)
+    : { turns: [], unbound: [] };
   const latestTurn = thread?.turns.at(-1);
   const questionReplies = new Map<string, AsyncQuestionReply[]>();
   for (const turn of thread?.turns ?? [])
@@ -516,7 +519,7 @@ function ConversationContent({
       )}
       <div className="conversation-viewport">
         <StickyPrompt
-          thread={thread}
+          thread={thread ? { ...thread, turns: displayTurns } : undefined}
           onJump={() => {
             stickToBottom.current = false;
           }}
@@ -602,7 +605,7 @@ function ConversationContent({
                   </div>
                 )}
               </div>
-            ) : !thread?.turns.length ? (
+            ) : !thread?.turns.length && !unbound.length ? (
               <div
                 className="empty-state"
                 data-testid="workspace-start"
@@ -719,6 +722,13 @@ function ConversationContent({
                 </section>
               ))
             )}
+            {unbound.map((item) => (
+              <UserMessage
+                key={item.clientId ?? item.id}
+                item={item}
+                status={item.submissionStatus}
+              />
+            ))}
             <div ref={endRef} />
           </div>
         </div>
