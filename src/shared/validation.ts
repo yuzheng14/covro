@@ -203,8 +203,16 @@ export const resolveActionSchema = operationSchema.extend({
         persist: z.literal('session').optional(),
       })
       .strict(),
-    z.object({ answers: z.record(z.string(), z.array(z.string().max(10_000)).max(50)) }).strict(),
+    z
+      .object({
+        answers: z.record(z.string(), z.array(z.string().max(10_000)).max(50)),
+        skippedQuestionIds: z.array(idSchema).max(100).optional(),
+      })
+      .strict(),
   ]),
+});
+export const dismissQuestionsSchema = operationSchema.extend({
+  questionIds: z.array(idSchema).min(1).max(100),
 });
 export const reconcileSchema = operationSchema.extend({ confirmEnded: z.literal(true) });
 export const subscribeSchema = z

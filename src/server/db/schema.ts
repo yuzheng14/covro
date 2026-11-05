@@ -10,6 +10,31 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import type { ApiError, ItemView, PendingUserMessage } from '../../shared/types.js';
 
+/** Local tracking and durable claims for replies that may already have reached Codex. */
+export const questionTracking = sqliteTable(
+  'question_tracking',
+  {
+    threadId: text('thread_id').notNull(),
+    questionId: text('question_id').notNull(),
+    state: text('state', { enum: ['dismissed', 'submitting'] }).notNull(),
+    operationId: text('operation_id').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.threadId, table.questionId] })],
+);
+
+export const questionActionHistory = sqliteTable(
+  'question_action_history',
+  {
+    actionId: text('action_id').primaryKey(),
+    threadId: text('thread_id').notNull(),
+    action: text('action', { mode: 'json' })
+      .$type<import('../../shared/types.js').PendingAction>()
+      .notNull(),
+  },
+  (table) => [index('question_action_history_thread').on(table.threadId)],
+);
+
 export const operations = sqliteTable(
   'operations',
   {

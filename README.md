@@ -103,7 +103,7 @@ Covro connects to your existing CLI through `codex app-server`. Tasks, projects,
 
 Covro is for a single user. The [Shell panel](docs/shell.md) runs non-interactive commands using Codex’s configured sandbox. An interactive terminal, file editor, Git GUI, and multi-user team management are outside the current scope.
 
-DB Schema **9** is independent of the application version; older applications cannot open newer databases. Backups cover only Covro’s database and service configuration, excluding project files, Codex history, and credentials. Restore requires stopping the service. See [backups](docs/backups.md) and [database compatibility](docs/database.md).
+DB Schema **10** is independent of the application version; older applications cannot open newer databases. Backups cover only Covro’s database and service configuration, excluding project files, Codex history, and credentials. Restore requires stopping the service. See [backups](docs/backups.md) and [database compatibility](docs/database.md).
 
 ## Development and contribution
 

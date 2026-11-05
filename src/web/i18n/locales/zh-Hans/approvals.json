@@ -103,5 +103,11 @@
   "networkRestricted": "不开放额外网络访问",
   "fieldValue": "{{label}}：{{value}}",
   "denyDecision": "拒绝",
-  "accessDeny": "禁止访问"
+  "accessDeny": "禁止访问",
+  "skip_question": "跳过此问题",
+  "answer_question": "回答此问题",
+  "question_skipped": "已跳过",
+  "question_will_be_skipped": "提交时跳过此问题",
+  "skip_all_questions": "全部跳过并提交",
+  "submit_with_skipped": "提交回答与跳过项"
 }

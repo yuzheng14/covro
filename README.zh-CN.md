@@ -103,7 +103,7 @@ Covro 通过 `codex app-server` 连接已有 CLI，沿用你的 Codex 登录与�
 
 Covro 面向单用户。[Shell 面板](docs/shell.md)沿用 Codex 配置的沙箱执行非交互命令。交互终端、文件编辑器、Git 图形界面与多人团队管理不在当前范围内。
 
-DB Schema **9** 独立于应用版本，旧应用不能打开更新的数据库。备份只覆盖 Covro 数据库和服务配置，不包含项目文件、Codex 历史或凭据；恢复需停服。详见[备份](docs/backups.md)与[数据库兼容规则](docs/database.md)。
+DB Schema **10** 独立于应用版本，旧应用不能打开更新的数据库。备份只覆盖 Covro 数据库和服务配置，不包含项目文件、Codex 历史或凭据；恢复需停服。详见[备份](docs/backups.md)与[数据库兼容规则](docs/database.md)。
 
 ## 开发与参与
 

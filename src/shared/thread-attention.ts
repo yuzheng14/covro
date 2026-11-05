@@ -27,6 +27,7 @@ export function pendingAttention(thread: ThreadView): AttentionRequest[] {
       if (!item.questions?.length || item.type !== 'agentMessage') continue;
       const unanswered = item.questions.some(
         (question, index) =>
+          thread.questionTracking?.[asyncQuestionId(item.id, index)]?.status !== 'dismissed' &&
           !replies.some(
             (reply) =>
               reply.questionItemId === asyncQuestionId(item.id, index) ||

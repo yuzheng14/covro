@@ -51,8 +51,15 @@ describe('interactive request labels', () => {
         status,
         elicitation: { serverName: '测试服务', mode: 'form', fields: [] },
       });
-      expect(html).toContain(`>${label}</button>`);
-      expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled=""/);
+      expect(html).toContain(`<span class="action-state">${label}</span>`);
+      if (kind === 'questions') {
+        expect(html).not.toContain('<button');
+        expect(html).not.toContain('<input');
+        expect(html).toContain('<fieldset disabled="">');
+      } else {
+        expect(html).toContain(`>${label}</button>`);
+        expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled=""/);
+      }
       expect(html).not.toContain('提交回答</button>');
       expect(html).not.toContain('确认继续</button>');
     }

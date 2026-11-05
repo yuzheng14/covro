@@ -514,6 +514,13 @@ export function createApp({
     );
     return c.json(op, status(op));
   });
+  app.post('/api/threads/:threadId/questions/dismiss', async (c) => {
+    const op = await service.dismissQuestions(
+      id(c.req.param('threadId')),
+      await parse(c, schemas.dismissQuestionsSchema),
+    );
+    return c.json(op, status(op));
+  });
   app.post('/api/actions/:actionId/resolve', async (c) => {
     const op = await service.resolveAction(
       id(c.req.param('actionId')),

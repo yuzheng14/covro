@@ -1,6 +1,6 @@
 # Database compatibility
 
-Application SemVer, DB Schema and backup format are independent. `package.json.covroDatabase` is the release contract. The current release directly reads/writes **Schema 9**, can migrate known schemas **1–9** forward to 9, and defines backup format **1**. Schema 1 maps to migration 0000; Schema 9 maps to 0008. The Drizzle journal's format version is unrelated.
+Application SemVer, DB Schema and backup format are independent. `package.json.covroDatabase` is the release contract. The current release directly reads/writes **Schema 10**, can migrate known schemas **1–10** forward to 10, and defines backup format **1**. Schema 1 maps to migration 0000; Schema 10 maps to 0009. The Drizzle journal's format version is unrelated.
 
 The database stores its ordinal in SQLite `PRAGMA user_version`. Startup checks every applied migration's SHA-256 and timestamp against the packaged migration chain. Legacy databases with user_version 0 are identified only through that chain. SQL, migration history and the public version commit in one transaction. Failed migrations preserve the prior version and data. Unknown tables without a valid journal, contradictory versions and divergent histories are rejected.
 

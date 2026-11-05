@@ -103,5 +103,11 @@
   "networkRestricted": "No additional network access",
   "fieldValue": "{{label}}: {{value}}",
   "denyDecision": "Deny",
-  "accessDeny": "Deny access"
+  "accessDeny": "Deny access",
+  "skip_question": "Skip this question",
+  "answer_question": "Answer this question",
+  "question_skipped": "Skipped",
+  "question_will_be_skipped": "Will be skipped on submission",
+  "skip_all_questions": "Skip all and submit",
+  "submit_with_skipped": "Submit with skipped questions"
 }

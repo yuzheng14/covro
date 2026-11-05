@@ -84,7 +84,7 @@ test.afterEach(async ({ request }) => {
 for (const [index, label] of ['允许本次', '本会话允许', '拒绝'].entries()) {
   test(`question confirmation preserves the selected answer: ${label}`, async ({ page }) => {
     await pendingTask(page, '[questions-choice] 确认下一步操作');
-    const card = page.locator('.action-card');
+    const card = page.locator('.pending-actions .action-card');
     const submit = card.getByRole('button', { name: '确认选择', exact: true });
     await expect(submit).toBeDisabled();
     await card.getByRole('radio', { name: label, exact: false }).check();
@@ -96,6 +96,10 @@ for (const [index, label] of ['允许本次', '本会话允许', '拒绝'].entri
       answers: { confirmation: [label] },
     });
     await expect(card).not.toBeVisible();
+    await expect(page.locator('.turn .action-card .async-question-answer')).toHaveText(label);
+    await expect(page.locator('.turn .action-card input, .turn .action-card button')).toHaveCount(
+      0,
+    );
   });
 }
 
@@ -104,7 +108,7 @@ test('other answers switch to answer submission and cannot submit while offline'
   context,
 }) => {
   await pendingTask(page, '[questions-choice] 选择之外也可以填写回答');
-  const card = page.locator('.action-card');
+  const card = page.locator('.pending-actions .action-card');
   await card.getByRole('radio', { name: '其他回答', exact: true }).check();
   const submit = card.getByRole('button', { name: '提交回答', exact: true });
   await expect(submit).toBeDisabled();
@@ -125,6 +129,10 @@ test('other answers switch to answer submission and cannot submit while offline'
     answers: { confirmation: ['请先解释允许的范围'] },
   });
   await expect(card).not.toBeVisible();
+  await expect(page.locator('.turn .action-card .async-question-answer')).toHaveText(
+    '请先解释允许的范围',
+  );
+  await expect(page.locator('.turn .action-card input, .turn .action-card button')).toHaveCount(0);
 });
 
 for (const allow of [true, false]) {

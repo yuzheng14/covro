@@ -1,6 +1,6 @@
 import { t } from '../i18n';
 import { useId, useRef, useState } from 'react';
-import type { AsyncQuestion, AsyncQuestionReply } from '../../shared/types';
+import type { AsyncQuestion, AsyncQuestionReply, ThreadView } from '../../shared/types';
 import { asyncQuestionId } from '../../shared/async-questions';
 import { Button } from './ui/button';
 import { Icon } from './Icon';
@@ -10,6 +10,8 @@ import { MarkdownContent } from './MarkdownContent';
 
 export interface AsyncQuestionControls {
   disabled: boolean;
+  tracking?: ThreadView['questionTracking'];
+  onDismiss?: (questionIds: string[]) => Promise<boolean>;
   onReply: (replies: AsyncQuestionReply[]) => Promise<boolean>;
 }
 
@@ -19,6 +21,8 @@ export function AsyncQuestionCard({
   replies = [],
   disabled,
   onReply,
+  tracking,
+  onDismiss,
 }: AsyncQuestionControls & {
   itemId: string;
   questions: AsyncQuestion[];
@@ -38,22 +42,41 @@ export function AsyncQuestionCard({
   const [texts, setTexts] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
-  const [sent, setSent] = useState<string[]>();
   const recorded = questions.map(
     (q, index) =>
       replies.find((reply) => reply.questionItemId === asyncQuestionId(itemId, index))?.answer ??
       replies.find((reply) => reply.questionItemId === itemId && reply.question === q.title)
-        ?.answer ??
-      sent?.[index],
+        ?.answer,
   );
-  const resolved = recorded.every((answer) => answer !== undefined);
+  const dismissed = questions.map(
+    (_, index) => tracking?.[asyncQuestionId(itemId, index)]?.status === 'dismissed',
+  );
+  const settled = recorded.map((answer, index) => answer !== undefined || dismissed[index]);
+  const pendingSubmission = questions.some(
+    (_, index) =>
+      !settled[index] &&
+      ['submitting', 'unknown'].includes(tracking?.[asyncQuestionId(itemId, index)]?.status ?? ''),
+  );
+  const resolved = settled.every(Boolean);
+  const dismiss = async (indexes: number[]) => {
+    if (disabled || sendingRef.current || !onDismiss) return;
+    sendingRef.current = true;
+    setSending(true);
+    try {
+      await onDismiss(indexes.map((index) => asyncQuestionId(itemId, index)));
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  };
   const answers = questions.map(
     (q, index) =>
       recorded[index] ??
       (choices[index] === -1 ? texts[index]?.trim() : q.options?.[choices[index] ?? 0]) ??
       '',
   );
-  const locked = disabled || sending || Boolean(resolved);
+  const locked = disabled || sending || pendingSubmission || resolved;
+  const incomplete = answers.some((answer, index) => !settled[index] && !answer);
   const showShortcut =
     !mobileInput && choices.some((choice, index) => choice === -1 && recorded[index] === undefined);
   return (
@@ -67,39 +90,41 @@ export function AsyncQuestionCard({
       <div className="async-question-heading">
         <span>
           <Icon name="chat" size={16} />
-          {t('workspace:your_answer_is_needed')}
+          {t(resolved ? 'workspace:questions_from_codex' : 'workspace:your_answer_is_needed')}
         </span>
         <small>
           {resolved
-            ? t('workspace:answer_sent')
+            ? dismissed.some(Boolean)
+              ? t('workspace:questions_handled')
+              : t('workspace:answer_sent')
             : sending
               ? t('workspace:sending')
-              : t('workspace:you_can_answer_later')}
+              : pendingSubmission
+                ? t('workspace:answer_receipt_pending')
+                : t('workspace:you_can_answer_later')}
         </small>
       </div>
       <form
         onSubmit={async (event) => {
           event.preventDefault();
-          if (locked || sendingRef.current || answers.some((answer) => !answer)) return;
+          if (locked || sendingRef.current || incomplete) return;
           sendingRef.current = true;
           setSending(true);
           try {
-            if (
-              await onReply(
-                questions.flatMap((q, index) =>
-                  recorded[index] !== undefined
-                    ? []
-                    : [
-                        {
-                          questionItemId: asyncQuestionId(itemId, index),
-                          question: q.title,
-                          answer: answers[index]!,
-                        },
-                      ],
-                ),
-              )
-            )
-              setSent(answers);
+            // Native history confirms the answer; an accepted submission alone may still be pending.
+            await onReply(
+              questions.flatMap((q, index) =>
+                settled[index]
+                  ? []
+                  : [
+                      {
+                        questionItemId: asyncQuestionId(itemId, index),
+                        question: q.title,
+                        answer: answers[index]!,
+                      },
+                    ],
+              ),
+            );
           } finally {
             sendingRef.current = false;
             setSending(false);
@@ -109,7 +134,7 @@ export function AsyncQuestionCard({
         {questions.map((question, index) => (
           <fieldset
             key={index}
-            disabled={locked || recorded[index] !== undefined}
+            disabled={locked || settled[index]}
             aria-labelledby={`${id}-question-${index}`}
           >
             <div className="async-question-title" id={`${id}-question-${index}`}>
@@ -119,6 +144,8 @@ export function AsyncQuestionCard({
               <div className="async-question-answer">
                 <MarkdownContent text={recorded[index]} />
               </div>
+            ) : dismissed[index] ? (
+              <p className="async-question-answer">{t('workspace:question_tracking_ended')}</p>
             ) : (
               <>
                 {question.options?.map((option, choice) => (
@@ -228,6 +255,18 @@ export function AsyncQuestionCard({
                     }
                   />
                 )}
+                {onDismiss && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={locked}
+                    title={t('workspace:end_tracking_hint')}
+                    onClick={() => void dismiss([index])}
+                  >
+                    {t('workspace:end_question_tracking')}
+                  </Button>
+                )}
               </>
             )}
           </fieldset>
@@ -235,6 +274,20 @@ export function AsyncQuestionCard({
         {!resolved && (
           <div className="async-question-footer">
             <span>{t('workspace:your_answer_will_be_sent_to_this_session')}</span>
+            {onDismiss && settled.filter((done) => !done).length > 1 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={locked}
+                title={t('workspace:end_tracking_hint')}
+                onClick={() =>
+                  void dismiss(settled.flatMap((done, index) => (done ? [] : [index])))
+                }
+              >
+                {t('workspace:end_remaining_tracking')}
+              </Button>
+            )}
             <ControlHint
               id={shortcutId}
               content={
@@ -242,7 +295,7 @@ export function AsyncQuestionCard({
               }
               asChild
             >
-              <Button type="submit" disabled={locked || answers.some((answer) => !answer)}>
+              <Button type="submit" disabled={locked || incomplete}>
                 {sending ? t('workspace:sending') : t('workspace:send_answer')}
                 {showShortcut && (
                   <kbd className="answer-submit-shortcut" aria-hidden="true">

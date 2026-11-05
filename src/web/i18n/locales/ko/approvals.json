@@ -103,5 +103,11 @@
   "networkRestricted": "추가 네트워크 접근 없음",
   "fieldValue": "{{label}}: {{value}}",
   "denyDecision": "거부",
-  "accessDeny": "접근 금지"
+  "accessDeny": "접근 금지",
+  "skip_question": "이 질문 건너뛰기",
+  "answer_question": "이 질문에 답변",
+  "question_skipped": "건너뜀",
+  "question_will_be_skipped": "제출 시 건너뜁니다",
+  "skip_all_questions": "모두 건너뛰고 제출",
+  "submit_with_skipped": "건너뛴 질문과 함께 제출"
 }

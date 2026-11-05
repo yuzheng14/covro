@@ -80,5 +80,11 @@
   "export_response_has_no_valid_filename_no_file": "내보내기 응답에 유효한 파일 이름이 없어 다운로드하지 않았습니다.",
   "export_response_lacks_history_completeness_information_no_file": "내보내기 응답에 기록 완전성 정보가 없어 다운로드하지 않았습니다.",
   "request_failed_please_try_again": "요청에 실패했습니다. 다시 시도하세요.",
-  "open_github_repository": "GitHub 저장소 열기"
+  "open_github_repository": "GitHub 저장소 열기",
+  "end_question_tracking": "추적 종료",
+  "end_remaining_tracking": "나머지 추적 종료",
+  "end_tracking_hint": "Codex에 답변을 보내지 않고 Covro 알림을 중지합니다.",
+  "question_tracking_ended": "추적 종료 · 답변 미전송",
+  "questions_handled": "처리됨",
+  "answer_receipt_pending": "답변 수신 확인 대기 중"
 }
