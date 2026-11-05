@@ -5,6 +5,7 @@ import { SHELL_TIMEOUT_MS, SHELL_OUTPUT_BYTES } from '../shared/shell.js';
 import type { CommandExecResponse } from './generated/v2/CommandExecResponse.js';
 import type { CommandExecTerminateResponse } from './generated/v2/CommandExecTerminateResponse.js';
 import { spawn, execFile, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { managedMcpArguments } from './managed-mcp.js';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { readGoal } from './thread-goals.js';
@@ -183,6 +184,8 @@ export interface CodexAdapterOptions {
   home?: string;
   /** Explicit argument override for the test simulator; production leaves this unset. */
   args?: string[];
+  /** Injected by the gateway for this child only; independent clients receive no configuration. */
+  managedMcp?: { name: string; url: string };
   requestTimeoutMs?: number;
   titleTimeoutMs?: number;
   maxLineBytes?: number;
@@ -339,7 +342,12 @@ export class CodexAdapter implements CodexClient {
         : 'unverified';
       const child = spawn(
         this.options.binary,
-        this.options.args ?? ['app-server', '--listen', 'stdio://'],
+        [
+          ...(this.options.args ?? ['app-server', '--listen', 'stdio://']),
+          ...(this.options.managedMcp
+            ? managedMcpArguments(this.options.managedMcp.url, this.options.managedMcp.name)
+            : []),
+        ],
         { env, stdio: ['pipe', 'pipe', 'pipe'], shell: false },
       );
       this.child = child;
