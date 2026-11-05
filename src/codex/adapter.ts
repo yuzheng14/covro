@@ -1159,6 +1159,7 @@ export class CodexAdapter implements CodexClient {
     settings?: Settings,
     images?: string[],
     skills?: import('../shared/skills.js').SkillReference[],
+    clientUserMessageId?: string,
   ): Promise<TurnView> {
     this.validateSettings(settings, this.permissionState.get(id));
     await this.validatePermissionSettings(cwd, settings, id);
@@ -1169,6 +1170,7 @@ export class CodexAdapter implements CodexClient {
           threadId: id,
           cwd,
           input: taskInput(text, images, skills),
+          ...(clientUserMessageId ? { clientUserMessageId } : {}),
           ...turnSettings(cwd, settings),
           ...collaborationSelection(settings, this.permissionState.get(id)),
         })
@@ -1252,11 +1254,13 @@ export class CodexAdapter implements CodexClient {
     turnId: string,
     text: string,
     images?: string[],
+    clientUserMessageId?: string,
   ): Promise<TurnSteerResponse> {
     return this.call('turn/steer', {
       threadId: id,
       expectedTurnId: turnId,
       input: taskInput(text, images),
+      ...(clientUserMessageId ? { clientUserMessageId } : {}),
     });
   }
   async interruptTurn(id: string, turnId: string): Promise<void> {

@@ -18,6 +18,7 @@ import { WorkspaceRegistry } from './workspaces.js';
 import { UNASSIGNED_SCOPE } from '../shared/workspace-scope.js';
 import { AppError } from '../shared/errors.js';
 import { threadNameError } from '../shared/thread-name.js';
+import { mergeUserMessage, submittedUserMessage } from '../shared/user-message.js';
 import {
   validateElicitationResolution,
   validatePermissionResolution,
@@ -1182,11 +1183,24 @@ export class GatewayService {
         if (isActive(this.projection.get(threadId)?.status ?? thread.status))
           throw new AppError('THREAD_BUSY', 'Session already has an active task', 409);
       }
-      this.store.dispatch(input.clientOperationId, {
-        threadId,
-        workspaceKey: ownership.workspaceKey,
-        codexEpoch: this.codex.epoch,
-      });
+      const message = {
+        ...input,
+        text: input.taskKind === 'init' ? PROJECT_INIT_PROMPT : input.text,
+      };
+      this.store.dispatch(
+        input.clientOperationId,
+        {
+          threadId,
+          workspaceKey: ownership.workspaceKey,
+          codexEpoch: this.codex.epoch,
+        },
+        message.text || message.images?.length
+          ? {
+              threadId,
+              item: submittedUserMessage(input.clientOperationId, message),
+            }
+          : undefined,
+      );
       if (retry && !this.capacityRetries.owns(retry))
         throw new AppError('TURN_CONFLICT', '容量重试已取消或被替代', 409);
       const candidate =
@@ -1210,10 +1224,11 @@ export class GatewayService {
       const turn = await this.codex.startTurn(
         threadId,
         ownership.cwd,
-        input.taskKind === 'init' ? PROJECT_INIT_PROMPT : input.text,
+        message.text,
         input.settings,
         input.images,
-        ...(skills.length ? ([skills] as const) : ([] as const)),
+        skills.length ? skills : undefined,
+        input.clientOperationId,
       );
       this.store.attachTurn(input.clientOperationId, turn.id);
       this.turnBaselines.delete(input.clientOperationId);
@@ -1530,14 +1545,20 @@ export class GatewayService {
           409,
         );
       this.ensureCompatibilityConfirmed();
-      this.store.dispatch(input.clientOperationId);
+      this.store.dispatch(input.clientOperationId, undefined, {
+        threadId,
+        turnId: input.expectedTurnId,
+        item: submittedUserMessage(input.clientOperationId, input),
+      });
+      this.publishThread(threadId);
       const result = await this.codex.steerTurn(
         threadId,
         input.expectedTurnId,
         input.text,
         input.images,
+        input.clientOperationId,
       );
-      return { result: { threadId, turnId: result.turnId } };
+      return { result: { threadId, turnId: result.turnId }, turnId: result.turnId };
     });
   }
 
@@ -1776,7 +1797,8 @@ export class GatewayService {
       }
       if (kind === 'turn.start')
         this.capacityRetries.dispatchFailed(target, input.clientOperationId);
-      if (dispatched && kind === 'turn.start') this.publishThread(target);
+      if (dispatched && (kind === 'turn.start' || kind === 'turn.steer'))
+        this.publishThread(target);
       this.events.publish('operation', operation);
       if (uncertain)
         throw new AppError(
@@ -1790,7 +1812,8 @@ export class GatewayService {
       this.inFlightOperations.delete(input.clientOperationId);
       this.pendingThreadCreations.delete(input.clientOperationId);
       if (!this.store.activeForThread(target)) this.turnBaselines.delete(input.clientOperationId);
-      if (kind === 'thread.compact') this.publishThread(target);
+      if (kind === 'thread.compact' || kind === 'turn.start' || kind === 'turn.steer')
+        this.publishThread(target);
     }
   }
 
@@ -2124,7 +2147,22 @@ export class GatewayService {
   }
 
   private threadView(thread: ThreadView, copy = true): ThreadView {
+    const submissions = new Map(
+      this.store.pendingMessages(thread.id).map((message) => [message.id, message]),
+    );
+    if (submissions.size)
+      for (const turn of thread.turns)
+        for (const item of turn.items) {
+          const pending = item.clientId ? submissions.get(item.clientId) : undefined;
+          if (pending && (!pending.turnId || pending.turnId === turn.id)) {
+            Object.assign(item, mergeUserMessage(item, pending.item));
+            this.store.confirmMessage(thread.id, turn.id, item);
+          }
+        }
     const result = copy ? structuredClone(thread) : { ...thread };
+    const pendingMessages = this.store.pendingMessages(thread.id);
+    if (pendingMessages.length) result.pendingMessages = pendingMessages;
+    else delete result.pendingMessages;
     // Most threads have no empty-input continuation, so defer the operation-history lookup.
     const links =
       this.capacityLinks.get(thread.id) ??

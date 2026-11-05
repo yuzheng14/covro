@@ -97,6 +97,7 @@ export interface CodexClient {
     settings?: Settings,
     images?: string[],
     skills?: import('../shared/skills.js').SkillReference[],
+    clientUserMessageId?: string,
   ): Promise<TurnView>;
   /** Native inline review scoped to this session's working directory. */
   startReview(id: string, target?: ReviewTarget): Promise<TurnView>;
@@ -105,6 +106,7 @@ export interface CodexClient {
     turnId: string,
     text: string,
     images?: string[],
+    clientUserMessageId?: string,
   ): Promise<{ turnId: string }>;
   interruptTurn(id: string, turnId: string): Promise<void>;
   listGuardianDenials?(id: string): import('../shared/guardian-denials.js').GuardianDenial[];

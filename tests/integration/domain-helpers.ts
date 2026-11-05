@@ -165,13 +165,29 @@ export class DomainCodex implements CodexClient {
     this.emit({ type: 'thread', thread: structuredClone(fork) });
     return structuredClone(fork);
   }
-  async startTurn(id: string, _cwd: string, text: string, _settings?: Settings) {
+  async startTurn(
+    id: string,
+    _cwd: string,
+    text: string,
+    _settings?: Settings,
+    images?: string[],
+    _skills?: import('../../src/shared/skills.js').SkillReference[],
+    clientId?: string,
+  ) {
     this.starts++;
     const turn: TurnView = {
       id: `turn-${this.starts}`,
       threadId: id,
       status: 'running',
-      items: [{ id: `user-${this.starts}`, type: 'userMessage', text }],
+      items: [
+        {
+          id: `user-${this.starts}`,
+          type: 'userMessage',
+          text,
+          ...(clientId ? { clientId } : {}),
+          ...(images?.length ? { images, imageCount: images.length } : {}),
+        },
+      ],
     };
     const thread = this.threads.get(id)!;
     thread.status = 'running';

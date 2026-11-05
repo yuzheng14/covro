@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, isNull, ne, or } from 'drizzle-orm';
 import type { AppDatabase } from './index.js';
-import { executionMarkers, operations, threadLinks } from './schema.js';
-import type { ApiError } from '../../shared/types.js';
+import { executionMarkers, operations, pendingUserMessages, threadLinks } from './schema.js';
+import type { ApiError, ItemView, PendingUserMessage } from '../../shared/types.js';
 
 export type OperationRow = typeof operations.$inferSelect;
 export type ExecutionMarker = typeof executionMarkers.$inferSelect;
@@ -133,6 +133,7 @@ export class OperationStore {
   dispatch(
     id: string,
     marker?: { threadId: string; workspaceKey: string; codexEpoch: string },
+    message?: Pick<PendingUserMessage, 'threadId' | 'turnId' | 'item'>,
   ): void {
     this.database.transaction((tx) => {
       if (marker) {
@@ -161,6 +162,10 @@ export class OperationStore {
         tx.insert(executionMarkers)
           .values({ operationId: id, ...marker, state: 'active', createdAt: Date.now() })
           .run();
+      if (message)
+        tx.insert(pendingUserMessages)
+          .values({ ...message, id, status: 'submitting', createdAt: Date.now() })
+          .run();
     });
   }
 
@@ -184,6 +189,10 @@ export class OperationStore {
           .set({ turnId })
           .where(eq(executionMarkers.operationId, id))
           .run();
+      tx.update(pendingUserMessages)
+        .set({ status: 'submitted', ...(turnId ? { turnId } : {}) })
+        .where(and(eq(pendingUserMessages.id, id), eq(pendingUserMessages.status, 'submitting')))
+        .run();
     });
     return this.get(id)!;
   }
@@ -220,6 +229,10 @@ export class OperationStore {
         .run();
       // A late rejection must not turn an already-recovered unknown execution into a release.
       if (changed.changes === 0) return;
+      tx.update(pendingUserMessages)
+        .set({ status: uncertain ? 'unknown' : 'failed' })
+        .where(eq(pendingUserMessages.id, id))
+        .run();
       tx.update(executionMarkers)
         .set(uncertain ? { state: 'unknown' } : { state: 'terminal', endedAt: Date.now() })
         .where(and(eq(executionMarkers.operationId, id), isNull(executionMarkers.endedAt)))
@@ -231,6 +244,10 @@ export class OperationStore {
   /** Includes acknowledged requests with unfinished turns; none of these are retried. */
   recover(): void {
     this.database.transaction((tx) => {
+      tx.update(pendingUserMessages)
+        .set({ status: 'unknown' })
+        .where(ne(pendingUserMessages.status, 'failed'))
+        .run();
       tx.update(operations)
         .set({
           state: 'failed',
@@ -310,6 +327,11 @@ export class OperationStore {
 
   attachTurn(operationId: string, turnId: string): void {
     this.database
+      .update(pendingUserMessages)
+      .set({ turnId })
+      .where(and(eq(pendingUserMessages.id, operationId), isNull(pendingUserMessages.turnId)))
+      .run();
+    this.database
       .update(executionMarkers)
       .set({ turnId })
       .where(and(eq(executionMarkers.operationId, operationId), isNull(executionMarkers.endedAt)))
@@ -317,6 +339,17 @@ export class OperationStore {
   }
 
   finishTurn(threadId: string, turnId: string, codexEpoch: string): void {
+    this.database
+      .update(pendingUserMessages)
+      .set({ status: 'unknown' })
+      .where(
+        and(
+          eq(pendingUserMessages.threadId, threadId),
+          eq(pendingUserMessages.turnId, turnId),
+          ne(pendingUserMessages.status, 'failed'),
+        ),
+      )
+      .run();
     this.database
       .update(executionMarkers)
       .set({ state: 'terminal', endedAt: Date.now() })
@@ -326,6 +359,36 @@ export class OperationStore {
           eq(executionMarkers.turnId, turnId),
           eq(executionMarkers.codexEpoch, codexEpoch),
           isNull(executionMarkers.endedAt),
+        ),
+      )
+      .run();
+  }
+
+  pendingMessages(threadId: string): PendingUserMessage[] {
+    return this.database
+      .select({ ...getTableColumns(pendingUserMessages), operationKind: operations.kind })
+      .from(pendingUserMessages)
+      .innerJoin(operations, eq(operations.clientOperationId, pendingUserMessages.id))
+      .where(eq(pendingUserMessages.threadId, threadId))
+      .orderBy(asc(pendingUserMessages.createdAt), asc(pendingUserMessages.id))
+      .all()
+      .map(({ turnId, operationKind, ...message }) => ({
+        ...message,
+        kind: operationKind === 'turn.steer' ? 'steer' : 'start',
+        ...(turnId ? { turnId } : {}),
+      }));
+  }
+
+  /** Only a matching native item confirms delivery. Receipts and terminal turns do not. */
+  confirmMessage(threadId: string, turnId: string, item: ItemView): void {
+    if (item.type !== 'userMessage' || !item.clientId) return;
+    this.database
+      .delete(pendingUserMessages)
+      .where(
+        and(
+          eq(pendingUserMessages.id, item.clientId),
+          eq(pendingUserMessages.threadId, threadId),
+          or(isNull(pendingUserMessages.turnId), eq(pendingUserMessages.turnId, turnId)),
         ),
       )
       .run();

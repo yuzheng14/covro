@@ -57,6 +57,13 @@
       "when": 1793698804577,
       "tag": "0007_turn_total_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793864992011,
+      "tag": "0008_pending_user_messages",
+      "breakpoints": true
     }
   ]
 }

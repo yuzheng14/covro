@@ -88,6 +88,8 @@ describe('bounded capacity recovery', () => {
         '',
         { ...ctx.settings, model: 'original-model' },
         undefined,
+        undefined,
+        expect.any(String),
       ]);
       expect(ctx.store.activeForThread(ctx.id)?.turnId).toBe(ctx.turn().id);
       expect((await ctx.read()).turns.at(-1)?.retryOf).toBe(waiting.rootTurnId);
@@ -375,7 +377,13 @@ describe('bounded capacity recovery', () => {
     await ctx.service.retryTurn(ctx.id, request);
     await ctx.service.retryTurn(ctx.id, request);
     expect(ctx.starts).toHaveBeenCalledTimes(2);
-    expect(ctx.starts.mock.calls[1]?.slice(2)).toEqual(['', request.settings, undefined]);
+    expect(ctx.starts.mock.calls[1]?.slice(2)).toEqual([
+      '',
+      request.settings,
+      undefined,
+      undefined,
+      request.clientOperationId,
+    ]);
     await vi.advanceTimersByTimeAsync(120000);
     expect(ctx.starts).toHaveBeenCalledTimes(2);
   });

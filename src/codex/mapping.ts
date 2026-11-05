@@ -147,6 +147,7 @@ export function mapItem(item: ThreadItem): ItemView {
       return {
         id: item.id,
         type: item.type,
+        ...(item.clientId ? { clientId: item.clientId } : {}),
         text: replies
           ? replies.map((reply) => `${reply.question}\n${reply.answer}`).join('\n\n')
           : item.content

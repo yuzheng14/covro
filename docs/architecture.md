@@ -15,6 +15,8 @@
 
 执行标记保留启动操作 ID、threadId、turnId、workspaceKey、codexEpoch。真实终态释放对应标记；人工核对只解除原标记，不能解除后来任务。RPC 回执和任务终态分别处理。
 
+用户消息以操作 ID 作为原生 `clientUserMessageId`，回传的 `userMessage.clientId` 保留在应用 DTO 中。通过校验后，派发事务同时在独立的 `pending_user_messages` 表保存文本和附件快照；操作表仍只存请求摘要。启动回执不等于消息已写入原生历史：待确认内容随详情快照发布，只有匹配 thread、turn 和 client ID 的原生消息才清理本地记录。失败保留失败状态，终止但未收到消息或运行时重启则保留待核对状态，均不自动重发。空输入的容量续跑不创建用户消息。
+
 读取带已知 turnId 执行标记的缓存详情（包括发送下一轮前的读取）时，网关会核实上游历史，同一执行的并发核实合并为一次读取。仅当原任务存在明确终态、历史没有活动任务、读取期间运行实例与实时投影未变化且标记仍属于原操作时释放；无法读取、缺少 turnId 或仅有 idle 状态均不释放。同步 SQLite 事务与 `execution_markers_active_thread` 唯一索引只防止同一 thread 重复启动活动 turn，不阻塞 steer，也不限制其他 thread。
 
 投影按上游 thread/turn/item ID 合并。浏览器以 incremental 订阅接收 threadPatch：元数据整体更新，轮次和消息按稳定 ID 更新，文本以绝对偏移追加；流式事件只检查对应条目，不克隆或序列化旧历史正文。首次连接、过期游标或过大的替换事件返回 resync，浏览器通过 GET /api/threads/:threadId/snapshot 获取完整历史页及同一同步边界的游标，再订阅该游标之后的事件。HTTP 读取期间的变化由有界重放缓存补齐；缓存过期重新读取，旧响应不能覆盖较新的投影或其他会话。发送缓冲限制保留，完整历史不因 WebSocket 预算被裁成预览。未指定 incremental 的旧订阅仍提供有界初始快照。全局运行状态与会话游标分开跟踪，刷新不复用单独残留游标。

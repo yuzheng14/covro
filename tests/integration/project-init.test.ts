@@ -27,6 +27,8 @@ it('dispatches the server-owned init task once through the normal task lifecycle
     PROJECT_INIT_PROMPT,
     undefined,
     undefined,
+    undefined,
+    payload.clientOperationId,
   );
   expect(await ctx.service.startTurn(ctx.id, payload)).toEqual(op);
   expect(start).toHaveBeenCalledTimes(1);
