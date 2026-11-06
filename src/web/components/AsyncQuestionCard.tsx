@@ -137,8 +137,23 @@ export function AsyncQuestionCard({
             disabled={locked || settled[index]}
             aria-labelledby={`${id}-question-${index}`}
           >
-            <div className="async-question-title" id={`${id}-question-${index}`}>
-              <MarkdownContent text={question.title} />
+            <div className="async-question-item-heading">
+              <div className="async-question-title" id={`${id}-question-${index}`}>
+                <MarkdownContent text={question.title} />
+              </div>
+              {!settled[index] && onDismiss && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="async-question-dismiss"
+                  disabled={locked}
+                  title={t('workspace:end_tracking_hint')}
+                  onClick={() => void dismiss([index])}
+                >
+                  {t('workspace:end_question_tracking')}
+                </Button>
+              )}
             </div>
             {recorded[index] !== undefined ? (
               <div className="async-question-answer">
@@ -255,18 +270,6 @@ export function AsyncQuestionCard({
                     }
                   />
                 )}
-                {onDismiss && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={locked}
-                    title={t('workspace:end_tracking_hint')}
-                    onClick={() => void dismiss([index])}
-                  >
-                    {t('workspace:end_question_tracking')}
-                  </Button>
-                )}
               </>
             )}
           </fieldset>
@@ -274,36 +277,37 @@ export function AsyncQuestionCard({
         {!resolved && (
           <div className="async-question-footer">
             <span>{t('workspace:your_answer_will_be_sent_to_this_session')}</span>
-            {onDismiss && settled.filter((done) => !done).length > 1 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={locked}
-                title={t('workspace:end_tracking_hint')}
-                onClick={() =>
-                  void dismiss(settled.flatMap((done, index) => (done ? [] : [index])))
+            <div className="async-question-actions">
+              {onDismiss && settled.filter((done) => !done).length > 1 && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={locked}
+                  title={t('workspace:end_tracking_hint')}
+                  onClick={() =>
+                    void dismiss(settled.flatMap((done, index) => (done ? [] : [index])))
+                  }
+                >
+                  {t('workspace:end_remaining_tracking')}
+                </Button>
+              )}
+              <ControlHint
+                id={shortcutId}
+                content={
+                  showShortcut ? t('workspace:answer_submit_shortcut', { shortcut }) : undefined
                 }
+                asChild
               >
-                {t('workspace:end_remaining_tracking')}
-              </Button>
-            )}
-            <ControlHint
-              id={shortcutId}
-              content={
-                showShortcut ? t('workspace:answer_submit_shortcut', { shortcut }) : undefined
-              }
-              asChild
-            >
-              <Button type="submit" disabled={locked || incomplete}>
-                {sending ? t('workspace:sending') : t('workspace:send_answer')}
-                {showShortcut && (
-                  <kbd className="answer-submit-shortcut" aria-hidden="true">
-                    {shortcut}
-                  </kbd>
-                )}
-              </Button>
-            </ControlHint>
+                <Button type="submit" disabled={locked || incomplete}>
+                  {sending ? t('workspace:sending') : t('workspace:send_answer')}
+                  {showShortcut && (
+                    <kbd className="answer-submit-shortcut" aria-hidden="true">
+                      {shortcut}
+                    </kbd>
+                  )}
+                </Button>
+              </ControlHint>
+            </div>
           </div>
         )}
       </form>
