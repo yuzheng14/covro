@@ -196,9 +196,16 @@ test.describe('touch reading', () => {
     await screenshot(page, testInfo, 'thread-unread-mobile');
     await page.getByRole('button', { name: '关闭导航', exact: true }).tap();
     await page.getByRole('button', { name: '回到最新内容', exact: true }).tap();
+    // A streamed update after motion starts must not restore a halfway scroll anchor.
+    await page.waitForFunction(() => {
+      const box = document.querySelector('.conversation-scroll')!;
+      return box.scrollTop > 0;
+    });
+    await submit(request, `/api/threads/${id}/rename`, { name: '滚动中收到会话更新' });
     await expect(latestResult(page)).toBeInViewport();
     // Keep the result unobscured until the asynchronous visibility observer confirms reading.
     await expect(unread(page, id)).toHaveCount(0);
+    await screenshot(page, testInfo, 'thread-unread-mobile-latest');
     await page.getByRole('button', { name: '打开项目与会话' }).tap();
     await expect(unread(page, id)).toHaveCount(0);
     await expect(row(page, id).locator('.thread-details')).toContainText('已读');
