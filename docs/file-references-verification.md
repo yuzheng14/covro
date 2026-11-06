@@ -1,8 +1,8 @@
 # File reference verification / 文件引用验证
 
-Date: 2026-11-06. Base: `origin/main` at `3d0b586`. Project recommended/verified Codex: **0.166.0**. The default installed CLI is still **0.164.0**; this work does not upgrade it or change the user's running Covro instance.
+Date: 2026-11-06. Base: `origin/main` at `3d0b586`. Project recommended/verified Codex: **0.166.0**. The initial November 5 audit found default CLI **0.164.0**; the final November 6 environment reports **0.166.0**. This task does not install or upgrade a CLI or change the user's running Covro instance.
 
-日期：2026-11-06。基于 `origin/main` 的 `3d0b586`；项目推荐/已验证版本为 **0.166.0**，本机默认 CLI 仍是 **0.164.0**，本次不升级全局 CLI 或改动正在运行的 Covro 实例。
+日期：2026-11-06。基于 `origin/main` 的 `3d0b586`；项目推荐/已验证版本为 **0.166.0**，11 月 5 日初查默认 CLI 为 **0.164.0**，11 月 6 日最终环境检查为 **0.166.0**；本任务未执行 CLI 安装/升级，也未改动正在运行的 Covro 实例。
 
 ## Checks / 检查
 
@@ -13,6 +13,10 @@ Date: 2026-11-06. Base: `origin/main` at `3d0b586`. Project recommended/verified
 - Desktop and 390px screenshots cover English, 简体中文, 日本語 and 한국어, plus bound references with an image and a deleted-file error retaining the draft. Screenshot banners explicitly identify fixture simulation. [Ten screenshots were uploaded through Browser Use and verified to display on GitHub](https://github.com/yuzheng14/covro/pull/319#issuecomment-6675676517).
 
 类型、lint、格式、构建、兼容性/双语 README 校验及 diff 检查通过，未新增依赖或下载工具。全量 **1531 项通过、1 项原有跳过**；最初沙箱阻止本地端口/套接字，开放测试所需回环访问后的全量重跑通过。**90 项浏览器回归通过**；同步 main 的消息持久化/clientId 链路后，另有 **41 项文件、技能、首条发送与待确认消息回归通过**，包括全部 10 项文件验收。截图来自生产前端的真实页面，后端明确使用仓库 fixture，不冒充真实模型推理；[十张截图已通过 Browser Use 上传到 PR 评论并核实显示](https://github.com/yuzheng14/covro/pull/319#issuecomment-6675676517)。
+
+CI on implementation/test commit `8370f6c`: [quality, all eight E2E shards and verify passed](https://github.com/yuzheng14/covro/actions/runs/42155049210). The initial shard 3 attempt failed the existing mobile unread viewport assertion (including its automatic retry). No code/assertion was changed: clean main and this PR each passed that case twice locally; the requested job rerun passed all 75 shard cases and the full workflow finished successfully. The initial failure remains in the run history.
+
+实现/原生验收提交 `8370f6c` 的 [quality、8 个 E2E 分片及 verify 均通过](https://github.com/yuzheng14/covro/actions/runs/42155049210)。首轮分片 3 的既有触屏未读 viewport 断言曾失败，自动重试同样失败；未改动代码或放宽断言，干净 main 与本 PR 在本地各重复两次通过，随后单独 job 重跑 75 项全部通过、整套工作流成功。首次失败记录保留在运行历史中。
 
 ## Native acceptance / 原生验收
 
@@ -31,7 +35,7 @@ Actual checks (no repository fixture or model stub):
 - Production browser file selection; actual file deletion rejects dispatch and preserves both bound references; restoring the file permits explicit retry.
 - The actual model reads both selected files and returns their hidden random tokens; a same-name decoy is not read. Token contents are absent from the prompt.
 - Direct native `readThread` confirms one accepted user message containing quoted path text without the picker’s `@` markers. The failed pre-dispatch attempt remains a separate failed UI bubble under main's existing submission-display behavior.
-- Real desktop/390px selected-reference and completed-result screenshots. Fixture multilingual screenshots remain separately labelled.
+- [Real desktop/390px selected-reference and completed-result screenshots were uploaded through Browser Use and verified on GitHub](https://github.com/yuzheng14/covro/pull/319#issuecomment-6675829660). Fixture multilingual screenshots remain separately labelled.
 
 实际验证：中文/空格路径、原生 50 项限额、取消后同 PID 继续查询；未关联草稿与会话沿用服务器 cwd；真实删除导致派发前拒绝且保留两个引用，恢复后手动重试成功。真实模型返回两个只存在于所选文件中的随机令牌，同名诱饵未被读取；原生历史仅一条成功用户消息，含正确带引号路径且没有选择器 `@` 标记。main 原有机制保留的失败气泡与成功原生历史分别核对；桌面及 390px 均有真机截图。
 
