@@ -103,5 +103,11 @@
   "networkRestricted": "追加のネットワークアクセスなし",
   "fieldValue": "{{label}}：{{value}}",
   "denyDecision": "拒否",
-  "accessDeny": "アクセス禁止"
+  "accessDeny": "アクセス禁止",
+  "skip_question": "この質問をスキップ",
+  "answer_question": "この質問に回答",
+  "question_skipped": "スキップ済み",
+  "question_will_be_skipped": "送信時にスキップします",
+  "skip_all_questions": "すべてスキップして送信",
+  "submit_with_skipped": "スキップを含めて送信"
 }

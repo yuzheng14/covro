@@ -1,4 +1,5 @@
 import { submittedConversation, type SubmittedItem } from '../lib/pending-user-messages';
+import { ActionCard } from './ActionCard';
 import { CapacityRetryNotice, type CapacityRetryControls } from './CapacityRetryNotice';
 import { ModelCapacityNotice } from './ModelCapacityNotice';
 import {
@@ -189,6 +190,8 @@ function Item({
               itemId={item.id}
               questions={item.questions}
               replies={replies}
+              tracking={questionControls?.tracking}
+              onDismiss={questionControls?.onDismiss}
               disabled={questionControls?.disabled ?? true}
               onReply={questionControls?.onReply ?? (async () => false)}
             />
@@ -684,6 +687,21 @@ function ConversationContent({
                       </ActivityGroup>
                     ),
                   )}
+                  {thread?.actions
+                    .filter(
+                      (action) =>
+                        action.kind === 'questions' &&
+                        (action.status === 'responded' || action.status === 'expired') &&
+                        action.turnId === turn.id,
+                    )
+                    .map((action) => (
+                      <ActionCard
+                        key={action.actionId}
+                        action={action}
+                        disabled
+                        onResolve={() => {}}
+                      />
+                    ))}
                   {(turn.diff !== undefined || turn.items.some((item) => item.changes?.length)) && (
                     <Button
                       className="turn-diff"

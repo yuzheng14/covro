@@ -2776,11 +2776,23 @@ html.composer-resizing * {
   margin: 0 0 18px;
   padding: 0;
 }
-.async-question-title {
+.async-question-item-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 6px;
+}
+.async-question-title {
+  min-width: 0;
+  flex: 1;
   padding: 0;
   font-weight: 600;
   line-height: 1.7;
+}
+.async-question-dismiss {
+  flex-shrink: 0;
+  margin-top: -5px;
 }
 .async-question-card .question-option {
   border-color: #dce5df;
@@ -2828,11 +2840,27 @@ html.composer-resizing * {
   color: inherit;
 }
 .async-question-footer {
-  justify-content: space-between;
   flex-wrap: wrap;
+  gap: 12px;
 }
-.async-question-footer > button {
+.async-question-footer > span {
+  flex: 1 1 240px;
+}
+.async-question-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-left: auto;
+}
+@media (max-width: 540px) {
+  .async-question-actions {
+    flex: 1 1 100%;
+  }
+  .async-question-actions > .button {
+    flex: 1 1 auto;
+  }
 }
 .action-card {
   min-width: 0;

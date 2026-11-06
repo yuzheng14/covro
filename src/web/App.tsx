@@ -866,6 +866,18 @@ export function App() {
           canAddProject={!workspace.authRequired}
           onAddProject={openAddProject}
           questionControls={{
+            tracking: thread?.questionTracking,
+            onDismiss: async (questionIds) => {
+              if (!thread) return false;
+              const result = await workspace.run(
+                'dismissQuestions',
+                thread.id,
+                `/api/threads/${encode(thread.id)}/questions/dismiss`,
+                { questionIds },
+              );
+              await workspace.refreshThread();
+              return result?.status === 'acknowledged';
+            },
             disabled:
               !canOperate ||
               !thread?.managed ||

@@ -158,5 +158,8 @@
   "GOAL_BUSY": "另一个目标更新正在处理，请等待回执。",
   "SKILL_UNAVAILABLE": "所选技能在当前工作区已不可用，请刷新后重新选择。",
   "SKILLS_READ_FAILED": "无法读取技能，请刷新后重试。",
-  "SKILL_STEER_UNSUPPORTED": "Codex 0.164.0 无法在运行中可靠应用所选技能。请等待当前任务结束，再发送此草稿。"
+  "SKILL_STEER_UNSUPPORTED": "Codex 0.164.0 无法在运行中可靠应用所选技能。请等待当前任务结束，再发送此草稿。",
+  "QUESTION_EXPIRED": "该问题已不存在，请刷新会话。",
+  "QUESTION_BUSY": "回答正在提交或回执待确认，请核对后继续。",
+  "QUESTION_CONFLICT": "该问题已处理或正在提交，请刷新会话。"
 }

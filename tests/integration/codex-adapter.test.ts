@@ -1,3 +1,4 @@
+import type { ActionResolution } from '../../src/shared/types.js';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -998,6 +999,42 @@ describe('verified protocol adapter with a real subprocess', () => {
     expect(messages.find((message) => Object.hasOwn(message, 'result'))).toEqual({
       id: 0,
       result: { answers: { theme: { answers: ['深色'] }, name: { answers: ['名字'] } } },
+    });
+  });
+  it('sends explicit native skips as empty lists and refuses empty strings or unmarked omissions', async () => {
+    const { adapter, events, dir } = await fixture({ approval: 'questions' });
+    const thread = await adapter.createThread('/tmp');
+    await adapter.startTurn(thread.id, '/tmp', 'questions');
+    const incoming = await waitFor(() =>
+      events.find((event) => event.type === 'action' && event.action.kind === 'questions'),
+    );
+    if (incoming.type !== 'action') throw new Error('Wrong event');
+    for (const resolution of [
+      { answers: { theme: [], name: ['name'] } },
+      { answers: { theme: [''], name: ['name'] } },
+      { answers: { name: ['name'] }, skippedQuestionIds: ['unknown'] },
+      { answers: { theme: ['深色'], name: ['name'] }, skippedQuestionIds: ['theme'] },
+    ] as ActionResolution[])
+      await expect(adapter.respond(incoming.action.actionId, resolution)).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+    await adapter.respond(incoming.action.actionId, {
+      answers: { name: ['name'] },
+      skippedQuestionIds: ['theme'],
+    });
+    // stdin write completion is not receipt by the fixture; native resolution follows consumption.
+    await waitFor(() =>
+      events.find(
+        (event) => event.type === 'actionResolved' && event.actionId === incoming.action.actionId,
+      ),
+    );
+    const messages = (await readFile(join(dir, 'requests.jsonl'), 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    expect(messages.find((message) => Object.hasOwn(message, 'result'))).toEqual({
+      id: 0,
+      result: { answers: { theme: { answers: [] }, name: { answers: ['name'] } } },
     });
   });
   it.each([

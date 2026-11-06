@@ -80,5 +80,11 @@
   "export_response_has_no_valid_filename_no_file": "导出响应缺少有效文件名，未下载文件。",
   "export_response_lacks_history_completeness_information_no_file": "导出响应缺少历史完整性说明，未下载文件。",
   "request_failed_please_try_again": "请求失败，请稍后重试。",
-  "open_github_repository": "打开 GitHub 仓库"
+  "open_github_repository": "打开 GitHub 仓库",
+  "end_question_tracking": "结束追踪",
+  "end_remaining_tracking": "结束剩余追踪",
+  "end_tracking_hint": "停止 Covro 提醒，不向 Codex 发送回答。",
+  "question_tracking_ended": "已结束追踪 · 未发送回答",
+  "questions_handled": "已处理",
+  "answer_receipt_pending": "回答回执待确认"
 }

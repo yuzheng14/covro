@@ -1,3 +1,4 @@
+import { questionAnswers } from '../shared/question-resolution.js';
 import { CODEX_COMPATIBILITY } from './compatibility.js';
 import { AccountUsageReader } from './account-usage.js';
 import type { GetAccountRateLimitsResponse } from './generated/v2/GetAccountRateLimitsResponse.js';
@@ -1776,30 +1777,7 @@ export class CodexAdapter implements CodexClient {
             : null,
       };
     } else if (context.request.method === 'item/tool/requestUserInput') {
-      if (!('answers' in resolution))
-        throw new AppError('VALIDATION_ERROR', '此请求需要结构化回答');
-      const questions = context.request.params.questions;
-      const ids = new Set(questions.map((question) => question.id));
-      if (Object.keys(resolution.answers).some((id) => !ids.has(id)))
-        throw new AppError('VALIDATION_ERROR', '回答包含未知题目');
-      const answers: ToolRequestUserInputResponse['answers'] = {};
-      for (const question of questions) {
-        const values = resolution.answers[question.id];
-        if (
-          !Array.isArray(values) ||
-          !values.length ||
-          values.some((value) => typeof value !== 'string' || !value.trim())
-        )
-          throw new AppError('VALIDATION_ERROR', `请回答 ${question.header}`);
-        if (
-          question.options?.length &&
-          !question.isOther &&
-          values.some((value) => !question.options!.some((option) => option.label === value))
-        )
-          throw new AppError('VALIDATION_ERROR', `题目 ${question.header} 只接受所列选项`);
-        answers[question.id] = { answers: values };
-      }
-      response = { answers };
+      response = { answers: questionAnswers(context.action.questions ?? [], resolution) };
     } else {
       if (
         !('decision' in resolution) ||
