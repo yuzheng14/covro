@@ -1,4 +1,11 @@
 import { hasSkillToken, type SkillReference } from '../shared/skills.js';
+import { referenceMessage, validateReferencePath, type ReferenceScope } from './file-references.js';
+import type {
+  FileReference,
+  FileSearchQuery,
+  FileSearchResult,
+} from '../shared/file-references.js';
+import { containsPath } from './projects.js';
 import type { CodexClient, CodexDiagnostics, CodexEvent } from '../codex/types.js';
 import type { StreamedItem } from './thread-patch.js';
 import { CapacityRetries, type CapacityAttempt } from './capacity-retry.js';
@@ -386,6 +393,95 @@ export class GatewayService {
         },
       };
     });
+  }
+
+  private referenceScope(cwd: string, threadId?: string, draftId?: string): ReferenceScope {
+    return {
+      cwd,
+      excluded: [
+        ...this.projects.referenceRoots().filter((root) => root !== cwd && containsPath(cwd, root)),
+        ...this.workspaces
+          .allocations()
+          .filter((row) => !(threadId && row.threadId === threadId) && row.operationId !== draftId)
+          .map((row) => row.canonicalRoot),
+      ],
+    };
+  }
+
+  async searchFiles(input: FileSearchQuery, signal: AbortSignal): Promise<FileSearchResult> {
+    this.ensureReady();
+    if (!this.codex.searchFiles)
+      throw new AppError('METHOD_UNAVAILABLE', 'Codex does not support fuzzyFileSearch', 409);
+    const thread = input.threadId ? await this.loadThread(input.threadId) : undefined;
+    if (thread && thread.projectId !== input.projectId)
+      throw new AppError('PROJECT_OWNERSHIP', 'Session belongs to another workspace', 403);
+    const resolveCwd = () =>
+      thread
+        ? this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id).cwd
+        : input.projectId === null
+          ? this.workspaces.draft(input.draftId!).cwd
+          : this.projects.get(input.projectId).canonicalRoot;
+    const cwd = resolveCwd();
+    if (input.projectId !== null) this.workspaces.assertProjectDirectory(cwd);
+    // A draft id authorizes only its allocated unassigned draft, never a project or session.
+    const draftId = !thread && input.projectId === null ? input.draftId : undefined;
+    const scope = this.referenceScope(cwd, thread?.id, draftId);
+    const epoch = this.codex.epoch;
+    const timeout = AbortSignal.timeout(5000);
+    const cancellation = AbortSignal.any([signal, timeout]);
+    try {
+      cancellation.throwIfAborted();
+      if (!input.query) return { cwd, paths: [], limited: false };
+      const result = await this.codex.searchFiles(cwd, input.query, cancellation);
+      const paths: string[] = [];
+      let unreadable = false;
+      for (const file of result.files.slice(0, 50)) {
+        cancellation.throwIfAborted();
+        if (file.root !== cwd || file.match_type !== 'file') continue;
+        const path = process.platform === 'win32' ? file.path.replaceAll('\\', '/') : file.path;
+        try {
+          await validateReferencePath(path, scope);
+          if (!paths.includes(path)) paths.push(path);
+        } catch (error) {
+          if (error instanceof AppError && error.code === 'FILE_REFERENCE_UNREADABLE')
+            unreadable = true;
+          else if (!(error instanceof AppError)) throw error;
+          // Vanished or unauthorized candidates never reach the browser.
+        }
+      }
+      cancellation.throwIfAborted();
+      this.ensureReady();
+      if (
+        resolveCwd() !== cwd ||
+        this.codex.epoch !== epoch ||
+        JSON.stringify(this.referenceScope(cwd, thread?.id, draftId)) !== JSON.stringify(scope)
+      )
+        throw new AppError('FILE_REFERENCE_CHANGED', 'Workspace changed; search again', 409);
+      if (unreadable && !paths.length)
+        throw new AppError('FILE_REFERENCE_UNREADABLE', 'Matching files cannot be read', 403);
+      return { cwd, paths, limited: result.files.length >= 50 };
+    } catch (error) {
+      if (timeout.aborted)
+        throw new AppError('FILE_SEARCH_TIMEOUT', 'File search timed out; narrow the path', 408);
+      if (signal.aborted) throw new AppError('FILE_SEARCH_CANCELLED', 'File search cancelled', 499);
+      throw error;
+    }
+  }
+
+  private async fileMessage(thread: ThreadView, text: string, files: FileReference[] = []) {
+    if (!files.length) return text;
+    const epoch = this.codex.epoch;
+    const ownership = this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+    const scope = this.referenceScope(ownership.cwd, thread.id);
+    const result = await referenceMessage(text, files, scope);
+    this.ensureManaged(thread);
+    this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+    if (
+      this.codex.epoch !== epoch ||
+      JSON.stringify(this.referenceScope(ownership.cwd, thread.id)) !== JSON.stringify(scope)
+    )
+      throw new AppError('FILE_REFERENCE_CHANGED', 'Workspace changed; select the file again', 409);
+    return result;
   }
 
   async listSkills(input: import('../shared/skills.js').SkillQuery) {
@@ -1183,9 +1279,14 @@ export class GatewayService {
         if (isActive(this.projection.get(threadId)?.status ?? thread.status))
           throw new AppError('THREAD_BUSY', 'Session already has an active task', 409);
       }
+      const fileText = input.files?.length
+        ? await this.fileMessage(thread, input.text, input.files)
+        : input.text;
+      if (isActive(this.projection.get(threadId)?.status ?? thread.status))
+        throw new AppError('THREAD_BUSY', 'Session already has an active task', 409);
       const message = {
         ...input,
-        text: input.taskKind === 'init' ? PROJECT_INIT_PROMPT : input.text,
+        text: input.taskKind === 'init' ? PROJECT_INIT_PROMPT : fileText,
       };
       this.store.dispatch(
         input.clientOperationId,
@@ -1545,16 +1646,22 @@ export class GatewayService {
           409,
         );
       this.ensureCompatibilityConfirmed();
+      let message = input.text;
+      if (input.files?.length) {
+        const thread = await this.loadThread(threadId);
+        message = await this.fileMessage(thread, input.text, input.files);
+        await this.requireActiveTurn(threadId, input.expectedTurnId);
+      }
       this.store.dispatch(input.clientOperationId, undefined, {
         threadId,
         turnId: input.expectedTurnId,
-        item: submittedUserMessage(input.clientOperationId, input),
+        item: submittedUserMessage(input.clientOperationId, { ...input, text: message }),
       });
       this.publishThread(threadId);
       const result = await this.codex.steerTurn(
         threadId,
         input.expectedTurnId,
-        input.text,
+        message,
         input.images,
         input.clientOperationId,
       );

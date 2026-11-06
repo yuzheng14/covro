@@ -5,6 +5,7 @@ export interface SentDraft {
   text: string;
   images?: string[];
   skills?: import('../../shared/skills').SkillReference[];
+  files?: import('../../shared/file-references').FileReference[];
 }
 
 export type DraftSubmission =

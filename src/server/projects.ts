@@ -303,6 +303,13 @@ export class ProjectRegistry {
     return project;
   }
 
+  /** Nested registrations, including tombstones, retain their own file boundary. */
+  referenceRoots(): string[] {
+    return [...this.registered.values()].map(
+      (row) => row.canonicalRoot ?? this.inspect(row).canonicalRoot,
+    );
+  }
+
   assertOwnership(
     projectId: string,
     cwd: string,

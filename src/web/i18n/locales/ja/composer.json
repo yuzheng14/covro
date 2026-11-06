@@ -59,5 +59,14 @@
   "skills_offline": "オフラインです。スキルを読み込むには再接続してください。",
   "skills_selected": "選択したスキル",
   "skills_slash": "コマンドを実行する前にスキル参照を削除してください。",
-  "skills_steer_unsupported": "Codex 0.164.0 では実行中のタスクに選択したスキルを確実に適用できません。完了後にこの下書きを送信してください。"
+  "skills_steer_unsupported": "Codex 0.164.0 では実行中のタスクに選択したスキルを確実に適用できません。完了後にこの下書きを送信してください。",
+  "files_title": "ワークスペースのファイル",
+  "files_type_path": "@ の後にパスを入力。空白には @\" を使用。",
+  "files_no_match": "一致するファイルがありません",
+  "files_limited": "最大50件を表示。パスを絞り込んでください。",
+  "files_offline": "オフラインです。再接続してファイルを検索してください。",
+  "files_not_ready": "Codex の準備ができていないため検索できません。",
+  "files_slash": "スラッシュコマンドを実行する前にファイル参照を削除してください。",
+  "references_selected": "選択した参照",
+  "files_limit": "1件のメッセージで参照できるファイルは32個までです。"
 }

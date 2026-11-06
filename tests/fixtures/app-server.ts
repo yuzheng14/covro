@@ -7,6 +7,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, readFileSync, writeFileSync, watchFile } from 'node:fs';
 import { join } from 'node:path';
+import { readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { mermaidChunks } from './mermaid.js';
@@ -2715,6 +2716,29 @@ function receive(request: ClientRequest): void {
       else if (prompt.includes('[markdown]') || prompt.includes('[markdown-security]'))
         markdownReply(thread, turn, prompt.includes('[markdown-security]') ? 'security' : 'table');
       else execute(thread, turn);
+      break;
+    }
+    case 'fuzzyFileSearch': {
+      // Explicit protocol simulation. Production delegates traversal/ranking to Codex.
+      const files: object[] = [];
+      const walk = (root: string, path = '') => {
+        for (const entry of readdirSync(join(root, path), { withFileTypes: true })) {
+          if (files.length >= 50) return;
+          const next = path ? `${path}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) walk(root, next);
+          else if (next.toLowerCase().includes(request.params.query.toLowerCase()))
+            files.push({
+              root,
+              path: next,
+              match_type: 'file',
+              file_name: entry.name,
+              score: 1,
+              indices: null,
+            });
+        }
+      };
+      if (request.params.query) for (const root of request.params.roots) walk(root);
+      reply(request.id, { files });
       break;
     }
     case 'skills/list': {
