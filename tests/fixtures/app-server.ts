@@ -122,6 +122,7 @@ export interface SimulatorOptions {
   accountType?: 'chatgpt' | 'apiKey';
   models?: string[];
   modelProvider?: string;
+  threadModelProviders?: string[];
   activePermissionProfile?: string;
   temporaryPermissionProfile?: string;
   userMessageDelayMs?: number;
@@ -225,7 +226,8 @@ function makeThread(cwd: string): Thread {
     sectionEnteredAt: null,
     projectId: null,
     historyMode: options.paginated ? 'paginated' : 'legacy',
-    modelProvider: options.modelProvider ?? 'openai',
+    modelProvider:
+      options.threadModelProviders?.[threads.size] ?? options.modelProvider ?? 'openai',
     model: savedModelDefaults?.model ?? 'simulated-model',
     reasoningEffort: savedModelDefaults
       ? savedModelDefaults.effort
@@ -2075,6 +2077,10 @@ function receive(request: ClientRequest): void {
         data: [...threads.values()]
           .filter((thread) => !thread.ephemeral)
           .filter((thread) => archived.has(thread.id) === Boolean(request.params.archived))
+          .filter((thread) => {
+            const providers = request.params.modelProviders ?? [options.modelProvider ?? 'openai'];
+            return providers.length === 0 || providers.includes(thread.modelProvider);
+          })
           .filter(
             (thread) =>
               !request.params.cwd ||

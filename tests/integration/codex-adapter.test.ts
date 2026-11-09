@@ -748,6 +748,7 @@ describe('verified protocol adapter with a real subprocess', () => {
       const reads = (await requests()).filter((entry) => entry.method === 'thread/list');
       expect(reads).toHaveLength(1);
       expect(reads[0]?.params).toMatchObject({
+        modelProviders: [],
         cwd: '/tmp/project',
         cursor: 'opaque-cursor',
         limit: 30,
@@ -758,6 +759,37 @@ describe('verified protocol adapter with a real subprocess', () => {
       });
     },
   );
+  it('finds old-provider active and archived history without widening the project boundary', async () => {
+    const { adapter, requests } = await fixture({
+      modelProvider: 'current',
+      threadModelProviders: ['old', 'old', 'current', 'old'],
+    });
+    const active = await adapter.createThread('/tmp/project');
+    const archived = await adapter.createThread('/tmp/project');
+    const current = await adapter.createThread('/tmp/project');
+    await adapter.createThread('/tmp/other-project');
+    await adapter.archiveThread(archived.id);
+    expect((await adapter.listThreads('/tmp/project')).data.map((thread) => thread.id)).toEqual([
+      active.id,
+      current.id,
+    ]);
+    expect(
+      (await adapter.listThreads('/tmp/project', undefined, true)).data.map((thread) => thread.id),
+    ).toEqual([archived.id]);
+    expect(await adapter.readThread(archived.id)).toMatchObject({ archived: true });
+    expect(await adapter.readThreadMetadata(archived.id)).toMatchObject({ archived: true });
+    expect((await requests()).filter((entry) => entry.method === 'thread/list')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          params: expect.objectContaining({
+            modelProviders: [],
+            archived: true,
+            cwd: '/tmp/project',
+          }),
+        }),
+      ]),
+    );
+  });
   it('allows events before delayed acknowledgement; a timeout never resends a prompt', async () => {
     const { adapter, events, requests } = await fixture({ ackDelayMs: 800, turnDelayMs: 10 }, 500);
     const thread = await adapter.createThread('/tmp');

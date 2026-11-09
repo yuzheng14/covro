@@ -614,6 +614,7 @@ export class CodexAdapter implements CodexClient {
       cursor,
       limit: 30,
       archived,
+      modelProviders: [],
       sourceKinds: ['cli', 'appServer', 'vscode'],
       sortKey: 'updated_at',
       sortDirection: 'desc',
@@ -649,6 +650,7 @@ export class CodexAdapter implements CodexClient {
       const page: ThreadListResponse = await this.call('thread/list', {
         archived: true,
         cwd: thread.cwd,
+        modelProviders: [],
         cursor,
         limit: 100,
         sourceKinds: [
