@@ -1,7 +1,16 @@
 /** Explicit native acceptance; uses one isolated CLI/home and a fresh disposable gateway. */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { chmod, copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium, expect } from '@playwright/test';
@@ -10,6 +19,11 @@ import { parseConfig } from '../src/server/config.js';
 import { startGateway } from '../src/server/main.js';
 
 const args = process.argv.slice(2);
+const manifest = JSON.parse(
+  await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+) as {
+  covroCodex: { recommended: string };
+};
 assert(args.includes('--inference'), 'Pass --inference to authorize isolated native acceptance');
 const binaryIndex = args.indexOf('--binary');
 const outputIndex = args.indexOf('--output-dir');
@@ -73,7 +87,7 @@ const unsubscribe = codex.onEvent((event) => {
 try {
   runtime = await startGateway(config, { codex, staticDir: resolve('dist/web') });
   report.version = codex.diagnostics().codexVersion!;
-  assert.equal(report.version, '0.166.0');
+  assert.equal(report.version, manifest.covroCodex.recommended);
   assert.equal(codex.diagnostics().compatibility, 'verified');
   const pid = codex.pid;
   const query = await codex.searchFiles(project, '中文 说', new AbortController().signal);

@@ -4,9 +4,13 @@ Date: 2026-11-06. Base: `origin/main` at `3d0b586`. Project recommended/verified
 
 日期：2026-11-06。基于 `origin/main` 的 `3d0b586`；项目推荐/已验证版本为 **0.166.0**，11 月 5 日初查默认 CLI 为 **0.164.0**，11 月 6 日最终环境检查为 **0.166.0**；本任务未执行 CLI 安装/升级，也未改动正在运行的 Covro 实例。
 
-Upstream sync: 2026-11-09, `origin/main` at `8b13d8f` (#318), retaining DB Schema **10** and question tracking. File validation/conversion precedes claiming replies, and the claim uses the actual submitted text for both start and steering. Two integration cases cover failed-file validation without claiming an answer, successful retry and duplicate protection. The latest local/CI results are recorded on PRs #328 and #319. Native acceptance below remains the November 6 run; it was not repeated for this rebase.
+Upstream sync: 2026-11-09, `origin/main` at `1078ad1` (#318, #331, #332, #330), retaining DB Schema **10**, question tracking, human command approval, provider history and the **0.167.0** compatibility baseline. File validation/conversion precedes claiming replies, and the claim uses the actual submitted text for both start and steering. Two integration cases cover failed-file validation without claiming an answer, successful retry and duplicate protection. The final full unit/integration suite passed **1549 tests, 1 existing skipped**. Latest browser/CI results are recorded on PRs #328 and #319.
 
-上游同步：2026-11-09，基于 `origin/main` 的 `8b13d8f`（#318），保留 DB Schema **10** 和问题追踪。先校验/转换文件，再按实际发送文本占用回答；新增普通发送和运行中追加两个集成场景，核对文件失败不占用回答、恢复后可发送及重复提交拦截。最新本地/CI 结果记录在 #328、#319；下方原生验收仍为 11 月 6 日实测，本次 rebase 未重跑原生推理。
+上游同步：2026-11-09，基于 `origin/main` 的 `1078ad1`（#318、#331、#332、#330），保留 DB Schema **10**、问题追踪、人工命令审批、provider 历史及 **0.167.0** 兼容基线。先校验/转换文件，再按实际发送文本占用回答；新增普通发送和运行中追加两个集成场景，核对文件失败不占用回答、恢复后可发送及重复提交拦截。最终全量单元/集成测试 **1549 项通过、1 项原有跳过**；最新浏览器/CI 结果记录在 #328、#319。
+
+The isolated native acceptance was repeated successfully with installed **0.167.0**, a fresh temporary home/workspace and the production page: all eight search/cancellation/cwd/deletion/model-read/history checks below passed. The actual model returned both hidden file tokens; no fixture or model stub was used. [November 9 native results](file-references-results-0.167.0.json) are separate from the retained [November 6 results](file-references-results.json). The script now checks the project's recommended version instead of hardcoding 0.166.0. Temporary authentication and workspaces were cleaned on completion.
+
+使用已安装 **0.167.0**、全新隔离 home/工作区和生产页面重跑原生验收成功：下列八项搜索、取消、cwd、删除、模型读取及历史检查均通过，真实模型返回两个隐藏文件令牌，未使用 fixture 或模型 stub。[11 月 9 日原生结果](file-references-results-0.167.0.json)与保留的 [11 月 6 日结果](file-references-results.json)分别记录；脚本改为核对项目推荐版本，不再写死 0.166.0。完成后已清理临时认证和工作区。
 
 ## Checks / 检查
 
@@ -47,7 +51,7 @@ Machine-readable evidence: [native results](file-references-results.json). Repro
 
 ```sh
 node --import tsx scripts/verify-file-references.ts \
-  --binary /path/to/installed/codex-0.166.0 \
+  --binary /path/to/installed/codex-0.167.0 \
   --output-dir /tmp/covro-file-reference-check --inference
 ```
 
