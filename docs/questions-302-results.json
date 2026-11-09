@@ -1,0 +1,46 @@
+{
+  "date": "2026-11-05",
+  "codexVersion": "0.166.0",
+  "sourceCommit": "6ff1e1ca3b30fc8b914720681fcf5fe62e95f856",
+  "nativeCLI": [
+    {
+      "mode": "async-live",
+      "model": "local HTTP Responses stub, not account inference",
+      "mainModelRequests": 2,
+      "taskStarts": 1,
+      "taskCompletions": 1,
+      "questionReplyEnvelopes": 0,
+      "toolResults": [
+        {
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "mode": "sync",
+      "model": "local HTTP Responses stub, not account inference",
+      "mainModelRequests": 2,
+      "taskStarts": 1,
+      "taskCompletions": 1,
+      "questionReplyEnvelopes": 0,
+      "toolResults": [
+        {
+          "answers": {
+            "a": {
+              "answers": ["First"]
+            },
+            "b": {
+              "answers": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    "No external app-server launched",
+    "Native sync Default/nonblocking exercised; Plan/blocking source and fixture verified",
+    "Native async skip is local queue removal; no durable upstream cancellation",
+    "Application screenshots use explicit repository fixture; no account-backed inference"
+  ]
+}

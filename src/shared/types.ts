@@ -235,6 +235,11 @@ export interface SessionTokenUsage {
   stale?: boolean;
 }
 export interface ThreadView {
+  /** Covro-only tracking; never an upstream cancellation or answer. */
+  questionTracking?: Record<
+    string,
+    { status: 'dismissed' | 'submitting' | 'unknown'; updatedAt: number }
+  >;
   /** Acknowledged publications for this task only, never inferred from future defaults. */
   liveSettings?: LiveSettingsState;
   capacityRetry?: CapacityRetryView;
@@ -355,12 +360,17 @@ export interface PendingAction {
   details?: unknown;
   options: ActionOption[];
   questions?: Question[];
+  /** Recorded native submission; secret answers are redacted. Empty lists are explicit skips. */
+  questionAnswers?: Record<string, string[]>;
   permissionRequest?: PermissionRequest;
   elicitation?: ElicitationRequest;
 }
 export type ActionResolution =
   | { decision: string; content?: Record<string, ElicitationValue>; persist?: 'session' }
-  | { answers: Record<string, string[]> };
+  | { answers: Record<string, string[]>; skippedQuestionIds?: string[] };
+export interface DismissQuestionsInput extends OperationInput {
+  questionIds: string[];
+}
 export interface OperationInput {
   clientOperationId: string;
 }

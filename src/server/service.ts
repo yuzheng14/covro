@@ -1,3 +1,6 @@
+import { questionAnswers } from '../shared/question-resolution.js';
+import { asyncQuestionId, parseQuestionReplies } from '../shared/async-questions.js';
+import { QuestionTrackingStore } from './db/question-tracking.js';
 import { hasSkillToken, type SkillReference } from '../shared/skills.js';
 import type { CodexClient, CodexDiagnostics, CodexEvent } from '../codex/types.js';
 import type { StreamedItem } from './thread-patch.js';
@@ -25,6 +28,7 @@ import {
 } from '../shared/elicitation.js';
 import { toThreadSummary } from '../shared/thread-summary.js';
 import type {
+  DismissQuestionsInput,
   ArchiveThreadInput,
   ConfirmCompatibilityInput,
   CreateProjectInput,
@@ -96,6 +100,7 @@ export class GatewayService {
   readonly projection: Projection;
   private readonly store: OperationStore;
   private readonly turnUsage: TurnUsageStore;
+  private readonly questionTracking: QuestionTrackingStore;
   private readonly projects: ProjectRegistry;
   private readonly workspaces: WorkspaceRegistry;
   private readonly codex: CodexClient;
@@ -129,6 +134,7 @@ export class GatewayService {
   constructor(private readonly options: GatewayOptions) {
     this.store = options.store;
     this.turnUsage = new TurnUsageStore(this.store.database);
+    this.questionTracking = new QuestionTrackingStore(this.store.database);
     this.projects = options.projects;
     this.workspaces = new WorkspaceRegistry(
       this.store.database,
@@ -792,7 +798,7 @@ export class GatewayService {
     const thread = this.projection.get(threadId);
     if (!thread) return [];
     this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
-    return pendingAttention(thread);
+    return pendingAttention(this.threadView(thread));
   }
 
   async getThreadSnapshot(threadId: string) {
@@ -822,7 +828,7 @@ export class GatewayService {
       const root = links.get(turn.id);
       if (root) turn.retryOf = root;
     }
-    return page;
+    return this.threadView(page);
   }
 
   async exportThread(threadId: string) {
@@ -1183,6 +1189,8 @@ export class GatewayService {
         if (isActive(this.projection.get(threadId)?.status ?? thread.status))
           throw new AppError('THREAD_BUSY', 'Session already has an active task', 409);
       }
+      if (parseQuestionReplies(input.text))
+        await this.claimQuestionReplies(threadId, input.text, input.clientOperationId);
       const message = {
         ...input,
         text: input.taskKind === 'init' ? PROJECT_INIT_PROMPT : input.text,
@@ -1545,6 +1553,8 @@ export class GatewayService {
           409,
         );
       this.ensureCompatibilityConfirmed();
+      if (parseQuestionReplies(input.text))
+        await this.claimQuestionReplies(threadId, input.text, input.clientOperationId);
       this.store.dispatch(input.clientOperationId, undefined, {
         threadId,
         turnId: input.expectedTurnId,
@@ -1647,8 +1657,101 @@ export class GatewayService {
       this.projection.resolveAction(actionId, 'responding');
       if (action.threadId) this.publishThread(action.threadId);
       await this.codex.respond(actionId, input.resolution);
+      if (action.kind === 'questions') {
+        this.projection.resolveAction(actionId, 'responded');
+        this.questionTracking.saveAction(
+          action,
+          questionAnswers(action.questions ?? [], input.resolution),
+        );
+        if (action.threadId) this.publishThread(action.threadId);
+      }
       return { result: { actionId } };
     });
+  }
+
+  /** This ends Covro tracking only. It must never start/steer/interrupt a native turn. */
+  async dismissQuestions(threadId: string, input: DismissQuestionsInput): Promise<Operation> {
+    return this.perform('question.dismiss', threadId, input, async () => {
+      await this.loadThread(threadId);
+      const history = this.normalize(await this.codex.readThread(threadId));
+      this.workspaces.assertOwnership(history.projectId, history.cwd, history.id);
+      this.projection.thread(history, true);
+      const states = this.questionTracking.states(threadId);
+      for (const id of new Set(input.questionIds)) {
+        const question = this.findAsyncQuestion(history, id);
+        if (!question) throw new AppError('QUESTION_EXPIRED', '该问题已不存在，请刷新会话', 409);
+        if (this.questionAnswered(history, id)) continue;
+        if (states[id] && states[id].status !== 'dismissed')
+          throw new AppError('QUESTION_BUSY', '回答正在提交或结果待核对，请刷新后继续', 409);
+      }
+      const ids = [...new Set(input.questionIds)].filter(
+        (id) => !this.questionAnswered(history, id),
+      );
+      this.store.dispatch(input.clientOperationId);
+      this.questionTracking.save(threadId, ids, 'dismissed', input.clientOperationId);
+      this.publishThread(threadId);
+      return { result: { threadId, questionIds: ids } };
+    });
+  }
+
+  private questionItems(history: ThreadView) {
+    return [...history.turns, ...(this.projection.get(history.id)?.turns ?? [])].flatMap(
+      (turn) => turn.items,
+    );
+  }
+
+  private findAsyncQuestion(history: ThreadView, id: string) {
+    for (const item of this.questionItems(history)) {
+      if (item.type !== 'agentMessage') continue;
+      const index = item.questions?.findIndex((_, index) => asyncQuestionId(item.id, index) === id);
+      if (index !== undefined && index >= 0) return { item, question: item.questions![index]! };
+    }
+  }
+
+  private questionAnswered(history: ThreadView, id: string): boolean {
+    const source = this.findAsyncQuestion(history, id);
+    return Boolean(
+      source &&
+      this.questionItems(history).some((item) =>
+        item.questionReplies?.some(
+          (reply) =>
+            reply.questionItemId === id ||
+            (reply.questionItemId === source.item.id && reply.question === source.question.title),
+        ),
+      ),
+    );
+  }
+
+  private async claimQuestionReplies(threadId: string, text: string, operationId: string) {
+    const replies = parseQuestionReplies(text);
+    if (!replies) return;
+    // Read native history too: another client can have answered since our last notification.
+    const history = this.normalize(await this.codex.readThread(threadId));
+    this.workspaces.assertOwnership(history.projectId, history.cwd, history.id);
+    this.projection.thread(history, true);
+    const states = this.questionTracking.states(threadId);
+    const ids: string[] = [];
+    for (const reply of replies) {
+      // Legacy clients address a source item plus title rather than an indexed question.
+      const source =
+        this.findAsyncQuestion(history, reply.questionItemId) ??
+        (() => {
+          const item = this.questionItems(history).find((item) => item.id === reply.questionItemId);
+          const index = item?.questions?.findIndex((q) => q.title === reply.question);
+          return item && index !== undefined && index >= 0
+            ? this.findAsyncQuestion(history, asyncQuestionId(item.id, index))
+            : undefined;
+        })();
+      const index = source?.item.questions?.indexOf(source.question);
+      if (!source || index === undefined)
+        throw new AppError('QUESTION_EXPIRED', '该问题已不存在，请刷新会话', 409);
+      if (!reply.answer.trim()) throw new AppError('VALIDATION_ERROR', '回答不能为空');
+      const id = asyncQuestionId(source.item.id, index);
+      if (states[id] || this.questionAnswered(history, id) || ids.includes(id))
+        throw new AppError('QUESTION_CONFLICT', '该问题已处理或正在提交，请刷新会话', 409);
+      ids.push(id);
+    }
+    this.questionTracking.save(threadId, ids, 'submitting', operationId);
   }
 
   getOperation(id: string): Operation {
@@ -1794,6 +1897,10 @@ export class GatewayService {
       ) {
         const action = this.projection.resolveAction(target, 'pending');
         if (action?.threadId) this.publishThread(action.threadId);
+      }
+      if (!uncertain && (kind === 'turn.start' || kind === 'turn.steer')) {
+        this.questionTracking.release(input.clientOperationId);
+        this.publishThread(target);
       }
       if (kind === 'turn.start')
         this.capacityRetries.dispatchFailed(target, input.clientOperationId);
@@ -2022,28 +2129,7 @@ export class GatewayService {
     } else if (action.kind === 'elicitation') {
       validateElicitationResolution(action.elicitation, resolution);
     } else if (action.kind === 'questions') {
-      if (!('answers' in resolution)) throw new AppError('VALIDATION_ERROR', '请按问题提交答案');
-      const questions = action.questions ?? [];
-      if (
-        Object.keys(resolution.answers).some(
-          (id) => !questions.some((question) => question.id === id),
-        )
-      )
-        throw new AppError('VALIDATION_ERROR', '回答包含未知问题');
-      for (const question of questions) {
-        const answers = resolution.answers[question.id];
-        if (
-          !answers?.length ||
-          answers.some(
-            (answer) =>
-              !answer.trim() ||
-              (!question.isOther &&
-                question.options.length > 0 &&
-                !question.options.some((option) => option.label === answer)),
-          )
-        )
-          throw new AppError('VALIDATION_ERROR', `问题 ${question.header} 的回答不符合选项要求`);
-      }
+      questionAnswers(action.questions ?? [], resolution);
     } else if (
       !('decision' in resolution) ||
       'content' in resolution ||
@@ -2177,6 +2263,17 @@ export class GatewayService {
     if (retry) result.capacityRetry = structuredClone(retry);
     else delete result.capacityRetry;
     if (this.capacityRetries.pending(thread.id)) result.status = 'running';
+    result.questionTracking = this.questionTracking.states(thread.id);
+    const savedActions = this.questionTracking.actions(thread.id);
+    const actions = new Map(savedActions.map((action) => [action.actionId, action]));
+    for (const action of thread.actions)
+      if (
+        action.status === 'pending' ||
+        action.status === 'responding' ||
+        !actions.has(action.actionId)
+      )
+        actions.set(action.actionId, action);
+    result.actions = [...actions.values()];
     result.archived = thread.archived ?? false;
     result.historyVisible = this.historyVisible(thread);
     const marker = this.store.activeForThread(thread.id);
@@ -2304,8 +2401,11 @@ export class GatewayService {
       if (action.codexEpoch !== this.codex.epoch) return;
       const known = this.projection.actions.has(action.actionId);
       const owner = action.threadId ? this.projection.get(action.threadId) : undefined;
-      const previous = new Set(owner ? pendingAttention(owner).map(attentionKey) : []);
+      const previous = new Set(
+        owner ? pendingAttention(this.threadView(owner)).map(attentionKey) : [],
+      );
       this.projection.action(action);
+      if (action.kind === 'questions') this.questionTracking.saveAction(action);
       if (action.threadId) {
         this.publishThread(action.threadId);
         if (!known) this.publishNewAttention(action.threadId, previous);
@@ -2314,6 +2414,7 @@ export class GatewayService {
     }
     if (event.type === 'actionResolved') {
       const action = this.projection.resolveAction(event.actionId, 'responded');
+      if (action?.kind === 'questions') this.questionTracking.saveAction(action);
       if (action?.threadId) this.publishThread(action.threadId);
       return;
     }
@@ -2332,7 +2433,7 @@ export class GatewayService {
     }
     const previousAttention = new Set(
       event.type === 'item' || event.type === 'turn'
-        ? pendingAttention(thread).map(attentionKey)
+        ? pendingAttention(this.threadView(thread)).map(attentionKey)
         : [],
     );
     if (event.type === 'tokenUsage') {

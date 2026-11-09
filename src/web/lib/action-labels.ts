@@ -10,7 +10,11 @@ export function actionTitle(action: PendingAction) {
     case 'permissions':
       return t('approvals:permissionsApproval');
     case 'questions':
-      return t('workspace:your_answer_is_needed');
+      return t(
+        action.status === 'pending' || action.status === 'responding'
+          ? 'workspace:your_answer_is_needed'
+          : 'workspace:questions_from_codex',
+      );
     case 'network':
       return t('approvals:networkApproval', {
         target: action.title.slice(action.title.indexOf('：') + 1),

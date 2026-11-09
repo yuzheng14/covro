@@ -19,11 +19,14 @@ export function ActionCard({
 }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [other, setOther] = useState<Record<string, string>>({});
+  const [skipped, setSkipped] = useState<string[]>([]);
   const pending = action.status === 'pending';
   const questions = action.questions ?? [];
   const answerFor = (id: string) =>
     answers[id] === '__other__' ? (other[id]?.trim() ?? '') : (answers[id]?.trim() ?? '');
-  const canSubmit = questions.length > 0 && questions.every((question) => answerFor(question.id));
+  const canSubmit =
+    questions.length > 0 &&
+    questions.every((question) => skipped.includes(question.id) || answerFor(question.id));
   // requestUserInput carries answers, not approval decisions. Use the input structure,
   // never words such as “允许” in the question, to describe the confirmation.
   const choosing =
@@ -97,8 +100,11 @@ export function ActionCard({
             if (!disabled && pending && canSubmit)
               onResolve({
                 answers: Object.fromEntries(
-                  questions.map((question) => [question.id, [answerFor(question.id)]]),
+                  questions
+                    .filter((question) => !skipped.includes(question.id))
+                    .map((question) => [question.id, [answerFor(question.id)]]),
                 ),
+                ...(skipped.length ? { skippedQuestionIds: skipped } : {}),
               });
           }}
         >
@@ -106,69 +112,122 @@ export function ActionCard({
             <fieldset key={question.id} disabled={disabled || !pending}>
               <legend>{question.header}</legend>
               <p>{question.question}</p>
-              {question.options.map((option, index) => (
-                <label key={option.label} className="question-option">
-                  <input
-                    type="radio"
-                    name={`${action.actionId}-${question.id}`}
-                    value={option.label}
-                    checked={answers[question.id] === option.label}
-                    onChange={() =>
-                      setAnswers((previous) => ({ ...previous, [question.id]: option.label }))
-                    }
-                  />
-                  <span>
-                    <strong>{option.label}</strong>
-                    <small>{option.description}</small>
-                  </span>
-                  <span className="option-number">{index + 1}</span>
-                </label>
-              ))}
-              {question.options.length > 0 && question.isOther && (
-                <label className="question-option">
-                  <input
-                    type="radio"
-                    name={`${action.actionId}-${question.id}`}
-                    checked={answers[question.id] === '__other__'}
-                    onChange={() =>
-                      setAnswers((previous) => ({ ...previous, [question.id]: '__other__' }))
-                    }
-                  />
-                  <span>{t('approvals:another_answer')}</span>
-                </label>
+              {!pending ? (
+                <p className="async-question-answer">
+                  {action.questionAnswers?.[question.id]?.length === 0
+                    ? t('approvals:question_skipped')
+                    : (action.questionAnswers?.[question.id]?.join('\n') ??
+                      actionStatusLabel(action.status))}
+                </p>
+              ) : skipped.includes(question.id) ? (
+                <p>{t('approvals:question_will_be_skipped')}</p>
+              ) : (
+                <>
+                  {question.options.map((option, index) => (
+                    <label key={option.label} className="question-option">
+                      <input
+                        type="radio"
+                        name={`${action.actionId}-${question.id}`}
+                        value={option.label}
+                        checked={answers[question.id] === option.label}
+                        onChange={() =>
+                          setAnswers((previous) => ({ ...previous, [question.id]: option.label }))
+                        }
+                      />
+                      <span>
+                        <strong>{option.label}</strong>
+                        <small>{option.description}</small>
+                      </span>
+                      <span className="option-number">{index + 1}</span>
+                    </label>
+                  ))}
+                  {question.options.length > 0 && question.isOther && (
+                    <label className="question-option">
+                      <input
+                        type="radio"
+                        name={`${action.actionId}-${question.id}`}
+                        checked={answers[question.id] === '__other__'}
+                        onChange={() =>
+                          setAnswers((previous) => ({ ...previous, [question.id]: '__other__' }))
+                        }
+                      />
+                      <span>{t('approvals:another_answer')}</span>
+                    </label>
+                  )}
+                </>
               )}
-              {(question.options.length === 0 || answers[question.id] === '__other__') && (
-                <input
-                  className="text-input"
-                  type={question.isSecret ? 'password' : 'text'}
-                  aria-label={t('common:free_text_answer', { v0: question.header })}
-                  value={
-                    question.options.length === 0
-                      ? (answers[question.id] ?? '')
-                      : (other[question.id] ?? '')
+              {pending && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setSkipped((previous) =>
+                      previous.includes(question.id)
+                        ? previous.filter((id) => id !== question.id)
+                        : [...previous, question.id],
+                    )
                   }
-                  maxLength={10000}
-                  onChange={(event) =>
-                    question.options.length === 0
-                      ? setAnswers((previous) => ({
-                          ...previous,
-                          [question.id]: event.target.value,
-                        }))
-                      : setOther((previous) => ({ ...previous, [question.id]: event.target.value }))
-                  }
-                  placeholder={t('common:enter_your_answer')}
-                  autoComplete="off"
-                />
+                >
+                  {skipped.includes(question.id)
+                    ? t('approvals:answer_question')
+                    : t('approvals:skip_question')}
+                </Button>
               )}
+              {pending &&
+                !skipped.includes(question.id) &&
+                (question.options.length === 0 || answers[question.id] === '__other__') && (
+                  <input
+                    className="text-input"
+                    type={question.isSecret ? 'password' : 'text'}
+                    aria-label={t('common:free_text_answer', { v0: question.header })}
+                    value={
+                      question.options.length === 0
+                        ? (answers[question.id] ?? '')
+                        : (other[question.id] ?? '')
+                    }
+                    maxLength={10000}
+                    onChange={(event) =>
+                      question.options.length === 0
+                        ? setAnswers((previous) => ({
+                            ...previous,
+                            [question.id]: event.target.value,
+                          }))
+                        : setOther((previous) => ({
+                            ...previous,
+                            [question.id]: event.target.value,
+                          }))
+                    }
+                    placeholder={t('common:enter_your_answer')}
+                    autoComplete="off"
+                  />
+                )}
             </fieldset>
           ))}
-          <Button type="submit" disabled={disabled || !pending || !canSubmit}>
-            {!pending
-              ? actionStatusLabel(action.status)
-              : choosing
-                ? t('common:confirm_selection')
-                : t('common:submit_answer')}
-          </Button>
+          {pending && (
+            <div className="action-options">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={disabled}
+                onClick={() =>
+                  onResolve({
+                    answers: {},
+                    skippedQuestionIds: questions.map((question) => question.id),
+                  })
+                }
+              >
+                {t('approvals:skip_all_questions')}
+              </Button>
+              <Button type="submit" disabled={disabled || !canSubmit}>
+                {skipped.length
+                  ? t('approvals:submit_with_skipped')
+                  : choosing
+                    ? t('common:confirm_selection')
+                    : t('common:submit_answer')}
+              </Button>
+            </div>
+          )}
         </form>
       ) : (
         <div className="action-options">
