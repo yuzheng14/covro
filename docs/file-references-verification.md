@@ -4,6 +4,10 @@ Date: 2026-11-06. Base: `origin/main` at `3d0b586`. Project recommended/verified
 
 日期：2026-11-06。基于 `origin/main` 的 `3d0b586`；项目推荐/已验证版本为 **0.166.0**，11 月 5 日初查默认 CLI 为 **0.164.0**，11 月 6 日最终环境检查为 **0.166.0**；本任务未执行 CLI 安装/升级，也未改动正在运行的 Covro 实例。
 
+Upstream sync: 2026-11-09, `origin/main` at `8b13d8f` (#318), retaining DB Schema **10** and question tracking. File validation/conversion precedes claiming replies, and the claim uses the actual submitted text for both start and steering. Two integration cases cover failed-file validation without claiming an answer, successful retry and duplicate protection. The latest local/CI results are recorded on PRs #328 and #319. Native acceptance below remains the November 6 run; it was not repeated for this rebase.
+
+上游同步：2026-11-09，基于 `origin/main` 的 `8b13d8f`（#318），保留 DB Schema **10** 和问题追踪。先校验/转换文件，再按实际发送文本占用回答；新增普通发送和运行中追加两个集成场景，核对文件失败不占用回答、恢复后可发送及重复提交拦截。最新本地/CI 结果记录在 #328、#319；下方原生验收仍为 11 月 6 日实测，本次 rebase 未重跑原生推理。
+
 ## Checks / 检查
 
 - TypeScript, ESLint, Prettier, production build, compatibility/README synchronization and `git diff --check` pass. No external dependency, browser or tool was installed; package and lock files are unchanged. Build retains the existing large-chunk advisory.

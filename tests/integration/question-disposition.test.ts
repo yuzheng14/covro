@@ -8,6 +8,9 @@ import type { PendingAction } from '../../src/shared/types.js';
 import { questionAnswers } from '../../src/shared/question-resolution.js';
 import { captureLogger } from '../fixtures/logging.js';
 import { withLogContext } from '../../src/logging/context.js';
+import { realpathSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileToken } from '../../src/shared/file-references.js';
 
 const resources: ReturnType<typeof harness>[] = [];
 afterEach(() => {
@@ -116,6 +119,50 @@ it('rejects stale answers after local disposition without creating a new turn', 
   });
   expect(ctx.codex.starts).toBe(0);
 });
+
+it.each(['start', 'steer'] as const)(
+  'validates referenced files before claiming answers and keeps duplicate protection: %s',
+  async (mode) => {
+    const ctx = await setup();
+    let expectedTurnId = '';
+    if (mode === 'steer') {
+      const running = await ctx.service.startTurn(ctx.id, {
+        clientOperationId: operationId(),
+        text: 'Continue the task',
+      });
+      expectedTurnId = (running.result as { turnId: string }).turnId;
+    }
+    const cwd = realpathSync(ctx.project);
+    const path = 'answer.md';
+    const token = fileToken(path);
+    const reply = { questionItemId: ctx.ids[0]!, question: 'First?', answer: token };
+    const text = encodeQuestionReplies([reply]);
+    const start = text.indexOf(token);
+    const files = [{ cwd, path, start, end: start + token.length }];
+    const startTurn = vi.spyOn(ctx.codex, 'startTurn');
+    const steerTurn = vi.spyOn(ctx.codex, 'steerTurn');
+    const send = () => {
+      const input = { clientOperationId: operationId(), text, files };
+      return mode === 'start'
+        ? ctx.service.startTurn(ctx.id, input)
+        : ctx.service.steer(ctx.id, { ...input, expectedTurnId });
+    };
+    await expect(send()).rejects.toMatchObject({ code: 'FILE_REFERENCE_NOT_FOUND' });
+    expect((await ctx.service.getThread(ctx.id)).questionTracking).toEqual({});
+    expect(startTurn).not.toHaveBeenCalled();
+    expect(steerTurn).not.toHaveBeenCalled();
+
+    writeFileSync(join(cwd, path), 'answer');
+    const operation = await send();
+    const submitted =
+      mode === 'start' ? startTurn.mock.calls[0]?.[2] : steerTurn.mock.calls[0]?.[2];
+    expect(submitted).toBe(encodeQuestionReplies([{ ...reply, answer: path }]));
+    if (mode === 'start')
+      ctx.codex.complete(ctx.id, (operation.result as { turnId: string }).turnId);
+    await expect(send()).rejects.toMatchObject({ code: 'QUESTION_CONFLICT' });
+    expect(startTurn.mock.calls.length + steerTurn.mock.calls.length).toBe(1);
+  },
+);
 
 it('honors native answers from another client and never overwrites them with a local dismissal', async () => {
   const ctx = await setup();
