@@ -121,7 +121,7 @@ for (const mode of [
       );
       const daemonFile = join(candidate, 'dist/cli/daemon.js');
       const daemon = await readFile(daemonFile, 'utf8');
-      const marker = 'runtime = await startGateway(config, { updates, maintenance });';
+      const marker = 'runtime = await startGateway(config, { updates, maintenance, logger });';
       if (!daemon.includes(marker)) throw new Error('Missing readiness fixture insertion point');
       await writeFile(
         daemonFile,
@@ -156,7 +156,7 @@ for (const mode of [
       await chmod(codexBinary, 0o700);
       const daemonFile = join(candidate, 'dist/cli/daemon.js');
       const daemon = await readFile(daemonFile, 'utf8');
-      const marker = 'runtime = await startGateway(config, { updates, maintenance });';
+      const marker = 'runtime = await startGateway(config, { updates, maintenance, logger });';
       if (!daemon.includes(marker)) throw new Error('Missing restart fixture insertion point');
       await writeFile(
         daemonFile,

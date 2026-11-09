@@ -20,7 +20,7 @@ covro service uninstall
 
 首次运行写入回环地址和空项目列表；在页面添加项目。CLI 不登录或升级 Codex，后台环境需要通过 `codex.binary` 指定 Codex 的绝对路径，并确保 PATH 包含项目使用的工具。
 
-macOS 使用当前用户的 launchd，Linux 使用 `systemd --user`，`service install` 显式启用登录自启并启动服务。它记录当前 Node、CLI 的绝对路径及 PATH；移动 Node 安装后需要重新安装该服务。日志由 `covro logs` 显示末尾 64 KiB，外部日志轮转仍由运行环境管理。Windows 支持前台和后台运行，登录自启尚未提供。
+macOS 使用当前用户的 launchd，Linux 使用 `systemd --user`，`service install` 显式启用登录自启并启动服务。它记录当前 Node、CLI 的绝对路径及 PATH；移动 Node 安装后需要重新安装该服务。结构化日志按实例保存并自动轮转，`covro logs` 默认显示最近 200 条，可按会话、事件、级别和时间筛选并实时跟随；`covro status` / `doctor` 返回日志写入健康状态。详见[日志与排障](logging.md)。Windows 支持前台和后台运行，登录自启尚未提供。
 
 <a id="macos-sessions-and-credentials"></a>
 

@@ -117,7 +117,7 @@ DB Schema **10** 独立于应用版本，旧应用不能打开更新的数据库
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 日常使用   | [使用指南](docs/usage.zh-CN.md) · [命令](docs/slash-commands.md) · [技能与显式引用](docs/skills.md) · [提问与回答](docs/async-questions.md) · [Shell](docs/shell.md) · [容量重试](docs/capacity-retry.md) |
 | 项目与会话 | [导入与克隆](docs/project-clone.md) · [工作目录](docs/workspaces.md) · [历史加载](docs/session-history.md) · [托管 MCP 工具](docs/managed-mcp.md)                                                         |
-| 安装与访问 | [安装与更新](docs/distribution.md) · [部署](docs/deployment.md) · [界面语言](docs/i18n.md)                                                                                                                |
+| 安装与访问 | [安装与更新](docs/distribution.md) · [部署](docs/deployment.md) · [日志与排障](docs/logging.md) · [界面语言](docs/i18n.md)                                                                                |
 | 数据与兼容 | [备份](docs/backups.md) · [数据库](docs/database.md) · [Codex 兼容性](docs/compatibility.md)                                                                                                              |
 | 开发与发布 | [贡献](docs/contributing.md) · [架构](docs/architecture.md) · [验证](docs/verification.md) · [发版](docs/releases.md) · [品牌素材](docs/brand.md)                                                         |
 

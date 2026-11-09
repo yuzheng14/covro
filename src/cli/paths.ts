@@ -22,7 +22,15 @@ export function paths(configPath?: string) {
   const state = join(home, 'instances', key);
   const socket =
     process.platform === 'win32' ? `\\\\.\\pipe\\covro-${key}` : join(home, `c-${key}.sock`);
-  return { home, config, key, state, socket, log: join(state, 'covro.log') };
+  return {
+    home,
+    config,
+    key,
+    state,
+    socket,
+    log: join(state, 'covro.log'),
+    logs: join(state, 'logs'),
+  };
 }
 export type CovroPaths = ReturnType<typeof paths>;
 export async function writeJson(filename: string, value: unknown) {
