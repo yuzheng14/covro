@@ -14,6 +14,16 @@ import type { ThreadItem } from '../../src/codex/generated/v2/ThreadItem.js';
 import type { SimulatorOptions } from '../fixtures/app-server.js';
 const adapters: CodexAdapter[] = [];
 const dirs: string[] = [];
+async function messages(dir: string): Promise<Record<string, unknown>[]> {
+  const text = await readFile(join(dir, 'requests.jsonl'), 'utf8');
+  // Background helper requests can append while readFile is in flight. Parse only complete
+  // JSONL records; malformed completed records must still fail the test.
+  return text
+    .slice(0, text.lastIndexOf('\n') + 1)
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
 afterEach(async () => {
   await Promise.all(adapters.splice(0).map((adapter) => adapter.stop()));
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
@@ -46,20 +56,13 @@ async function fixture(
     events,
     dir,
     requests: async () =>
-      (await readFile(join(dir, 'requests.jsonl'), 'utf8'))
-        .trim()
-        .split('\n')
-        .map((line) => JSON.parse(line) as { method: string; params: Record<string, unknown> }),
+      (await messages(dir)) as { method: string; params: Record<string, unknown> }[],
   };
 }
 async function replies(
   dir: string,
 ): Promise<{ id: string | number; result?: unknown; error?: unknown }[]> {
-  return (await readFile(join(dir, 'requests.jsonl'), 'utf8'))
-    .trim()
-    .split('\n')
-    .map((line) => JSON.parse(line) as Record<string, unknown>)
-    .filter((message) => !Object.hasOwn(message, 'method')) as {
+  return (await messages(dir)).filter((message) => !Object.hasOwn(message, 'method')) as {
     id: string | number;
     result?: unknown;
     error?: unknown;
@@ -972,6 +975,62 @@ describe('verified protocol adapter with a real subprocess', () => {
       ).rejects.toMatchObject({ code: 'ACTION_CONFLICT' });
       await waitFor(() => events.find((event) => event.type === 'actionResolved'));
       if (approval === 'network') expect(incoming.action.title).toContain('https://example.com');
+    },
+  );
+  it.each(['accept', 'decline', 'cancel'] as const)(
+    'requires a fresh human decision (%s) despite advertised reusable approvals and replay',
+    async (decision) => {
+      const { adapter, events, requests, dir } = await fixture({
+        approval: 'human-command',
+        replayApproval: true,
+      });
+      const thread = await adapter.createThread('/tmp');
+      await adapter.startTurn(thread.id, thread.cwd, 'managed human checkpoint');
+      const incoming = await waitFor(() => events.find((event) => event.type === 'action'));
+      if (incoming.type !== 'action') throw new Error('Wrong event');
+      expect(incoming.action.requiresHumanApproval).toBe(true);
+      expect(incoming.action.options.map((option) => option.id)).toEqual([
+        'accept',
+        'decline',
+        'cancel',
+      ]);
+      expect(
+        (await requests()).find((entry) => entry.method === 'initialize')?.params,
+      ).toMatchObject({ capabilities: { experimentalApi: true, requiredHumanApproval: true } });
+      // Mutating the browser projection must not enlarge the original request's decisions.
+      incoming.action.options.push({ id: 'acceptForSession', label: 'forged' });
+      for (const invalid of [
+        { decision: 'acceptForSession' },
+        { decision: 'acceptWithRule' },
+        { decision: 'networkRule:0' },
+        { decision: 'accept', persist: 'session' },
+      ] as const)
+        await expect(adapter.respond(incoming.action.actionId, invalid)).rejects.toMatchObject({
+          code: 'VALIDATION_ERROR',
+        });
+      expect(await replies(dir)).toEqual([]);
+      await adapter.respond(incoming.action.actionId, { decision });
+      await waitFor(() => events.find((event) => event.type === 'actionResolved'));
+      expect(events.filter((event) => event.type === 'action')).toHaveLength(1);
+      expect((await replies(dir)).map((reply) => reply.result)).toEqual([{ decision }]);
+      await expect(
+        adapter.respond(incoming.action.actionId, { decision: 'accept' }),
+      ).rejects.toMatchObject({ code: 'ACTION_EXPIRED' });
+    },
+  );
+  it.each(['human-command', 'network'] as const)(
+    'expires a withdrawn %s approval without sending a late decision',
+    async (approval) => {
+      const { adapter, events, dir } = await fixture({ approval, withdrawApprovalAfterMs: 80 });
+      const thread = await adapter.createThread('/tmp');
+      await adapter.startTurn(thread.id, thread.cwd, 'withdraw approval');
+      const incoming = await waitFor(() => events.find((event) => event.type === 'action'));
+      if (incoming.type !== 'action') throw new Error('Wrong event');
+      await waitFor(() => events.find((event) => event.type === 'actionResolved'));
+      await expect(
+        adapter.respond(incoming.action.actionId, { decision: 'cancel' }),
+      ).rejects.toMatchObject({ code: 'ACTION_EXPIRED' });
+      expect(await replies(dir)).toEqual([]);
     },
   );
   it('validates every structured question and exact option/free-text constraints', async () => {

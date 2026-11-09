@@ -69,6 +69,7 @@
   "handled": "처리됨",
   "request_expired": "요청 만료됨",
   "commandApproval": "명령 실행 승인",
+  "humanCommandApproval": "사람의 승인이 필요한 명령",
   "fileApproval": "파일 변경 승인",
   "permissionsApproval": "추가 권한 승인",
   "networkApproval": "네트워크 권한: {{target}}",

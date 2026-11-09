@@ -2,6 +2,7 @@ import type { PendingAction, ActionOption } from '../../shared/types';
 import { t } from '../i18n';
 
 export function actionTitle(action: PendingAction) {
+  if (action.requiresHumanApproval) return t('approvals:humanCommandApproval');
   switch (action.kind) {
     case 'command':
       return t('approvals:commandApproval');

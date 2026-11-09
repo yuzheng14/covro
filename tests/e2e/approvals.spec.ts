@@ -39,6 +39,49 @@ async function assertWaiting(page: Page, threadId: string) {
   expect(thread.turns.at(-1)?.items.some((item) => item.type === 'commandExecution')).toBe(false);
   return thread.actions.find((action) => action.status === 'pending')!;
 }
+
+for (const viewport of [
+  { name: 'desktop', width: 1280 },
+  { name: 'mobile', width: 390 },
+]) {
+  for (const decision of ['accept', 'decline', 'cancel']) {
+    test(`human checkpoint ${decision} on ${viewport.name} only offers one-time decisions`, async ({
+      page,
+      context,
+    }) => {
+      const threadId = await pendingTask(page, '[human-command] 核对一次人工命令审批');
+      await page.setViewportSize({ width: viewport.width, height: 1000 });
+      const card = page.getByRole('region', { name: '需要人工批准的命令', exact: true });
+      await expect(card).toBeVisible();
+      await assertWaiting(page, threadId);
+      await expect(card.getByRole('button')).toHaveText(['允许本次', '拒绝', '取消当前任务']);
+      await page.reload();
+      await expect(card).toBeVisible();
+      await expect(card.getByRole('button')).toHaveCount(3);
+      await context.setOffline(true);
+      await expect(card.getByRole('button', { name: '允许本次', exact: true })).toBeDisabled();
+      await context.setOffline(false);
+      await expect(card.getByRole('button', { name: '允许本次', exact: true })).toBeEnabled();
+      if (decision === 'decline') {
+        const directory = join(tmpdir(), 'covro-167-approval-evidence');
+        await mkdir(directory, { recursive: true });
+        await page.screenshot({
+          path: join(directory, `human-command-${viewport.name}.png`),
+          fullPage: true,
+        });
+      }
+      const submitted = page.waitForRequest(isResolution);
+      await card
+        .getByRole('button', {
+          name: { accept: '允许本次', decline: '拒绝', cancel: '取消当前任务' }[decision],
+          exact: true,
+        })
+        .click();
+      expect((await submitted).postDataJSON().resolution).toEqual({ decision });
+      await expect(card).not.toBeVisible();
+    });
+  }
+}
 async function fillForm(page: Page) {
   const card = page.locator('.action-card');
   await card.getByRole('textbox', { name: '项目名称', exact: true }).fill('截图项目');
