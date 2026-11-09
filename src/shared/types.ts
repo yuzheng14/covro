@@ -345,6 +345,8 @@ export interface PermissionRequest {
 }
 export interface PendingAction {
   blocking?: boolean;
+  /** Managed checkpoint: a person must decide once; reusable approvals are invalid. */
+  requiresHumanApproval?: boolean;
   actionId: string;
   codexEpoch: string;
   rpcId: string | number;

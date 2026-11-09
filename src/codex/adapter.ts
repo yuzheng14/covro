@@ -412,15 +412,18 @@ export class CodexAdapter implements CodexClient {
           this.scheduleRestart();
         }
       });
+      // 0.167.0 negotiates human checkpoints; older servers ignore the additional capability.
+      const capabilities = {
+        experimentalApi: true,
+        requiredHumanApproval: true,
+        requestAttestation: false,
+        explicitGatewayOauth: true,
+      };
       const initialized = await this.call(
         'initialize',
         {
           clientInfo: { name: 'codex_web_ui', title: 'Codex Web UI', version: '0.1.0' },
-          capabilities: {
-            experimentalApi: true,
-            requestAttestation: false,
-            explicitGatewayOauth: true,
-          },
+          capabilities,
         },
         true,
       );
@@ -1585,6 +1588,8 @@ export class CodexAdapter implements CodexClient {
     }
   }
   private async serverRequest(message: RpcServerRequest): Promise<void> {
+    // A replay of the same pending RPC keeps its original action and decision scope.
+    if (this.actionIds.has(message.id)) return;
     if (isRecord(message.params) && this.titles?.isInternal(message.params.threadId)) {
       await this.rpc?.reject(
         message.id,
@@ -1611,18 +1616,23 @@ export class CodexAdapter implements CodexClient {
       request.method === 'item/commandExecution/requestApproval' ||
       request.method === 'item/fileChange/requestApproval'
     ) {
+      const humanCommand =
+        request.method === 'item/commandExecution/requestApproval' &&
+        params.kind === 'humanCommand';
       for (const [id, label] of [
         ['accept', '允许本次'],
         ['acceptForSession', '本会话允许'],
         ['decline', '拒绝'],
         ['cancel', '取消当前任务'],
       ] as const) {
+        if (humanCommand && id === 'acceptForSession') continue;
         action.options.push({ id, label });
         decisions.set(id, id);
       }
       action.reason = request.params.reason ?? undefined;
       if (request.method === 'item/commandExecution/requestApproval') {
         const p = request.params;
+        if (humanCommand) action.requiresHumanApproval = true;
         action.kind = p.networkApprovalContext ? 'network' : 'command';
         action.title = p.networkApprovalContext
           ? `网络权限：${p.networkApprovalContext.protocol}://${p.networkApprovalContext.host}`
@@ -1634,7 +1644,7 @@ export class CodexAdapter implements CodexClient {
           network: p.networkApprovalContext,
           commandActions: p.commandActions,
         };
-        if (p.proposedExecpolicyAmendment) {
+        if (!humanCommand && p.proposedExecpolicyAmendment) {
           action.options.push({
             id: 'acceptWithRule',
             label: `允许并记住命令规则：${p.proposedExecpolicyAmendment.join(' ')}`,
@@ -1643,13 +1653,14 @@ export class CodexAdapter implements CodexClient {
             acceptWithExecpolicyAmendment: { execpolicy_amendment: p.proposedExecpolicyAmendment },
           });
         }
-        p.proposedNetworkPolicyAmendments?.forEach((amendment, index) => {
-          const id = `networkRule:${index}`;
-          action.options.push({ id, label: `应用网络规则：${JSON.stringify(amendment)}` });
-          decisions.set(id, {
-            applyNetworkPolicyAmendment: { network_policy_amendment: amendment },
+        if (!humanCommand)
+          p.proposedNetworkPolicyAmendments?.forEach((amendment, index) => {
+            const id = `networkRule:${index}`;
+            action.options.push({ id, label: `应用网络规则：${JSON.stringify(amendment)}` });
+            decisions.set(id, {
+              applyNetworkPolicyAmendment: { network_policy_amendment: amendment },
+            });
           });
-        });
       } else {
         action.kind = 'file';
         action.title = '文件变更审批';

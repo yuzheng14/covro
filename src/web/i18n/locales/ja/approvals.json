@@ -69,6 +69,7 @@
   "handled": "対応済み",
   "request_expired": "リクエスト失効",
   "commandApproval": "コマンド実行の承認",
+  "humanCommandApproval": "人による承認が必要なコマンド",
   "fileApproval": "ファイル変更の承認",
   "permissionsApproval": "追加権限の承認",
   "networkApproval": "ネットワーク権限：{{target}}",

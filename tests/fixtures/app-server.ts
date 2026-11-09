@@ -87,6 +87,7 @@ export interface SimulatorOptions {
   resumeFailure?: { code: number; message: string };
   approval?:
     | 'command'
+    | 'human-command'
     | 'file'
     | 'network'
     | 'questions'
@@ -104,6 +105,8 @@ export interface SimulatorOptions {
     | 'elicitation-openai-form'
     | 'elicitation-malformed';
   permissions?: RequestPermissionProfile;
+  replayApproval?: boolean;
+  withdrawApprovalAfterMs?: number;
   elicitationSchema?: unknown;
   elicitationMeta?: JsonValue;
   elicitationTurnId?: null;
@@ -1705,6 +1708,14 @@ function approval(
         startedAtMs: Date.now(),
         environmentId: null,
         reason: '执行测试命令',
+        ...(kind === 'human-command'
+          ? {
+              approvalId: randomUUID(),
+              // Deliberately advertise reusable choices; the client must still reject them.
+              proposedExecpolicyAmendment: ['printf'],
+              proposedNetworkPolicyAmendments: [{ host: 'example.com', action: 'allow' as const }],
+            }
+          : {}),
         ...(kind === 'network'
           ? { networkApprovalContext: { host: 'example.com', protocol: 'https' } }
           : { command: 'printf "你好 Codex"', cwd: thread.cwd }),
@@ -1725,10 +1736,23 @@ function approval(
     method: 'thread/status/changed',
     params: { threadId: thread.id, status: thread.status },
   });
-  send(request);
+  // Exercise the new wire kind independently of the package's recommended protocol baseline.
+  const wireRequest =
+    kind === 'human-command' && request.method === 'item/commandExecution/requestApproval'
+      ? { ...request, params: { ...request.params, kind: 'humanCommand' } }
+      : request;
+  send(wireRequest);
+  if (options.replayApproval) send(wireRequest);
   callbacks.set(id, (response) => {
     notify({ method: 'serverRequest/resolved', params: { threadId: thread.id, requestId: id } });
     thread.status = { type: 'active', activeFlags: [] };
+    if (
+      kind === 'human-command' &&
+      (response.result as { decision?: string })?.decision !== 'accept'
+    ) {
+      complete(thread, turn, 'interrupted');
+      return;
+    }
     if (kind === 'permissions' || kind.startsWith('elicitation-')) {
       const result = response.result as Record<string, unknown> | undefined;
       const accepted =
@@ -1742,6 +1766,12 @@ function approval(
     }
     execute(thread, turn);
   });
+  if (options.withdrawApprovalAfterMs)
+    setTimeout(() => {
+      if (!callbacks.delete(id)) return;
+      notify({ method: 'serverRequest/resolved', params: { threadId: thread.id, requestId: id } });
+      complete(thread, turn, 'interrupted');
+    }, options.withdrawApprovalAfterMs);
 }
 const model: Model = {
   id: 'simulated-model',
@@ -2619,9 +2649,11 @@ function receive(request: ClientRequest): void {
             ? 'file'
             : prompt.includes('[network]')
               ? 'network'
-              : prompt.includes('[approval]')
-                ? 'command'
-                : undefined);
+              : prompt.includes('[human-command]')
+                ? 'human-command'
+                : prompt.includes('[approval]')
+                  ? 'command'
+                  : undefined);
       const reviewStatus =
         options.autoReview ??
         (prompt.includes('[auto-review-denied]')

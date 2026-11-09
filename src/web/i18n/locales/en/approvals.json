@@ -69,6 +69,7 @@
   "handled": "Handled",
   "request_expired": "Request expired",
   "commandApproval": "Command approval",
+  "humanCommandApproval": "Human approval required",
   "fileApproval": "File change approval",
   "permissionsApproval": "Additional permissions",
   "networkApproval": "Network permission: {{target}}",

@@ -69,6 +69,7 @@
   "handled": "已处理",
   "request_expired": "请求已失效",
   "commandApproval": "命令审批",
+  "humanCommandApproval": "需要人工批准的命令",
   "fileApproval": "文件变更审批",
   "permissionsApproval": "额外权限审批",
   "networkApproval": "网络权限：{{target}}",
