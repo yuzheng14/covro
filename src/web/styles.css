@@ -5594,6 +5594,20 @@ dd {
 .skill-reference-menu .skills-state {
   margin: 20px 12px;
 }
+.file-option {
+  align-items: center;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.file-option > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.composer-highlights mark[data-file-path] {
+  background: #dfeaf4;
+  box-shadow: 0 0 0 1px #dfeaf4;
+}
 /* No extra selected-skill row: the native editor highlights the bound text in place. */
 .composer-editor {
   position: relative;

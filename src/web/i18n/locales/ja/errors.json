@@ -161,5 +161,13 @@
   "SKILL_STEER_UNSUPPORTED": "Codex 0.164.0 では実行中のタスクに選択したスキルを確実に適用できません。完了後にこの下書きを送信してください。",
   "QUESTION_EXPIRED": "この質問は現在利用できません。セッションを更新してください。",
   "QUESTION_BUSY": "回答を送信中、または受領確認待ちです。結果を確認してから続行してください。",
-  "QUESTION_CONFLICT": "この質問は処理済み、または送信中です。セッションを更新してください。"
+  "QUESTION_CONFLICT": "この質問は処理済み、または送信中です。セッションを更新してください。",
+  "FILE_REFERENCE_OUTSIDE": "選択したファイルは現在のワークスペース外です。選択し直してください。",
+  "FILE_REFERENCE_NOT_FOUND": "ファイルが移動または削除されました。選択し直してください。",
+  "FILE_REFERENCE_UNREADABLE": "ファイルを読み取れません。権限を確認してください。",
+  "FILE_REFERENCE_NOT_FILE": "ワークスペース内の通常のファイルを選択してください。",
+  "FILE_REFERENCE_CHANGED": "ファイルまたはワークスペースが変更されました。選択し直してください。",
+  "FILE_SEARCH_BUSY": "ファイル検索が混雑しています。しばらくして再試行してください。",
+  "FILE_SEARCH_TIMEOUT": "ファイル検索がタイムアウトしました。パスを絞って再試行してください。",
+  "FILE_SEARCH_CANCELLED": "ファイル検索がキャンセルされました。"
 }

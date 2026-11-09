@@ -161,5 +161,13 @@
   "SKILL_STEER_UNSUPPORTED": "Codex 0.164.0 cannot apply a selected skill during an active task. Wait for it to finish, then send this draft.",
   "QUESTION_EXPIRED": "This question is no longer available. Refresh the session.",
   "QUESTION_BUSY": "An answer is submitting or awaiting confirmation. Refresh its receipt before continuing.",
-  "QUESTION_CONFLICT": "This question was handled or is already submitting. Refresh the session."
+  "QUESTION_CONFLICT": "This question was handled or is already submitting. Refresh the session.",
+  "FILE_REFERENCE_OUTSIDE": "The selected file is outside this workspace. Select it again.",
+  "FILE_REFERENCE_NOT_FOUND": "The file was moved or deleted. Select another file.",
+  "FILE_REFERENCE_UNREADABLE": "The selected file cannot be read. Check its permissions.",
+  "FILE_REFERENCE_NOT_FILE": "Select a regular workspace file.",
+  "FILE_REFERENCE_CHANGED": "The file or workspace changed. Select the file again.",
+  "FILE_SEARCH_BUSY": "File search is busy. Retry shortly.",
+  "FILE_SEARCH_TIMEOUT": "File search timed out. Narrow the path and retry.",
+  "FILE_SEARCH_CANCELLED": "File search was cancelled."
 }

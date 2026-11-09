@@ -71,6 +71,8 @@ class ControlledFixture implements CodexClient {
     this.inner.unarchiveThread(...args);
   listThreads: CodexClient['listThreads'] = (...args) => this.inner.listThreads(...args);
   listSkills: NonNullable<CodexClient['listSkills']> = (...args) => this.inner.listSkills!(...args);
+  searchFiles: NonNullable<CodexClient['searchFiles']> = (...args) =>
+    this.inner.searchFiles!(...args);
   readRuntimeSettings: CodexClient['readRuntimeSettings'] = (...args) =>
     this.inner.readRuntimeSettings(...args);
   updateLiveSettings: NonNullable<CodexClient['updateLiveSettings']> = (...args) =>
@@ -152,6 +154,12 @@ const port = Number(process.env.E2E_PORT ?? 8788);
 const origin = `http://127.0.0.1:${port}`;
 await mkdir(project);
 await mkdir(otherProject);
+for (const path of ['docs/中文 说明.md', 'a/same.ts', 'b/same.ts', 'README.md']) {
+  const target = join(project, path);
+  await mkdir(join(target, '..'), { recursive: true });
+  await writeFile(target, 'Fixture file reference content\n');
+}
+await writeFile(join(otherProject, 'other-only.txt'), 'Other workspace\n');
 const config = parseConfig(
   {
     port,

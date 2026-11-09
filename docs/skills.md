@@ -22,6 +22,10 @@ First messages and subsequent idle-conversation messages send `$<name>` text plu
 
 首条消息和已有空闲会话均发送 `$<name>` 文本及原生 `{ type: "skill", name, path }`。网关发送前刷新同一原生发现源，拒绝不可用或禁用项、变化的 cwd、缺失标记和任意主机路径。普通字面量 `$`、无匹配或取消选择均保持可编辑文本；slash 命令不能携带已选引用。
 
-Protocol: [official App Server skills](https://learn.chatgpt.com/docs/app-server) and [0.164.0 steering implementation](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/app-server/src/request_processors/turn_processor.rs). A real 0.164.0 turn/start smoke test selected the second of two same-name probe skills and received only that path's hidden instruction marker. Although the steering schema maps skill items through `V2UserInput::into_core`, a separate real active-steering test did not inject the selected skill's instructions. Covro therefore blocks active submissions containing selected references, with an explicit message, and retains the draft until the current task ends. The gateway also rejects such requests before dispatch; ordinary text/image steering remains available.
+Protocol: [official App Server skills](https://learn.chatgpt.com/docs/app-server) and [0.164.0 steering implementation](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/app-server/src/request_processors/turn_processor.rs). A real 0.164.0 turn/start smoke test selected the second of two same-name probe skills and received only that path's hidden instruction marker. Although the steering schema maps skill items through `V2UserInput::into_core`, a separate real active-steering test did not inject the selected skill's instructions. Covro therefore blocks active submissions containing selected skill references, with an explicit message, and retains the draft until the current task ends. The gateway also rejects such requests before dispatch; ordinary text/image steering remains available.
 
-真实 0.164.0 的 turn/start 验证已确认同名技能的第二个实际路径生效；但运行中 turn/steer 虽接受 skill 输入项，独立真机验证没有注入其指令。因此运行中携带已选引用时明确提示等待任务结束，并保留草稿；网关在派发前也拒绝这类请求。普通文本/图片追加仍可使用。
+真实 0.164.0 的 turn/start 验证已确认同名技能的第二个实际路径生效；但运行中 turn/steer 虽接受 skill 输入项，独立真机验证没有注入其指令。因此运行中携带已选技能引用时明确提示等待任务结束，并保留草稿；网关在派发前也拒绝这类请求。普通文本/图片追加仍可使用。
+
+Workspace file references use a separate `@` picker and path-text protocol, and can accompany text/image steering. See [file references / 文件引用](file-references.md).
+
+工作区文件通过独立的 `@` 候选与路径文本协议引用，可用于普通文本/图片追加；不改变上述技能追加限制。

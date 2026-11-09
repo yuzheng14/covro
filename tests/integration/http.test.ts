@@ -1,4 +1,5 @@
 import { captureLogger } from '../fixtures/logging.js';
+import { AppError } from '../../src/shared/errors.js';
 import { createServer } from 'node:net';
 import { request as httpRequest } from 'node:http';
 import { mkdtemp, mkdir, rm, writeFile, cp, readdir } from 'node:fs/promises';
@@ -995,6 +996,81 @@ it('returns only displayable runtime defaults for registered projects and reject
   expect(body).not.toHaveProperty('api_key');
   expect(body).not.toHaveProperty('developer_instructions');
   expect((await fetch(`${origin}/api/projects/unknown/runtime-settings`)).status).toBe(404);
+});
+
+it('keeps file search and cancellation at debug level without logging file or prompt data', async () => {
+  const { post, runtime, logs } = await setup();
+  const created = await post('/api/projects/test/threads', { clientOperationId: randomUUID() });
+  const threadId = ((await created.json()) as Operation).result as { threadId: string };
+  const query = { projectId: 'test', threadId: threadId.threadId, query: 'PRIVATE_FILE_QUERY' };
+  const searched = await post('/api/files/search', query);
+  expect(searched.status).toBe(200);
+  const cwd = ((await searched.json()) as { cwd: string }).cwd;
+  const requestId = searched.headers.get('x-request-id');
+  expect(logs.records).toContainEqual(
+    expect.objectContaining({
+      event: 'http.completed',
+      requestId,
+      route: '/api/files/search',
+      level: 20,
+    }),
+  );
+  expect(logs.records).toContainEqual(
+    expect.objectContaining({
+      event: 'rpc.started',
+      requestId,
+      threadId: threadId.threadId,
+      method: 'fuzzyFileSearch',
+    }),
+  );
+  const path = 'PRIVATE_MISSING_FILE.txt';
+  const text = `PRIVATE_FILE_PROMPT @${path}`;
+  const operationId = randomUUID();
+  expect(
+    (
+      await post(`/api/threads/${threadId.threadId}/turns`, {
+        clientOperationId: operationId,
+        text,
+        files: [{ cwd, path, start: text.indexOf('@'), end: text.length }],
+      })
+    ).status,
+  ).toBe(404);
+  expect(logs.records).toContainEqual(
+    expect.objectContaining({
+      event: 'operation.failed',
+      operationId,
+      threadId: threadId.threadId,
+      errorCode: 'FILE_REFERENCE_NOT_FOUND',
+      level: 40,
+    }),
+  );
+  const search = vi.spyOn(runtime.service, 'searchFiles');
+  for (const [code, status, level] of [
+    ['FILE_SEARCH_CANCELLED', 499, 20],
+    ['FILE_SEARCH_TIMEOUT', 408, 40],
+  ] as const) {
+    search.mockRejectedValueOnce(new AppError(code, 'PRIVATE_SEARCH_ERROR', status));
+    const response = await post('/api/files/search', query);
+    expect(response.status).toBe(status);
+    const records = logs.records.filter(
+      (record) => record.requestId === response.headers.get('x-request-id'),
+    );
+    expect(records).toContainEqual(
+      expect.objectContaining({ event: 'http.failed', errorCode: code, level }),
+    );
+    expect(records).toContainEqual(
+      expect.objectContaining({ event: 'http.completed', status, level }),
+    );
+  }
+  const serialized = JSON.stringify(logs.records);
+  for (const secret of [
+    'PRIVATE_FILE_QUERY',
+    'PRIVATE_FILE_PROMPT',
+    'PRIVATE_SEARCH_ERROR',
+    path,
+    cwd,
+  ])
+    expect(serialized).not.toContain(secret);
 });
 
 it('correlates HTTP, operations, RPC and background naming without recording request data', async () => {

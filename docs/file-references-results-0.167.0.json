@@ -1,0 +1,16 @@
+{
+  "date": "2026-11-09T07:00:08.985Z",
+  "version": "0.167.0",
+  "simulated": false,
+  "inference": true,
+  "checks": [
+    "native Chinese/space fuzzy search",
+    "native 50-result cap",
+    "cancel followed by a successful query on the same app-server",
+    "native unassigned draft search and session creation reuse the exact reserved cwd",
+    "actual deletion rejected before dispatch with the bound draft retained",
+    "production browser -> gateway -> native turn/start",
+    "actual model reads Chinese/space path and exact same-name file",
+    "native history contains quoted path text"
+  ]
+}

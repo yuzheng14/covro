@@ -62,11 +62,16 @@ export function createApp({
         logger[
           status >= 500
             ? 'error'
-            : status >= 400
-              ? 'warn'
-              : route === '/api/health' || route.includes('account') || c.req.method === 'GET'
-                ? 'debug'
-                : 'info'
+            : status === 499 && route === '/api/files/search'
+              ? 'debug'
+              : status >= 400
+                ? 'warn'
+                : route === '/api/health' ||
+                    route === '/api/files/search' ||
+                    route.includes('account') ||
+                    c.req.method === 'GET'
+                  ? 'debug'
+                  : 'info'
         ]('http.completed', {
           requestId,
           operationId: c.get('operationId'),
@@ -85,7 +90,13 @@ export function createApp({
         : error instanceof ZodError || error instanceof SyntaxError
           ? new AppError('VALIDATION_FAILED', 'Invalid request data', 400)
           : new AppError('INTERNAL_ERROR', 'An internal error occurred', 500);
-    logger[failure.status >= 500 ? 'error' : 'warn']('http.failed', {
+    logger[
+      failure.code === 'FILE_SEARCH_CANCELLED' && c.req.routePath === '/api/files/search'
+        ? 'debug'
+        : failure.status >= 500
+          ? 'error'
+          : 'warn'
+    ]('http.failed', {
       ...errorFields(error),
       status: failure.status,
       operationId: c.get('operationId'),
@@ -219,6 +230,14 @@ export function createApp({
   });
   app.post('/api/skills/list', async (c) =>
     c.json(await service.listSkills(schemas.skillsQuerySchema.parse(await c.req.json()))),
+  );
+  app.post('/api/files/search', async (c) =>
+    c.json(
+      await service.searchFiles(
+        schemas.fileSearchQuerySchema.parse(await c.req.json()),
+        c.req.raw.signal,
+      ),
+    ),
   );
   app.get('/api/system', (c) => c.json(service.getSystem()));
   app.get('/api/account/usage', async (c) => {

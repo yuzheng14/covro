@@ -11,6 +11,7 @@ export interface DraftImage {
 export interface MessageDraft {
   text: string;
   skills?: import('./skill-references').SkillBinding[];
+  files?: import('../../shared/file-references').FileReference[];
   images: DraftImage[];
   error?: string;
 }

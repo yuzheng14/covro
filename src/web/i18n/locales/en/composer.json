@@ -59,5 +59,14 @@
   "skills_offline": "Offline. Reconnect to load skills.",
   "skills_selected": "Selected skills",
   "skills_slash": "Remove skill references before running a slash command.",
-  "skills_steer_unsupported": "Codex 0.164.0 cannot apply a selected skill during an active task. Wait for it to finish, then send this draft."
+  "skills_steer_unsupported": "Codex 0.164.0 cannot apply a selected skill during an active task. Wait for it to finish, then send this draft.",
+  "files_title": "Workspace files",
+  "files_type_path": "Type a path after @. Use @\" for spaces.",
+  "files_no_match": "No matching files",
+  "files_limited": "Showing up to 50 results. Narrow the path to see more.",
+  "files_offline": "Offline. Reconnect to search workspace files.",
+  "files_not_ready": "Codex is not ready to search files.",
+  "files_slash": "Remove file references before running a slash command.",
+  "references_selected": "Selected references",
+  "files_limit": "A message can reference up to 32 files."
 }
