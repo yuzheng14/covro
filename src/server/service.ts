@@ -1,6 +1,9 @@
 import { questionAnswers } from '../shared/question-resolution.js';
 import { asyncQuestionId, parseQuestionReplies } from '../shared/async-questions.js';
 import { QuestionTrackingStore } from './db/question-tracking.js';
+import { nullLogger, type Logger } from '../logging/logger.js';
+import { errorFields } from '../logging/fields.js';
+import { logContext, withLogContext } from '../logging/context.js';
 import { hasSkillToken, type SkillReference } from '../shared/skills.js';
 import type { CodexClient, CodexDiagnostics, CodexEvent } from '../codex/types.js';
 import type { StreamedItem } from './thread-patch.js';
@@ -82,6 +85,7 @@ import { sessionCreationResult } from './session-creation.js';
 import { createSessionSchema } from '../shared/validation.js';
 
 export interface GatewayOptions {
+  logger?: Logger;
   store: OperationStore;
   projects: ProjectRegistry;
   workspacesRoot?: string;
@@ -93,6 +97,7 @@ export interface GatewayOptions {
 
 /** Coordinates durable intent, upstream effects, and the recoverable browser projection. */
 export class GatewayService {
+  private readonly logger: Logger;
   private readonly capacityRetries: CapacityRetries;
   readonly projectClones: ProjectClones;
   readonly shell: ShellService;
@@ -132,9 +137,13 @@ export class GatewayService {
   private readonly capacityLinks = new Map<string, Map<string, string>>();
 
   constructor(private readonly options: GatewayOptions) {
+    this.logger = (options.logger ?? nullLogger).child({ component: 'operations' });
     this.store = options.store;
     this.turnUsage = new TurnUsageStore(this.store.database);
-    this.questionTracking = new QuestionTrackingStore(this.store.database);
+    this.questionTracking = new QuestionTrackingStore(
+      this.store.database,
+      this.logger.child({ component: 'question_tracking' }),
+    );
     this.projects = options.projects;
     this.workspaces = new WorkspaceRegistry(
       this.store.database,
@@ -149,6 +158,7 @@ export class GatewayService {
         return project;
       },
       (path) => this.projects.list().some((project) => project.canonicalRoot === path),
+      this.logger.child({ component: 'clones' }),
     );
     this.codex = options.codex;
     this.shell = new ShellService(this.codex);
@@ -157,6 +167,7 @@ export class GatewayService {
     this.capacityRetries = new CapacityRetries(
       (job) => this.dispatchCapacityRetry(job),
       (id) => this.publishThread(id),
+      this.logger.child({ component: 'capacity_retry' }),
     );
     this.currentEpoch = this.codex.epoch;
     this.store.recover();
@@ -1862,13 +1873,32 @@ export class GatewayService {
     } catch (error) {
       throw this.asAppError(error);
     }
-    if (!accepted.inserted) return this.operation(accepted.operation);
+    const logger = this.logger.child({
+      ...logContext(),
+      operationId: input.clientOperationId,
+      kind,
+      ...(this.store.getThreadLink(target) ? { threadId: target } : {}),
+    });
+    const started = performance.now();
+    if (!accepted.inserted) {
+      logger.debug('operation.replayed', { state: accepted.operation.state, replayed: true });
+      return this.operation(accepted.operation);
+    }
+    logger.info('operation.accepted');
     this.inFlightOperations.add(input.clientOperationId);
     try {
-      const { result, turnId, onAcknowledged } = await work();
+      const { result, turnId, onAcknowledged } = await withLogContext(
+        { operationId: input.clientOperationId },
+        work,
+      );
       const operation = this.operation(
         this.store.acknowledge(input.clientOperationId, result, turnId),
       );
+      logger.info('operation.acknowledged', {
+        state: operation.status,
+        turnId,
+        durationMs: Math.round(performance.now() - started),
+      });
       if (operation.status === 'acknowledged') onAcknowledged?.();
       this.events.publish('operation', operation);
       return operation;
@@ -1889,6 +1919,12 @@ export class GatewayService {
           uncertain,
         ),
       );
+      logger.warn('operation.failed', {
+        state: operation.status,
+        uncertain,
+        ...errorFields(appError),
+        durationMs: Math.round(performance.now() - started),
+      });
       if (
         dispatched &&
         !uncertain &&

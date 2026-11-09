@@ -4,6 +4,7 @@ export interface LogContext {
   requestId?: string;
   operationId?: string;
   threadId?: string;
+  sourceThreadId?: string;
   turnId?: string;
   jobId?: string;
   codexEpoch?: string;

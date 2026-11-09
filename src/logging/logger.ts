@@ -49,8 +49,8 @@ export function wrapLogger(output: pino.Logger, bindings: LogFields = {}): Logge
   const write = (level: LogLevel, event: string, fields: LogFields = {}) => {
     if (!/^[a-z][a-z0-9_.]{0,99}$/.test(event)) return;
     output[level]({
-      ...safeFields(bindings),
       ...safeFields({ ...logContext() }),
+      ...safeFields(bindings),
       ...safeFields(fields),
       event,
     });

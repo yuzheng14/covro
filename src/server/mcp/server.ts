@@ -1,3 +1,6 @@
+import { nullLogger, type Logger } from '../../logging/logger.js';
+import { errorFields } from '../../logging/fields.js';
+import { withLogContext } from '../../logging/context.js';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -38,11 +41,21 @@ function protocolServer(service: GatewayService, origin: string): McpServer {
 export async function startManagedMcp(options: {
   service: () => GatewayService | undefined;
   publicOrigin: string;
+  logger?: Logger;
 }) {
   const active = new Set<McpServer>();
   let closing = false;
   let origin = '';
   const http = createServer((request, response) => {
+    const requestId = randomUUID();
+    const logger = (options.logger ?? nullLogger).child({ requestId, component: 'mcp' });
+    const started = performance.now();
+    response.once('finish', () =>
+      logger[response.statusCode >= 400 ? 'warn' : 'debug']('mcp.completed', {
+        status: response.statusCode,
+        durationMs: Math.round(performance.now() - started),
+      }),
+    );
     const reject = (status: number, message: string) => {
       response.writeHead(status, {
         'content-type': 'application/json',
@@ -77,15 +90,16 @@ export async function startManagedMcp(options: {
         /* The client may already have disconnected. */
       });
     });
-    void (async () => {
+    void withLogContext({ requestId }, async () => {
       try {
         await server.connect(transport);
         await transport.handleRequest(request, response);
-      } catch {
+      } catch (error) {
+        logger.error('mcp.failed', errorFields(error));
         if (!response.headersSent) reject(500, 'MCP request failed');
         else response.end();
       }
-    })();
+    });
   });
   http.listen(0, '127.0.0.1');
   await new Promise<void>((resolve, reject) => {

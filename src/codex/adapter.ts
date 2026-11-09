@@ -1,4 +1,6 @@
 import { questionAnswers } from '../shared/question-resolution.js';
+import { nullLogger, type Logger } from '../logging/logger.js';
+import { errorFields } from '../logging/fields.js';
 import { CODEX_COMPATIBILITY } from './compatibility.js';
 import { AccountUsageReader } from './account-usage.js';
 import type { GetAccountRateLimitsResponse } from './generated/v2/GetAccountRateLimitsResponse.js';
@@ -181,6 +183,7 @@ type Responses = {
   'turn/interrupt': TurnInterruptResponse;
 };
 export interface CodexAdapterOptions {
+  logger?: Logger;
   binary: string;
   home?: string;
   /** Explicit argument override for the test simulator; production leaves this unset. */
@@ -277,7 +280,10 @@ export class CodexAdapter implements CodexClient {
     models: [],
     capabilities: [],
   };
-  constructor(private readonly options: CodexAdapterOptions) {}
+  private readonly logger: Logger;
+  constructor(private readonly options: CodexAdapterOptions) {
+    this.logger = (options.logger ?? nullLogger).child({ component: 'codex' });
+  }
   get pid(): number | undefined {
     return this.child?.pid;
   }
@@ -335,6 +341,7 @@ export class CodexAdapter implements CodexClient {
       });
       const version = stdout.trim().replace(/^codex-cli\s+/, '');
       this.state.codexVersion = version;
+      this.logger.info('codex.starting', { codexEpoch: this.epoch, codexVersion: version });
       this.permissionState.clear();
       this.liveCapabilities.clear();
       this.denials.clear();
@@ -355,9 +362,14 @@ export class CodexAdapter implements CodexClient {
       const rpc = new RpcTransport(child.stdin, child.stdout, {
         timeoutMs: this.options.requestTimeoutMs,
         maxLineBytes: this.options.maxLineBytes,
+        logger: this.logger.child({ codexEpoch: this.epoch, component: 'codex.rpc' }),
       });
       this.rpc = rpc;
-      this.titles = new ThreadTitles(rpc, this.options.titleTimeoutMs);
+      this.titles = new ThreadTitles(
+        rpc,
+        this.options.titleTimeoutMs,
+        this.logger.child({ codexEpoch: this.epoch, component: 'codex.titles' }),
+      );
       child.stderr.on('data', (chunk: Buffer) => {
         const max = this.options.maxStderrBytes ?? 64 * 1024;
         this.stderrTail = Buffer.concat([this.stderrTail, chunk.subarray(-max)]).subarray(-max);
@@ -366,6 +378,12 @@ export class CodexAdapter implements CodexClient {
         rpc.fail(new CodexError('CODEX_UNAVAILABLE', `Cannot start Codex: ${error.message}`, true)),
       );
       child.on('exit', (code, signal) => {
+        this.logger[this.stopped ? 'info' : 'error']('codex.exited', {
+          codexEpoch: this.epoch,
+          exitCode: code,
+          signal,
+          receivedBytes: this.stderrTail.length,
+        });
         rpc.fail(
           new CodexError(
             'CODEX_UNAVAILABLE',
@@ -405,9 +423,9 @@ export class CodexAdapter implements CodexClient {
         child.once('exit', () => clearTimeout(kill));
         if (wasReady && !this.stopped) {
           // Only metadata is logged: never RPC params, results, or session contents.
-          console.error('Codex transport failed', {
-            code: error.code,
-            ...(error.details as object),
+          this.logger.error('codex.connection_failed', {
+            codexEpoch: this.epoch,
+            ...errorFields(error),
           });
           this.scheduleRestart();
         }
@@ -488,12 +506,17 @@ export class CodexAdapter implements CodexClient {
       );
       this.state.ready = true;
       this.state.connection = 'ready';
+      this.logger.info('codex.ready', {
+        codexEpoch: this.epoch,
+        codexVersion: this.state.codexVersion,
+      });
       this.state.capabilities = CAPABILITIES.filter((method) => !this.disabled.has(method));
       this.publishRuntime();
       // Quota service latency must not hold up the gateway or normal Codex work.
       void this.refreshAccountUsage();
     } catch (error) {
       const failure = asCodexError(error);
+      this.logger.error('codex.start_failed', { codexEpoch: this.epoch, ...errorFields(failure) });
       this.state.ready = false;
       this.state.connection = 'unavailable';
       this.state.error = failure.message;
@@ -1169,6 +1192,7 @@ export class CodexAdapter implements CodexClient {
   ): Promise<TurnView> {
     this.validateSettings(settings, this.permissionState.get(id));
     await this.validatePermissionSettings(cwd, settings, id);
+    this.titles?.trackUserInput(id);
     const turn = mapTurn(
       id,
       (
@@ -1462,6 +1486,20 @@ export class CodexAdapter implements CodexClient {
             ...(totalTokens !== undefined ? { totalTokens } : {}),
           },
         });
+        this.logger.info(event.method === 'turn/completed' ? 'turn.completed' : 'turn.started', {
+          threadId,
+          turnId: turn.id,
+          codexEpoch: this.epoch,
+          outcome: turn.status,
+          ...(turn.error
+            ? {
+                errorCode:
+                  turn.error.codexErrorInfo && typeof turn.error.codexErrorInfo === 'string'
+                    ? turn.error.codexErrorInfo
+                    : 'TURN_FAILED',
+              }
+            : {}),
+        });
         if (event.method === 'turn/completed')
           this.expireActions(event.params.threadId, event.params.turn.id);
         break;
@@ -1568,6 +1606,8 @@ export class CodexAdapter implements CodexClient {
       case 'serverRequest/resolved': {
         const actionId = this.actionIds.get(event.params.requestId);
         if (actionId) {
+          const action = this.actions.get(actionId)?.action;
+          if (action) this.actionLogger(action).info('action.resolved');
           this.emit({ type: 'actionResolved', actionId });
           this.actions.delete(actionId);
           this.actionIds.delete(event.params.requestId);
@@ -1591,7 +1631,12 @@ export class CodexAdapter implements CodexClient {
   }
   private async serverRequest(message: RpcServerRequest): Promise<void> {
     // A replay of the same pending RPC keeps its original action and decision scope.
-    if (this.actionIds.has(message.id)) return;
+    const existingId = this.actionIds.get(message.id);
+    if (existingId) {
+      const action = this.actions.get(existingId)?.action;
+      if (action) this.actionLogger(action).debug('action.replayed', { replayed: true });
+      return;
+    }
     if (isRecord(message.params) && this.titles?.isInternal(message.params.threadId)) {
       await this.rpc?.reject(
         message.id,
@@ -1750,6 +1795,7 @@ export class CodexAdapter implements CodexClient {
     }
     this.actions.set(action.actionId, { action, request, decisions, responding: false });
     this.actionIds.set(message.id, action.actionId);
+    this.actionLogger(action).info('action.requested');
     this.emit({ type: 'action', action: structuredClone(action) });
   }
   async respond(actionId: string, resolution: ActionResolution): Promise<void> {
@@ -1804,15 +1850,29 @@ export class CodexAdapter implements CodexClient {
     context.responding = true;
     try {
       await this.rpc!.respond(context.action.rpcId, response);
+      this.actionLogger(context.action).info('action.reply_sent');
     } catch (error) {
+      this.actionLogger(context.action).warn('action.reply_failed', errorFields(error));
       if (error instanceof CodexError && !error.uncertain) context.responding = false;
       throw error;
     }
+  }
+  private actionLogger(action: PendingAction): Logger {
+    return this.logger.child({
+      actionId: action.actionId,
+      rpcId: action.rpcId,
+      codexEpoch: action.codexEpoch,
+      threadId: action.threadId,
+      turnId: action.turnId,
+      kind: action.kind,
+      reason: action.requiresHumanApproval ? 'human_command' : undefined,
+    });
   }
   private expireActions(threadId?: string, turnId?: string): void {
     for (const [id, context] of this.actions) {
       if (threadId && context.action.threadId !== threadId) continue;
       if (turnId && context.action.turnId !== turnId) continue;
+      this.actionLogger(context.action).info('action.expired');
       this.emit({ type: 'action', action: { ...context.action, status: 'expired' } });
       this.actions.delete(id);
       this.actionIds.delete(context.action.rpcId);

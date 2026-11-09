@@ -1,3 +1,5 @@
+import { createLogging, logLevel, type Logger } from '../logging/logger.js';
+import { errorFields } from '../logging/fields.js';
 import { BackupStore, backupDirectory, verifyLegacySnapshot } from '../backups/store.js';
 import { acquireMaintenanceLock } from '../backups/lock.js';
 import { acquireInstanceLock } from '../server/instance-lock.js';
@@ -105,7 +107,7 @@ async function verifyMigrations(context: UpdateContext, candidate: string) {
   }
 }
 
-async function worker(directory: string) {
+async function workerCore(directory: string, logger: Logger) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const release = await lockfile.lock(directory, {
     stale: 10_000,
@@ -121,6 +123,7 @@ async function worker(directory: string) {
   const update = async (phase: UpdateRun['phase'], detail: string) => {
     record = { ...record!, phase, message: detail, updatedAt: Date.now() };
     await saveJson(join(directory, 'run.json'), record);
+    logger.info('update.phase_changed', { updateId: record.id, stage: phase });
   };
   const paths = transactionPaths(
     context.target?.root ?? context.root,
@@ -446,7 +449,7 @@ async function worker(directory: string) {
       record = latest;
     } else if (!['rolledBack', 'failed'].includes(record.phase))
       await update('failed', message(error));
-    console.error(message(error));
+    logger.error('update.failed', { updateId: record.id, ...errorFields(error) });
     process.exitCode = record.committed || record.phase === 'rolledBack' ? 0 : 1;
   } finally {
     await releaseData?.();
@@ -459,8 +462,37 @@ async function worker(directory: string) {
   }
 }
 
+async function worker(directory: string) {
+  const context = await readJson<UpdateContext>(join(directory, 'context.json'));
+  if (!context) throw new Error('Missing update context');
+  const record = await readJson<UpdateRun>(join(directory, 'run.json'));
+  const logging = await createLogging({
+    directory: join(context.location.state, 'logs'),
+    version: record?.from ?? 'unknown',
+    component: 'update_worker',
+    level: logLevel(),
+  });
+  const logger = logging.logger.child({ updateId: record?.id, operationId: record?.id });
+  logger.info('update.worker_started');
+  try {
+    await workerCore(directory, logger);
+  } catch (error) {
+    logger.error('update.worker_failed', errorFields(error));
+    throw error;
+  } finally {
+    logger.info('update.worker_finished');
+    await logging.close();
+  }
+}
 if (process.argv[2])
-  void worker(process.argv[2]).catch((error: unknown) => {
-    console.error(message(error));
+  void worker(process.argv[2]).catch(() => {
+    // Bootstrap stderr has no arbitrary exception text or environment values.
+    console.error(
+      JSON.stringify({
+        time: new Date().toISOString(),
+        level: 60,
+        event: 'update.bootstrap_failed',
+      }),
+    );
     process.exitCode = 1;
   });

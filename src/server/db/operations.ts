@@ -1,3 +1,5 @@
+import { nullLogger, type Logger } from '../../logging/logger.js';
+import { errorFields } from '../../logging/fields.js';
 import { createHash } from 'node:crypto';
 import { and, asc, eq, getTableColumns, isNull, ne, or } from 'drizzle-orm';
 import type { AppDatabase } from './index.js';
@@ -7,6 +9,12 @@ import type { ApiError, ItemView, PendingUserMessage } from '../../shared/types.
 export type OperationRow = typeof operations.$inferSelect;
 export type ExecutionMarker = typeof executionMarkers.$inferSelect;
 export type ThreadLink = typeof threadLinks.$inferSelect;
+
+const messageIdentity = {
+  operationId: pendingUserMessages.id,
+  threadId: pendingUserMessages.threadId,
+  turnId: pendingUserMessages.turnId,
+};
 
 export class StoreConflict extends Error {
   constructor(
@@ -36,7 +44,10 @@ export function requestDigest(value: unknown): string {
 
 /** Every transaction is synchronous; no process/network work occurs inside one. */
 export class OperationStore {
-  constructor(public readonly database: AppDatabase) {}
+  constructor(
+    public readonly database: AppDatabase,
+    private readonly logger: Logger = nullLogger,
+  ) {}
 
   accept(
     clientOperationId: string,
@@ -167,6 +178,14 @@ export class OperationStore {
           .values({ ...message, id, status: 'submitting', createdAt: Date.now() })
           .run();
     });
+    this.logger.info('operation.dispatched', { operationId: id, state: 'dispatching' });
+    if (message)
+      this.logger.info('user_message.pending', {
+        operationId: id,
+        threadId: message.threadId,
+        turnId: message.turnId,
+        state: 'submitting',
+      });
   }
 
   /** Save child operation references before a multi-step operation starts any effects. */
@@ -179,7 +198,7 @@ export class OperationStore {
   }
 
   acknowledge(id: string, result: unknown, turnId?: string): OperationRow {
-    this.database.transaction((tx) => {
+    const messages = this.database.transaction((tx) => {
       tx.update(operations)
         .set({ state: 'acknowledged', result, error: null, updatedAt: Date.now() })
         .where(and(eq(operations.clientOperationId, id), eq(operations.state, 'dispatching')))
@@ -189,11 +208,15 @@ export class OperationStore {
           .set({ turnId })
           .where(eq(executionMarkers.operationId, id))
           .run();
-      tx.update(pendingUserMessages)
+      return tx
+        .update(pendingUserMessages)
         .set({ status: 'submitted', ...(turnId ? { turnId } : {}) })
         .where(and(eq(pendingUserMessages.id, id), eq(pendingUserMessages.status, 'submitting')))
-        .run();
+        .returning(messageIdentity)
+        .all();
     });
+    for (const message of messages)
+      this.logger.info('user_message.submitted', { ...message, state: 'submitted' });
     return this.get(id)!;
   }
 
@@ -216,7 +239,7 @@ export class OperationStore {
   }
 
   fail(id: string, error: ApiError, uncertain = false): OperationRow {
-    this.database.transaction((tx) => {
+    const messages = this.database.transaction((tx) => {
       const changed = tx
         .update(operations)
         .set({ state: uncertain ? 'unknown' : 'failed', error, updatedAt: Date.now() })
@@ -228,26 +251,41 @@ export class OperationStore {
         )
         .run();
       // A late rejection must not turn an already-recovered unknown execution into a release.
-      if (changed.changes === 0) return;
-      tx.update(pendingUserMessages)
+      if (changed.changes === 0) return [];
+      const messages = tx
+        .update(pendingUserMessages)
         .set({ status: uncertain ? 'unknown' : 'failed' })
         .where(eq(pendingUserMessages.id, id))
-        .run();
+        .returning(messageIdentity)
+        .all();
       tx.update(executionMarkers)
         .set(uncertain ? { state: 'unknown' } : { state: 'terminal', endedAt: Date.now() })
         .where(and(eq(executionMarkers.operationId, id), isNull(executionMarkers.endedAt)))
         .run();
+      return messages;
     });
+    for (const message of messages)
+      this.logger.warn(uncertain ? 'user_message.unknown' : 'user_message.failed', {
+        ...message,
+        state: uncertain ? 'unknown' : 'failed',
+        uncertain,
+        ...errorFields(error),
+      });
     return this.get(id)!;
   }
 
   /** Includes acknowledged requests with unfinished turns; none of these are retried. */
   recover(): void {
-    this.database.transaction((tx) => {
-      tx.update(pendingUserMessages)
+    this.logger.info('operation.recovery_started');
+    const messages = this.database.transaction((tx) => {
+      const messages = tx
+        .update(pendingUserMessages)
         .set({ status: 'unknown' })
-        .where(ne(pendingUserMessages.status, 'failed'))
-        .run();
+        .where(
+          and(ne(pendingUserMessages.status, 'failed'), ne(pendingUserMessages.status, 'unknown')),
+        )
+        .returning(messageIdentity)
+        .all();
       tx.update(operations)
         .set({
           state: 'failed',
@@ -268,7 +306,14 @@ export class OperationStore {
         .set({ state: 'unknown' })
         .where(isNull(executionMarkers.endedAt))
         .run();
+      return messages;
     });
+    for (const message of messages)
+      this.logger.warn('user_message.unknown', {
+        ...message,
+        state: 'unknown',
+        reason: 'runtime_recovery',
+      });
   }
 
   activeMarkers(): ExecutionMarker[] {
@@ -339,7 +384,7 @@ export class OperationStore {
   }
 
   finishTurn(threadId: string, turnId: string, codexEpoch: string): void {
-    this.database
+    const messages = this.database
       .update(pendingUserMessages)
       .set({ status: 'unknown' })
       .where(
@@ -347,10 +392,19 @@ export class OperationStore {
           eq(pendingUserMessages.threadId, threadId),
           eq(pendingUserMessages.turnId, turnId),
           ne(pendingUserMessages.status, 'failed'),
+          ne(pendingUserMessages.status, 'unknown'),
         ),
       )
-      .run();
-    this.database
+      .returning(messageIdentity)
+      .all();
+    for (const message of messages)
+      this.logger.warn('user_message.unknown', {
+        ...message,
+        codexEpoch,
+        state: 'unknown',
+        reason: 'turn_finished',
+      });
+    const changed = this.database
       .update(executionMarkers)
       .set({ state: 'terminal', endedAt: Date.now() })
       .where(
@@ -362,6 +416,7 @@ export class OperationStore {
         ),
       )
       .run();
+    if (changed.changes) this.logger.info('execution.finished', { threadId, turnId, codexEpoch });
   }
 
   pendingMessages(threadId: string): PendingUserMessage[] {
@@ -382,7 +437,7 @@ export class OperationStore {
   /** Only a matching native item confirms delivery. Receipts and terminal turns do not. */
   confirmMessage(threadId: string, turnId: string, item: ItemView): void {
     if (item.type !== 'userMessage' || !item.clientId) return;
-    this.database
+    const changed = this.database
       .delete(pendingUserMessages)
       .where(
         and(
@@ -392,6 +447,12 @@ export class OperationStore {
         ),
       )
       .run();
+    if (changed.changes)
+      this.logger.info('user_message.confirmed', {
+        operationId: item.clientId,
+        threadId,
+        turnId,
+      });
   }
 
   /** Keys the release to the original execution; an old decision cannot unlock a later turn. */
@@ -426,6 +487,10 @@ export class OperationStore {
           ),
         )
         .run();
+    });
+    this.logger.info('operation.reconciled', {
+      operationId: targetOperationId,
+      jobId: reconciliationOperationId,
     });
   }
 

@@ -1,3 +1,4 @@
+import { captureLogger } from '../fixtures/logging.js';
 import { createServer } from 'node:net';
 import { request as httpRequest } from 'node:http';
 import { mkdtemp, mkdir, rm, writeFile, cp, readdir } from 'node:fs/promises';
@@ -58,7 +59,9 @@ async function setup(
     },
     join(root, 'config.json'),
   );
+  const logs = captureLogger();
   const codex = new CodexAdapter({
+    logger: logs.logger,
     binary: process.execPath,
     args: [
       '--import',
@@ -72,7 +75,11 @@ async function setup(
       }),
     ],
   });
-  const runtime = await startGateway(config, { codex, staticDir: join(root, 'web') });
+  const runtime = await startGateway(config, {
+    codex,
+    logger: logs.logger,
+    staticDir: join(root, 'web'),
+  });
   cleanup.push(runtime.close);
   const post = async (path: string, body: unknown) =>
     fetch(`${origin}${path}`, {
@@ -108,7 +115,7 @@ async function setup(
     });
     expect(confirmation.status).toBe(200);
   }
-  return { origin, origins, runtime, post, connect };
+  return { origin, origins, runtime, post, connect, logs };
 }
 it('saves only a complete model pair through a durable operation and new threads inherit it', async () => {
   const { post, origin } = await setup();
@@ -988,4 +995,55 @@ it('returns only displayable runtime defaults for registered projects and reject
   expect(body).not.toHaveProperty('api_key');
   expect(body).not.toHaveProperty('developer_instructions');
   expect((await fetch(`${origin}/api/projects/unknown/runtime-settings`)).status).toBe(404);
+});
+
+it('correlates HTTP, operations, RPC and background naming without recording request data', async () => {
+  const { post, logs } = await setup();
+  const created = await post('/api/projects/test/threads', { clientOperationId: randomUUID() });
+  const threadId = ((await created.json()) as Operation).result as { threadId: string };
+  const operationId = randomUUID();
+  const response = await post(`/api/threads/${threadId.threadId}/turns`, {
+    clientOperationId: operationId,
+    text: 'SECRET_LOGGING_PROMPT',
+  });
+  expect(response.status).toBe(200);
+  const requestId = response.headers.get('x-request-id');
+  expect(requestId).toBeTruthy();
+  await vi.waitFor(() =>
+    expect(
+      logs.records.some(
+        (r) => r.event === 'thread_title.finished' && r.threadId === threadId.threadId,
+      ),
+    ).toBe(true),
+  );
+  const naming = logs.records.find(
+    (r) => r.event === 'thread_title.finished' && r.threadId === threadId.threadId,
+  )!;
+  expect(naming).toMatchObject({ requestId, operationId, outcome: 'succeeded' });
+  expect(logs.records).toContainEqual(
+    expect.objectContaining({
+      event: 'http.completed',
+      requestId,
+      operationId,
+      route: '/api/threads/:threadId/turns',
+    }),
+  );
+  expect(logs.records).toContainEqual(
+    expect.objectContaining({ event: 'operation.acknowledged', requestId, operationId }),
+  );
+  expect(logs.records).toContainEqual(
+    expect.objectContaining({ event: 'rpc.started', requestId, operationId, method: 'turn/start' }),
+  );
+  expect(logs.records).toContainEqual(
+    expect.objectContaining({
+      event: 'rpc.started',
+      requestId,
+      operationId,
+      jobId: naming.jobId,
+      sourceThreadId: threadId.threadId,
+    }),
+  );
+  const serialized = JSON.stringify(logs.records);
+  expect(serialized).not.toContain('SECRET_LOGGING_PROMPT');
+  expect(serialized).not.toContain('Codex 配置继承与运行设置');
 });

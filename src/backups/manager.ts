@@ -1,3 +1,6 @@
+import { nullLogger, type Logger } from '../logging/logger.js';
+import { errorFields } from '../logging/fields.js';
+import { logContext } from '../logging/context.js';
 import { setTimeout } from 'node:timers/promises';
 import { z } from 'zod';
 import type { BackupController, BackupRecord, BackupStatus } from '../shared/backups.js';
@@ -19,6 +22,7 @@ export class BackupManager implements BackupController {
     readonly store: BackupStore,
     private readonly service: GatewayService,
     private readonly options: {
+      logger?: Logger;
       pollMs?: number;
       timeoutMs?: number;
       unsupportedReason?: string;
@@ -75,7 +79,11 @@ export class BackupManager implements BackupController {
     this.task = (async () => {
       try {
         await preparation;
-      } catch {
+      } catch (error) {
+        (this.options.logger ?? nullLogger).warn('backup.preparation_failed', {
+          backupId: id,
+          ...errorFields(error),
+        });
         await release();
         this.active = undefined;
         this.abort = undefined;
@@ -91,6 +99,13 @@ export class BackupManager implements BackupController {
     return this.status();
   }
   private async run(record: BackupRecord, abort: AbortController, release: () => Promise<void>) {
+    const logger = (this.options.logger ?? nullLogger).child({
+      ...logContext(),
+      backupId: record.id,
+      operationId: record.id,
+    });
+    logger.info('backup.started');
+    let outcome = 'failed';
     let gated = false;
     try {
       for (;;) {
@@ -115,10 +130,15 @@ export class BackupManager implements BackupController {
         reserved: true,
         signal: abort.signal,
         progress: (next) => {
+          if (this.active?.phase !== next.phase)
+            logger.info('backup.phase_changed', { stage: next.phase });
           this.active = next;
         },
       });
+      outcome = 'succeeded';
     } catch (error) {
+      outcome = abort.signal.aborted ? 'cancelled' : 'failed';
+      logger.warn('backup.failed', { outcome, ...errorFields(error) });
       if (this.active?.phase !== 'failed' && this.active?.phase !== 'cancelled') {
         record.phase = abort.signal.aborted ? 'cancelled' : 'failed';
         record.message = abort.signal.aborted
@@ -130,6 +150,7 @@ export class BackupManager implements BackupController {
         await this.store.record(record).catch(() => {});
       }
     } finally {
+      logger.info('backup.finished', { outcome, durationMs: Date.now() - record.createdAt });
       if (gated) this.service.setMaintenance(false);
       await release();
       this.active = undefined;

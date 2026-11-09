@@ -5,6 +5,7 @@ const identifiers = new Set([
   'requestId',
   'operationId',
   'threadId',
+  'sourceThreadId',
   'turnId',
   'jobId',
   'codexEpoch',
@@ -14,6 +15,7 @@ const identifiers = new Set([
   'backupId',
   'updateId',
   'cloneId',
+  'actionId',
 ]);
 const labels = new Set([
   'stage',

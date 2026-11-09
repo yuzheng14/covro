@@ -1,3 +1,6 @@
+import { nullLogger, type Logger } from '../logging/logger.js';
+import { errorFields } from '../logging/fields.js';
+import { logContext } from '../logging/context.js';
 import { CODEX_COMPATIBILITY } from '../codex/compatibility.js';
 import {
   assessCodexCompatibility,
@@ -81,6 +84,7 @@ export class UpdateManager implements UpdateController {
     location?: CovroPaths,
     dataDir?: string,
     private readonly codexVersion: () => string | null = () => null,
+    private readonly logger: Logger = nullLogger,
   ) {
     if (location && dataDir)
       this.context = {
@@ -103,10 +107,18 @@ export class UpdateManager implements UpdateController {
       process.platform === 'win32'
         ? 'Windows 暂不支持受管自动升级，请使用 npm 更新并重启。'
         : ((await inspectInstallation(this.context.root)) ?? '');
-    this.timer = setInterval(() => void this.automatic().catch(() => {}), 30 * 60_000);
+    this.timer = setInterval(
+      () =>
+        void this.automatic().catch((error: unknown) =>
+          this.logger.warn('update.automatic_failed', errorFields(error)),
+        ),
+      30 * 60_000,
+    );
     this.timer.unref();
     // No network request in the startup critical path.
-    void this.automatic().catch(() => {});
+    void this.automatic().catch((error: unknown) =>
+      this.logger.warn('update.automatic_failed', errorFields(error)),
+    );
   }
   private async loadDirectory() {
     if (!this.context) return;
@@ -150,6 +162,8 @@ export class UpdateManager implements UpdateController {
     };
   }
   async check(channel: ReleaseChannel = this.settings.channel) {
+    const started = performance.now();
+    this.logger.debug('update.check_started');
     this.target = undefined;
     this.runtimeError = undefined;
     if (this.context && !this.reason) {
@@ -193,8 +207,16 @@ export class UpdateManager implements UpdateController {
     } catch (error) {
       this.available = undefined;
       this.checkError = error instanceof Error ? error.message : '无法检查更新';
+      this.logger.warn('update.check_failed', {
+        ...errorFields(error),
+        durationMs: Math.round(performance.now() - started),
+      });
     }
     this.checkedAt = Date.now();
+    this.logger.debug('update.check_finished', {
+      outcome: this.checkError ? 'failed' : 'succeeded',
+      durationMs: Math.round(performance.now() - started),
+    });
     return this.status();
   }
   async configure(input: UpdateSettings) {
@@ -335,6 +357,12 @@ export class UpdateManager implements UpdateController {
         updatedAt: Date.now(),
         runtime: { from: runningRuntime(), target: target },
       };
+      this.logger.info('update.started', {
+        ...logContext(),
+        updateId: run.id,
+        operationId: run.id,
+        version: run.target,
+      });
       const currentLaunch = await launchRuntime(this.context.location, runningRuntime().entry);
       if (currentLaunch.node !== process.execPath || currentLaunch.entry !== runningRuntime().entry)
         throw new AppError(
@@ -375,6 +403,7 @@ export class UpdateManager implements UpdateController {
         });
         child.unref();
       } catch (error) {
+        this.logger.warn('update.launch_failed', { updateId: run.id, ...errorFields(error) });
         await saveJson(join(this.context.directory, 'run.json'), {
           ...run,
           phase: 'failed',

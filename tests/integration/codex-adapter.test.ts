@@ -12,6 +12,7 @@ import { mapItem, mapThread, permissionSettings } from '../../src/codex/mapping.
 import type { Thread } from '../../src/codex/generated/v2/Thread.js';
 import type { ThreadItem } from '../../src/codex/generated/v2/ThreadItem.js';
 import type { SimulatorOptions } from '../fixtures/app-server.js';
+import { captureLogger } from '../fixtures/logging.js';
 const adapters: CodexAdapter[] = [];
 const dirs: string[] = [];
 async function messages(dir: string): Promise<Record<string, unknown>[]> {
@@ -1012,10 +1013,15 @@ describe('verified protocol adapter with a real subprocess', () => {
   it.each(['accept', 'decline', 'cancel'] as const)(
     'requires a fresh human decision (%s) despite advertised reusable approvals and replay',
     async (decision) => {
-      const { adapter, events, requests, dir } = await fixture({
-        approval: 'human-command',
-        replayApproval: true,
-      });
+      const logs = captureLogger();
+      const { adapter, events, requests, dir } = await fixture(
+        {
+          approval: 'human-command',
+          replayApproval: true,
+        },
+        5000,
+        { logger: logs.logger },
+      );
       const thread = await adapter.createThread('/tmp');
       await adapter.startTurn(thread.id, thread.cwd, 'managed human checkpoint');
       const incoming = await waitFor(() => events.find((event) => event.type === 'action'));
@@ -1041,10 +1047,33 @@ describe('verified protocol adapter with a real subprocess', () => {
           code: 'VALIDATION_ERROR',
         });
       expect(await replies(dir)).toEqual([]);
+      expect(logs.records.filter((record) => record.event === 'action.reply_sent')).toEqual([]);
       await adapter.respond(incoming.action.actionId, { decision });
       await waitFor(() => events.find((event) => event.type === 'actionResolved'));
       expect(events.filter((event) => event.type === 'action')).toHaveLength(1);
       expect((await replies(dir)).map((reply) => reply.result)).toEqual([{ decision }]);
+      const actions = logs.records.filter((record) => String(record.event).startsWith('action.'));
+      expect(actions.map((record) => record.event)).toEqual([
+        'action.requested',
+        'action.replayed',
+        'action.reply_sent',
+        'action.resolved',
+      ]);
+      for (const record of actions)
+        expect(record).toMatchObject({
+          actionId: incoming.action.actionId,
+          rpcId: String(incoming.action.rpcId),
+          threadId: thread.id,
+          turnId: incoming.action.turnId,
+          codexEpoch: adapter.epoch,
+          kind: 'command',
+          reason: 'human_command',
+        });
+      const output = JSON.stringify(logs.records);
+      expect(output).not.toContain('managed human checkpoint');
+      expect(output).not.toContain(thread.cwd);
+      if (incoming.action.command) expect(output).not.toContain(incoming.action.command);
+      if (incoming.action.reason) expect(output).not.toContain(incoming.action.reason);
       await expect(
         adapter.respond(incoming.action.actionId, { decision: 'accept' }),
       ).rejects.toMatchObject({ code: 'ACTION_EXPIRED' });
@@ -1053,7 +1082,12 @@ describe('verified protocol adapter with a real subprocess', () => {
   it.each(['human-command', 'network'] as const)(
     'expires a withdrawn %s approval without sending a late decision',
     async (approval) => {
-      const { adapter, events, dir } = await fixture({ approval, withdrawApprovalAfterMs: 80 });
+      const logs = captureLogger();
+      const { adapter, events, dir } = await fixture(
+        { approval, withdrawApprovalAfterMs: 80 },
+        5000,
+        { logger: logs.logger },
+      );
       const thread = await adapter.createThread('/tmp');
       await adapter.startTurn(thread.id, thread.cwd, 'withdraw approval');
       const incoming = await waitFor(() => events.find((event) => event.type === 'action'));
@@ -1063,6 +1097,11 @@ describe('verified protocol adapter with a real subprocess', () => {
         adapter.respond(incoming.action.actionId, { decision: 'cancel' }),
       ).rejects.toMatchObject({ code: 'ACTION_EXPIRED' });
       expect(await replies(dir)).toEqual([]);
+      expect(
+        logs.records
+          .filter((record) => String(record.event).startsWith('action.'))
+          .map((record) => record.event),
+      ).toEqual(['action.requested', 'action.resolved']);
     },
   );
   it('validates every structured question and exact option/free-text constraints', async () => {

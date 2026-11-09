@@ -6,13 +6,16 @@ import { pendingAttention } from '../../src/shared/thread-attention.js';
 import { toThreadSummary } from '../../src/shared/thread-summary.js';
 import type { PendingAction } from '../../src/shared/types.js';
 import { questionAnswers } from '../../src/shared/question-resolution.js';
+import { captureLogger } from '../fixtures/logging.js';
+import { withLogContext } from '../../src/logging/context.js';
 
 const resources: ReturnType<typeof harness>[] = [];
 afterEach(() => {
   for (const ctx of resources.splice(0)) ctx.close();
 });
 async function setup(status: 'completed' | 'running' = 'completed') {
-  const ctx = harness();
+  const logs = captureLogger();
+  const ctx = harness(logs.logger);
   resources.push(ctx);
   const created = await ctx.service.createThread('project', { clientOperationId: operationId() });
   const id = (created.result as { threadId: string }).threadId;
@@ -42,7 +45,7 @@ async function setup(status: 'completed' | 'running' = 'completed') {
   thread.status = status;
   ctx.codex.emit({ type: 'turn', threadId: id, turn: structuredClone(thread.turns[0]!) });
   const ids = [asyncQuestionId('q1', 0), asyncQuestionId('q1', 1), asyncQuestionId('q2', 0)];
-  return { ...ctx, id, thread, ids };
+  return { ...ctx, id, thread, ids, logs };
 }
 const dismissInput = (questionIds: string[]) => ({ clientOperationId: operationId(), questionIds });
 const replyInput = (id: string) => ({
@@ -54,8 +57,20 @@ it('ends selected tracking durably without native submission, while other groups
   const ctx = await setup();
   expect(toThreadSummary(await ctx.service.getThread(ctx.id)).pendingQuestionCount).toBe(2);
   const input = dismissInput([ctx.ids[0]!]);
-  await ctx.service.dismissQuestions(ctx.id, input);
+  await withLogContext({ requestId: 'request-dismiss' }, () =>
+    ctx.service.dismissQuestions(ctx.id, input),
+  );
   expect((await ctx.service.dismissQuestions(ctx.id, input)).status).toBe('acknowledged');
+  expect(ctx.logs.records.filter((record) => record.event === 'question.dismissed')).toEqual([
+    expect.objectContaining({
+      component: 'question_tracking',
+      requestId: 'request-dismiss',
+      operationId: input.clientOperationId,
+      threadId: ctx.id,
+      count: 1,
+      state: 'dismissed',
+    }),
+  ]);
   let view = await ctx.service.getThread(ctx.id);
   expect(view.status).toBe('completed');
   expect(view.questionTracking?.[ctx.ids[0]!]?.status).toBe('dismissed');
@@ -85,6 +100,9 @@ it('keeps a running task running and rejects unknown question identities without
     ctx.service.dismissQuestions(ctx.id, dismissInput([ctx.ids[0]!, 'unknown'])),
   ).rejects.toMatchObject({ code: 'QUESTION_EXPIRED' });
   expect((await ctx.service.getThread(ctx.id)).questionTracking).toEqual({});
+  expect(ctx.logs.records).not.toContainEqual(
+    expect.objectContaining({ event: 'question.dismissed' }),
+  );
   await ctx.service.dismissQuestions(ctx.id, dismissInput(ctx.ids));
   expect((await ctx.service.getThread(ctx.id)).status).toBe('running');
   expect(ctx.codex.interrupts).toBe(0);
@@ -130,6 +148,27 @@ it.each([false, true])(
     const error = Object.assign(new Error('submit failed'), { uncertain });
     ctx.codex.startGate.reject(error);
     await result;
+    expect(ctx.logs.records).toContainEqual(
+      expect.objectContaining({
+        event: 'question.reply_claimed',
+        operationId: input.clientOperationId,
+        threadId: ctx.id,
+        count: 1,
+      }),
+    );
+    expect(ctx.logs.records.filter((record) => record.event === 'question.reply_released')).toEqual(
+      uncertain
+        ? []
+        : [
+            expect.objectContaining({
+              operationId: input.clientOperationId,
+              threadId: ctx.id,
+              count: 1,
+              reason: 'submission_failed',
+            }),
+          ],
+    );
+    expect(JSON.stringify(ctx.logs.records)).not.toContain('submit failed');
     if (uncertain) {
       expect((await ctx.service.getThread(ctx.id)).questionTracking?.[ctx.ids[0]!]?.status).toBe(
         'unknown',
@@ -175,6 +214,23 @@ it('records native partial skips and restores their history with secret answers 
     b: { answers: ['sensitive answer'] },
   });
   await ctx.service.resolveAction('sync', { clientOperationId: operationId(), resolution });
+  expect(ctx.logs.records.filter((record) => record.event === 'question.action_saved')).toEqual([
+    expect.objectContaining({
+      actionId: 'sync',
+      threadId: ctx.id,
+      turnId: 'source-turn',
+      state: 'expired',
+      count: 2,
+    }),
+    expect.objectContaining({
+      actionId: 'sync',
+      threadId: ctx.id,
+      turnId: 'source-turn',
+      state: 'responded',
+      count: 2,
+    }),
+  ]);
+  expect(JSON.stringify(ctx.logs.records)).not.toMatch(/sensitive answer|A\?|B\?|••••/);
   expect(
     (await ctx.service.getThread(ctx.id)).actions.find((a) => a.actionId === 'sync'),
   ).toMatchObject({ status: 'responded', questionAnswers: { a: [], b: ['••••'] } });

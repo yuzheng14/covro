@@ -2,10 +2,14 @@ import { and, eq } from 'drizzle-orm';
 import type { AppDatabase } from './index.js';
 import { operations, questionTracking, questionActionHistory } from './schema.js';
 import type { PendingAction, ThreadView } from '../../shared/types.js';
+import { nullLogger, type Logger } from '../../logging/logger.js';
 
 /** Only local disposition and reply claims live here. Native history owns actual answers. */
 export class QuestionTrackingStore {
-  constructor(private readonly database: AppDatabase) {}
+  constructor(
+    private readonly database: AppDatabase,
+    private readonly logger: Logger = nullLogger,
+  ) {}
 
   saveAction(action: PendingAction, answers?: Record<string, { answers: string[] }>) {
     if (!action.threadId) return;
@@ -42,6 +46,19 @@ export class QuestionTrackingStore {
       })
       .onConflictDoUpdate({ target: questionActionHistory.actionId, set: { action: saved } })
       .run();
+    if (
+      !existing ||
+      existing.action.status !== saved.status ||
+      (!existing.action.questionAnswers && answers)
+    )
+      this.logger.info('question.action_saved', {
+        actionId: action.actionId,
+        threadId: action.threadId,
+        turnId: action.turnId,
+        codexEpoch: action.codexEpoch,
+        state: saved.status,
+        count: action.questions?.length ?? 0,
+      });
   }
 
   actions(threadId: string): PendingAction[] {
@@ -101,10 +118,17 @@ export class QuestionTrackingStore {
           })
           .run();
     });
+    if (ids.length)
+      this.logger.info(state === 'dismissed' ? 'question.dismissed' : 'question.reply_claimed', {
+        threadId,
+        operationId,
+        state,
+        count: ids.length,
+      });
   }
 
   release(operationId: string) {
-    this.database
+    const released = this.database
       .delete(questionTracking)
       .where(
         and(
@@ -112,6 +136,15 @@ export class QuestionTrackingStore {
           eq(questionTracking.state, 'submitting'),
         ),
       )
-      .run();
+      .returning({ threadId: questionTracking.threadId })
+      .all();
+    // A reply operation belongs to one thread, including when multiple questions are claimed.
+    if (released.length)
+      this.logger.info('question.reply_released', {
+        operationId,
+        threadId: released[0]!.threadId,
+        count: released.length,
+        reason: 'submission_failed',
+      });
   }
 }
