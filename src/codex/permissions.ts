@@ -5,7 +5,7 @@ import type { AskForApproval } from './generated/v2/AskForApproval.js';
 import type { ConfigRequirements } from './generated/v2/ConfigRequirements.js';
 import type { SandboxPolicy } from './generated/v2/SandboxPolicy.js';
 
-/** 0.164.0 experimental wire fields omitted by generate-ts without --experimental.
+/** 0.167.0 experimental wire fields omitted by generate-ts without --experimental.
  * initialize.experimentalApi is already enabled. Keep these extensions at the adapter boundary.
  */
 export type PermissionSelection = { permissions?: string };

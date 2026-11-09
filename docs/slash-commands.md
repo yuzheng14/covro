@@ -10,7 +10,7 @@
 
 ## 已实现的范围
 
-首批命令使用项目已有的网页流程和网关接口，不向终端输入文字，也不透传任意 Codex CLI 命令。当前实现依据已验证 Codex **0.164.0** 与仓库中已经验证的 app-server 接口。CLI 自身的完整命令范围独立维护，可查阅 [Codex CLI 命令参考](https://learn.chatgpt.com/docs/developer-commands?surface=cli)。
+首批命令使用项目已有的网页流程和网关接口，不向终端输入文字，也不透传任意 Codex CLI 命令。当前运行基线为已验证 Codex **0.167.0**，现有 16 个入口的实现范围不因升级扩大；版本差异见 [协议审查](codex-0.167.0-protocol.md)。CLI 自身的完整命令范围独立维护，可查阅 [Codex CLI 命令参考](https://learn.chatgpt.com/docs/developer-commands?surface=cli)。
 
 `/rename <名称>` 必须提供名称，`/plan [任务]` 可选提供任务，`/review [自定义要求]` 可提供审查要求；`/goal [目标 | edit | pause | resume | clear]` 打开目标管理；其他命令无需参数。
 

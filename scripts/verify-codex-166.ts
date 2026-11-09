@@ -13,14 +13,17 @@ import type { ThreadReadResponse } from '../src/codex/generated/v2/ThreadReadRes
 import type { TurnStartResponse } from '../src/codex/generated/v2/TurnStartResponse.js';
 
 const args = process.argv.slice(2);
+const versionIndex = args.indexOf('--expected-version');
+const expectedVersion = versionIndex >= 0 ? args[versionIndex + 1]! : '0.166.0';
+assert.match(expectedVersion, /^\d+\.\d+\.\d+$/);
 const configIndex = args.indexOf('--config');
-assert(configIndex >= 0, 'Pass --config selecting the isolated 0.166.0 binary');
+assert(configIndex >= 0, 'Pass --config selecting an isolated target binary');
 const { codex } = JSON.parse(await readFile(resolve(args[configIndex + 1]!), 'utf8')) as {
   codex: { binary: string };
 };
 assert.equal(
   (await promisify(execFile)(codex.binary, ['--version'])).stdout.trim(),
-  'codex-cli 0.166.0',
+  `codex-cli ${expectedVersion}`,
 );
 const root = await mkdtemp(join(tmpdir(), 'covro-166-probes-'));
 const children: ReturnType<typeof spawn>[] = [];
@@ -161,7 +164,11 @@ try {
   checks.push('GCP account/read works without ChatGPT auth or resolving provider credentials');
   await stop(child);
   console.log(
-    JSON.stringify({ version: '0.166.0', inference: false, localStub: true, checks }, null, 2),
+    JSON.stringify(
+      { version: expectedVersion, inference: false, localStub: true, checks },
+      null,
+      2,
+    ),
   );
 } finally {
   await Promise.all(children.map(stop));
