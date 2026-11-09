@@ -4,6 +4,10 @@ Date: 2026-11-06. Base: `origin/main` at `3d0b586`. Project recommended/verified
 
 日期：2026-11-06。基于 `origin/main` 的 `3d0b586`；项目推荐/已验证版本为 **0.166.0**，11 月 5 日初查默认 CLI 为 **0.164.0**，11 月 6 日最终环境检查为 **0.166.0**；本任务未执行 CLI 安装/升级，也未改动正在运行的 Covro 实例。
 
+Logging sync: 2026-11-09, `origin/main` at `9bb5d26` (#321–#323). Search success/cancellation use debug; the original RPC, cancellation RPC and fixed-reason cancellation event retain captured request/thread/job/epoch correlation. Existing HTTP/operation/RPC failures supply safe codes without payloads. The 149 targeted integration checks passed, including a cancellation triggered from another request context and privacy checks for query/cwd/path/prompt/error text. Final full-suite and CI results are recorded on PRs #328 and #319. The native 0.167.0 report below was captured on the preceding `1078ad1` baseline; this metadata-only integration did not change its wire payload or repeat model inference.
+
+日志同步：2026-11-09，基于 `origin/main` 的 `9bb5d26`（#321–#323）。搜索成功/正常取消使用 debug；原查询、取消 RPC 和固定原因的取消事件保留捕获的 request/thread/job/epoch 关联，失败沿用既有安全错误码日志。149 项相关集成检查通过，覆盖从其他请求上下文触发取消及查询/cwd/路径/提示词/错误正文隐私。最终全量与 CI 结果记录在 #328、#319；下方 0.167.0 原生报告来自此前 `1078ad1` 基线，本次仅适配元数据日志，未改变 wire payload 或重复模型推理。
+
 Upstream sync: 2026-11-09, `origin/main` at `1078ad1` (#318, #331, #332, #330), retaining DB Schema **10**, question tracking, human command approval, provider history and the **0.167.0** compatibility baseline. File validation/conversion precedes claiming replies, and the claim uses the actual submitted text for both start and steering. Two integration cases cover failed-file validation without claiming an answer, successful retry and duplicate protection. The final full unit/integration suite passed **1549 tests, 1 existing skipped**. Latest browser/CI results are recorded on PRs #328 and #319.
 
 上游同步：2026-11-09，基于 `origin/main` 的 `1078ad1`（#318、#331、#332、#330），保留 DB Schema **10**、问题追踪、人工命令审批、provider 历史及 **0.167.0** 兼容基线。先校验/转换文件，再按实际发送文本占用回答；新增普通发送和运行中追加两个集成场景，核对文件失败不占用回答、恢复后可发送及重复提交拦截。最终全量单元/集成测试 **1549 项通过、1 项原有跳过**；最新浏览器/CI 结果记录在 #328、#319。

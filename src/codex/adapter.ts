@@ -1,6 +1,7 @@
 import { questionAnswers } from '../shared/question-resolution.js';
 import { nullLogger, type Logger } from '../logging/logger.js';
 import { errorFields } from '../logging/fields.js';
+import { logContext, withLogContext } from '../logging/context.js';
 import { CODEX_COMPATIBILITY } from './compatibility.js';
 import { AccountUsageReader } from './account-usage.js';
 import type { GetAccountRateLimitsResponse } from './generated/v2/GetAccountRateLimitsResponse.js';
@@ -1179,29 +1180,46 @@ export class CodexAdapter implements CodexClient {
       throw new AppError('FILE_SEARCH_BUSY', 'File search is busy; retry shortly', 429);
     const cancellationToken = crypto.randomUUID();
     const epoch = this.epoch;
+    const { requestId, operationId, threadId, sourceThreadId, turnId } = logContext();
+    const context = {
+      requestId,
+      operationId,
+      threadId,
+      sourceThreadId,
+      turnId,
+      jobId: cancellationToken,
+      codexEpoch: epoch,
+    };
+    const logger = this.logger.child({ ...context, component: 'file_search' });
+    const started = performance.now();
     this.fileSearches++;
-    const pending = this.call(
-      'fuzzyFileSearch',
-      { query, roots: [cwd], cancellationToken },
-      false,
-      6500,
+    const pending = withLogContext(context, () =>
+      this.call('fuzzyFileSearch', { query, roots: [cwd], cancellationToken }, false, 6500),
     ).finally(() => {
       this.fileSearches--;
     });
     let abort: () => void = () => {};
     const cancelled = new Promise<never>((_, reject) => {
-      abort = () => {
-        // The native legacy endpoint cancels the previous request sharing this token.
-        // Empty query/roots performs no replacement traversal. Never cancel a new runtime.
-        if (this.ready && this.epoch === epoch)
-          void this.call(
-            'fuzzyFileSearch',
-            { query: '', roots: [], cancellationToken },
-            false,
-            1500,
-          ).catch(() => {});
-        reject(signal.reason);
-      };
+      abort = () =>
+        withLogContext(context, () => {
+          // The native legacy endpoint cancels the previous request sharing this token.
+          // Empty query/roots performs no replacement traversal. Never cancel a new runtime.
+          if (this.ready && this.epoch === epoch)
+            void this.call(
+              'fuzzyFileSearch',
+              { query: '', roots: [], cancellationToken },
+              false,
+              1500,
+            ).catch(() => {});
+          logger.debug('file_search.cancelled', {
+            reason:
+              signal.reason instanceof DOMException && signal.reason.name === 'TimeoutError'
+                ? 'timeout'
+                : 'aborted',
+            durationMs: Math.round(performance.now() - started),
+          });
+          reject(signal.reason);
+        });
       signal.addEventListener('abort', abort, { once: true });
       if (signal.aborted) abort();
     });

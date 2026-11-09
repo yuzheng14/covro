@@ -449,7 +449,9 @@ export class GatewayService {
     try {
       cancellation.throwIfAborted();
       if (!input.query) return { cwd, paths: [], limited: false };
-      const result = await this.codex.searchFiles(cwd, input.query, cancellation);
+      const result = await withLogContext({ threadId: thread?.id }, () =>
+        this.codex.searchFiles!(cwd, input.query, cancellation),
+      );
       const paths: string[] = [];
       let unreadable = false;
       for (const file of result.files.slice(0, 50)) {

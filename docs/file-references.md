@@ -18,6 +18,10 @@ Search uses Codex's native `fuzzyFileSearch`, including its ignore/ranking behav
 
 搜索复用 Codex 原生 `fuzzyFileSearch`，沿用其忽略规则、排序及最多 50 条候选。Covro 使用 160 ms 防抖、最多 4 个并发原生查询及 5 秒期限；浏览器取消请求时，以独立原生取消令牌停止旧工作。查询、光标、草稿、工作区和运行时身份共同隔离可见结果。达到限额时提示细化路径，每条消息最多选择 32 个文件引用。空结果、不可读、离线与超时分别反馈，均保留草稿，可重新加载。上游可能将遍历错误转为空列表，因此空结果不表示每个子目录均可读取。
 
+Search HTTP success and expected cancellation are debug-level diagnostics. The original search and its native cancellation RPC share a captured request/thread/job/epoch context; `file_search.cancelled` records only a fixed reason and duration. Existing HTTP/operation/RPC failure events retain safe codes. Query text, cwd, reference paths, prompts and error bodies never enter structured logs. See [logging and diagnostics](logging.md).
+
+搜索成功和正常取消以 debug 记录；原查询与原生取消 RPC 共用捕获的 request/thread/job/epoch 关联，`file_search.cancelled` 仅记录固定原因和耗时。失败沿用既有 HTTP/操作/RPC 的安全错误码日志，不记录查询文本、cwd、引用路径、提示词或错误正文。排障见[结构化日志说明](logging.md)。
+
 Node's portable file APIs cannot make parent-directory replacement race-free. Covro verifies canonical paths and opened inode identity, rejects symlinks, and rechecks workspace ownership; files can still change after validation while Codex reads them. References provide paths, not snapshots or automatically injected file bytes. Browser image attachments continue through `＋`/paste and the existing image limits. A workspace image selected with `@` is a path reference; the native TUI's automatic local-image attachment shortcut is not reproduced here.
 
 Node 可移植文件 API 无法彻底消除父目录被并发替换的竞态。Covro 核对真实路径、已打开 inode 及工作区归属并拒绝符号链接；验证完成后、Codex 读取前文件仍可能变化。引用传递路径，不是文件快照，也不会自动注入文件字节。访问端图片继续通过 `＋`/粘贴及原有图片限额处理。通过 `@` 选择服务器图片时发送路径引用，本功能不复刻原生 TUI 自动将本地图片转成附件的快捷行为。

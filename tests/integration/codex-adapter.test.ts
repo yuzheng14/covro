@@ -13,6 +13,7 @@ import type { Thread } from '../../src/codex/generated/v2/Thread.js';
 import type { ThreadItem } from '../../src/codex/generated/v2/ThreadItem.js';
 import type { SimulatorOptions } from '../fixtures/app-server.js';
 import { captureLogger } from '../fixtures/logging.js';
+import { withLogContext } from '../../src/logging/context.js';
 const adapters: CodexAdapter[] = [];
 const dirs: string[] = [];
 async function messages(dir: string): Promise<Record<string, unknown>[]> {
@@ -80,7 +81,8 @@ async function waitFor<T>(get: () => T | undefined): Promise<T> {
 
 describe('verified protocol adapter with a real subprocess', () => {
   it('uses native fuzzy file search roots and cancels only its own token without starting another scan', async () => {
-    const { adapter, dir, requests } = await fixture();
+    const logs = captureLogger();
+    const { adapter, dir, requests } = await fixture({}, 5000, { logger: logs.logger });
     await writeFile(join(dir, '中文 space.txt'), 'fixture');
     const result = await adapter.searchFiles(dir, '中文', new AbortController().signal);
     expect(result.files[0]).toMatchObject({
@@ -89,8 +91,12 @@ describe('verified protocol adapter with a real subprocess', () => {
       match_type: 'file',
     });
     const controller = new AbortController();
-    const pending = adapter.searchFiles(dir, 'space', controller.signal);
-    controller.abort();
+    const pending = withLogContext({ requestId: 'file-request', threadId: 'file-thread' }, () =>
+      adapter.searchFiles(dir, 'PRIVATE_FILE_QUERY', controller.signal),
+    );
+    withLogContext({ requestId: 'other-request', operationId: 'other-operation' }, () =>
+      controller.abort(),
+    );
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
     await expect
       .poll(
@@ -107,6 +113,21 @@ describe('verified protocol adapter with a real subprocess', () => {
     expect(searches[0]?.params.cancellationToken).not.toBe(
       searches.at(-1)?.params.cancellationToken,
     );
+    const cancelled = logs.records.find((record) => record.event === 'file_search.cancelled')!;
+    expect(cancelled).toMatchObject({
+      level: 20,
+      requestId: 'file-request',
+      threadId: 'file-thread',
+      jobId: searches.at(-1)?.params.cancellationToken,
+      reason: 'aborted',
+    });
+    const correlated = logs.records.filter((record) => record.jobId === cancelled.jobId);
+    expect(correlated.filter((record) => record.event === 'rpc.started')).toHaveLength(2);
+    expect(correlated.every((record) => record.requestId === 'file-request')).toBe(true);
+    expect(correlated.every((record) => record.operationId === undefined)).toBe(true);
+    const serialized = JSON.stringify(logs.records);
+    for (const secret of ['PRIVATE_FILE_QUERY', '中文 space.txt', dir])
+      expect(serialized).not.toContain(secret);
   });
   it.each(['account/read', 'model/list'])(
     'preserves the %s startup error in diagnostics after process cleanup',
