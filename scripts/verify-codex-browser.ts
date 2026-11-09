@@ -1,5 +1,6 @@
 /** Explicit real-browser smoke using an isolated supplied CLI/home and a fresh gateway/project. */
 import assert from 'node:assert/strict';
+import { CODEX_COMPATIBILITY } from '../src/codex/compatibility.js';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -26,7 +27,9 @@ const config = parseConfig(
     publicOrigin: ['http://127.0.0.1:8995'],
     dataDir: join(root, 'data'),
     codex: selected,
-    projects: [{ id: 'native-probe', name: 'Codex 0.166.0 验证', path: project }],
+    projects: [
+      { id: 'native-probe', name: `Codex ${CODEX_COMPATIBILITY.recommended} 验证`, path: project },
+    ],
   },
   join(root, 'config.json'),
 );
@@ -34,7 +37,7 @@ const codex = new CodexAdapter(config.codex);
 const runtime = await startGateway(config, { codex, staticDir: resolve('dist/web') });
 const browser = await chromium.launch();
 try {
-  assert.equal(codex.diagnostics().codexVersion, '0.166.0');
+  assert.equal(codex.diagnostics().codexVersion, CODEX_COMPATIBILITY.recommended);
   assert.equal(codex.diagnostics().compatibility, 'verified');
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 }, locale: 'zh-CN' });
   await page.goto(config.publicOrigin[0]!);
@@ -42,13 +45,13 @@ try {
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
   await page
     .getByRole('textbox', { name: '任务内容', exact: true })
-    .fill('Reply exactly CODEX_166_BROWSER_VERIFIED. Do not call tools or change files.');
+    .fill('Reply exactly CODEX_BROWSER_VERIFIED. Do not call tools or change files.');
   await page.getByRole('button', { name: '发送任务', exact: true }).click();
   await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成', {
     timeout: 120_000,
   });
   await expect(page.locator('.assistant-message .markdown').last()).toContainText(
-    'CODEX_166_BROWSER_VERIFIED',
+    'CODEX_BROWSER_VERIFIED',
   );
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -64,7 +67,7 @@ try {
     join(output, 'result.json'),
     JSON.stringify(
       {
-        version: '0.166.0',
+        version: CODEX_COMPATIBILITY.recommended,
         inference: true,
         simulated: false,
         checks: [

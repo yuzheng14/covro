@@ -1,0 +1,271 @@
+{
+  "date": "2026-11-09",
+  "codexVersion": "0.167.0",
+  "source": "existing official aarch64-apple-darwin full package",
+  "dependenciesAdded": false,
+  "generation": {
+    "stableFiles": 761,
+    "repeatIdentical": true,
+    "experimentalChanges": [
+      "GuardianAssessmentOutcome.ts",
+      "ContentItem.ts",
+      "ServerNotificationEnvelope.ts",
+      "InitializeCapabilities.ts",
+      "ClientRequest.ts",
+      "index.ts",
+      "ServerNotification.ts",
+      "v2/ThreadGuardianReviewResponse.ts",
+      "v2/ThreadSampleParams.ts",
+      "v2/OtelRequirements.ts",
+      "v2/ThreadSectionChangedNotification.ts",
+      "v2/ThreadGuardianReviewParams.ts",
+      "v2/CommandExecutionApprovalKind.ts",
+      "v2/index.ts",
+      "v2/UserInput.ts",
+      "v2/ThreadGuardianAssessment.ts"
+    ]
+  },
+  "nativeLocalStub": {
+    "upgrade": {
+      "codexVersion": "codex-cli 0.167.0",
+      "inference": false,
+      "model": "local HTTP stub",
+      "checks": [
+        "legacy: native rollout/compress and compressed thread/read preserve saved turns",
+        "legacy: cold resume restores post-turn model, effort, tier, permissions and network access over changed defaults",
+        "legacy: exact writer conflict, release, and explicit model/tier/permission overrides",
+        "legacy: fork preserves saved messages and parent identity",
+        "legacy: continuation and automatic title use a tool-free ephemeral thread",
+        "legacy: named profile re-resolves tightened config and automatic title preserves its identity",
+        "legacy: failed compaction preserves messages without partial summaries and allows continuation",
+        "paginated: native rollout/compress and compressed thread/read preserve saved turns",
+        "paginated: cold resume restores post-turn model, effort, tier, permissions and network access over changed defaults",
+        "paginated: exact writer conflict, release, and explicit model/tier/permission overrides",
+        "paginated: fork preserves saved messages and parent identity",
+        "paginated: continuation and automatic title use a tool-free ephemeral thread",
+        "paginated: named profile re-resolves tightened config and automatic title preserves its identity",
+        "paginated: failed compaction preserves messages without partial summaries and allows continuation",
+        "config/read uses explicit cwd across projects and nested trusted configuration, independent of app-server launch cwd"
+      ],
+      "legacy": {
+        "savedTurnSandbox": {
+          "type": "readOnly",
+          "networkAccess": true
+        },
+        "savedApprovalPolicy": "never",
+        "resumed": {
+          "model": "gpt-6-astra",
+          "collaborationMode": "default",
+          "reasoningEffort": "high",
+          "serviceTier": "fast",
+          "sandbox": "read-only",
+          "approvalPolicy": "never",
+          "approvalReviewer": "user",
+          "networkAccess": true,
+          "permissionProfile": null,
+          "writableRoots": null,
+          "excludeTmpdirEnvVar": null,
+          "excludeSlashTmp": null,
+          "permissionMode": "custom",
+          "permissionCapabilities": {
+            "autoReview": true,
+            "allowedSandboxModes": null,
+            "allowedApprovalPolicies": null,
+            "allowedReviewers": null,
+            "allowedProfiles": null,
+            "autoReviewRequiredModels": []
+          },
+          "liveSettingsCapabilities": {
+            "fast": false,
+            "reviewer": true
+          }
+        }
+      },
+      "paginated": {
+        "savedTurnSandbox": {
+          "type": "readOnly",
+          "networkAccess": true
+        },
+        "savedApprovalPolicy": "never",
+        "resumed": {
+          "model": "gpt-6-astra",
+          "collaborationMode": "default",
+          "reasoningEffort": "high",
+          "serviceTier": "fast",
+          "sandbox": "read-only",
+          "approvalPolicy": "never",
+          "approvalReviewer": "user",
+          "networkAccess": true,
+          "permissionProfile": null,
+          "writableRoots": null,
+          "excludeTmpdirEnvVar": null,
+          "excludeSlashTmp": null,
+          "permissionMode": "custom",
+          "permissionCapabilities": {
+            "autoReview": true,
+            "allowedSandboxModes": null,
+            "allowedApprovalPolicies": null,
+            "allowedReviewers": null,
+            "allowedProfiles": null,
+            "autoReviewRequiredModels": []
+          },
+          "liveSettingsCapabilities": {
+            "fast": false,
+            "reviewer": true
+          }
+        }
+      }
+    },
+    "live-settings": {
+      "version": "0.167.0",
+      "inference": false,
+      "localStub": true,
+      "checks": [
+        "Fast acknowledged while first model request is still in flight",
+        "Reviewer publication preserves the existing human approval, which is explicitly denied",
+        "Later model request in the same turn uses priority; model/effort stay unchanged",
+        "New model/effort and explicit standard speed appear in the next actual model request"
+      ],
+      "requests": [
+        {
+          "model": "gpt-6.1-sol",
+          "reasoning": {
+            "effort": "low",
+            "context": "all_turns"
+          }
+        },
+        {
+          "model": "gpt-6.1-sol",
+          "service_tier": "priority",
+          "reasoning": {
+            "effort": "low",
+            "context": "all_turns"
+          }
+        },
+        {
+          "model": "gpt-6-astra",
+          "reasoning": {
+            "effort": "high",
+            "context": "all_turns"
+          }
+        }
+      ]
+    },
+    "error-admission": {
+      "version": "0.167.0",
+      "inference": false,
+      "localStub": true,
+      "checks": [
+        "legacy: modelNotFound is terminal once and preserved in history",
+        "legacy: policyCapacityUnavailable is terminal once and preserved in history",
+        "legacy: missing saved provider rejects resume with structured diagnostics",
+        "paginated: modelNotFound is terminal once and preserved in history",
+        "paginated: policyCapacityUnavailable is terminal once and preserved in history",
+        "paginated: missing saved provider rejects resume with structured diagnostics",
+        "GCP account/read works without ChatGPT auth or resolving provider credentials"
+      ]
+    },
+    "managed-mcp": {
+      "codexVersion": "0.167.0",
+      "inference": false,
+      "model": "local HTTP stub",
+      "checks": [
+        "Declining the native MCP write approval creates no session",
+        "Native Code Mode discovers and calls list_projects and create_session through MCP",
+        "Parent waiting on MCP can create and submit a child in the selected project on the same app-server",
+        "Covro continues the MCP-created conversation without writer conflict",
+        "Managed app-server restart reapplies the local MCP entry to resumed history",
+        "User configuration, including an existing covro MCP entry, remains byte-for-byte unchanged",
+        "Gateway shutdown closes the local MCP endpoint",
+        "Independent app-server with the same CODEX_HOME and resumed history has no injected Covro tools"
+      ]
+    }
+  },
+  "providerHistory": {
+    "version": "0.167.0",
+    "inference": false,
+    "localStub": true,
+    "checks": [
+      "legacy: provider switch retains active/archived discovery, exact cwd, archive state and readable text; mismatched resume rejected",
+      "paginated: provider switch retains active/archived discovery, exact cwd, archive state and readable text; mismatched resume rejected",
+      "production browser: old-provider active and archived rows visible; saved text remains readable"
+    ]
+  },
+  "actualInference": {
+    "smoke": {
+      "date": "2026-11-09T02:59:43.894Z",
+      "inference": true,
+      "checks": [
+        "actual binary version",
+        "initialize -> initialized handshake",
+        "account/read (no credentials printed)",
+        "model/list",
+        "thread/start",
+        "turn/start and completed history",
+        "verified real temporary file content",
+        "unchanged child PID while event subscription absent",
+        "history restored after resubscribe",
+        "continued conversation turn",
+        "thread/list includes created appServer history"
+      ],
+      "codexVersion": "0.167.0",
+      "compatibility": "verified",
+      "authenticated": true,
+      "modelCount": 8,
+      "fileChangeObserved": true,
+      "commandOutputObserved": false,
+      "browserAndTunnel": "Not exercised by this adapter smoke; use browser and deployed-origin checks separately"
+    },
+    "interactions": {
+      "inference": true,
+      "checks": [
+        "actual steer accepted with expectedTurnId while a nested shell tool is active",
+        "Code Mode/nested shell interruption confirmed by turn/completed",
+        "steer of ended turn rejected without replay",
+        "next turn completes immediately after confirmed interruption",
+        "actual user-routed command approval declined; stale response rejected"
+      ],
+      "codexVersion": "0.167.0"
+    },
+    "browser": {
+      "version": "0.167.0",
+      "inference": true,
+      "simulated": false,
+      "checks": [
+        "production frontend + actual gateway + actual CLI",
+        "browser task completed with exact reply",
+        "desktop and narrow real-page screenshots"
+      ]
+    }
+  },
+  "localChecks": {
+    "unitIntegration": {
+      "passed": 1527,
+      "skipped": 1
+    },
+    "browserRegression": {
+      "passed": 75
+    },
+    "restackFocused": {
+      "passed": 114
+    },
+    "typecheck": "passed",
+    "lint": "passed",
+    "format": "passed",
+    "build": "passed",
+    "production": "passed",
+    "package": "passed",
+    "upgradeWorker": {
+      "passed": 16,
+      "npmTransport": "local fixture"
+    },
+    "databaseContract": "passed",
+    "compatibilityBlocks": "passed"
+  },
+  "limitations": [
+    "Managed prompt-user checkpoint: exact-tag contract and fixture only; no system/MDM configuration changed",
+    "Real managed per-endpoint network approvals and managed network configuration not exercised",
+    "No complete end-to-end coverage of live paginated memory eviction, missing-usage compaction thresholds, remote backends, actual GCP, audio inference, mobile hardware or long-running goals"
+  ],
+  "repositoryBase": "8b13d8fbecfa3f725260ad5838fff190cede5525"
+}

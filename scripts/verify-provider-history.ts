@@ -7,12 +7,16 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { CodexAdapter } from '../src/codex/adapter.js';
+import { chromium, expect } from '@playwright/test';
+import { parseConfig } from '../src/server/config.js';
+import { startGateway } from '../src/server/main.js';
 import { RpcTransport } from '../src/codex/transport.js';
 import type { ThreadStartResponse } from '../src/codex/generated/v2/ThreadStartResponse.js';
 import type { TurnStartResponse } from '../src/codex/generated/v2/TurnStartResponse.js';
 
 const args = process.argv.slice(2);
 const configIndex = args.indexOf('--config');
+const outputIndex = args.indexOf('--output-dir');
 assert(configIndex >= 0, 'Pass --config selecting an existing 0.167.0 binary');
 const { codex } = JSON.parse(await readFile(resolve(args[configIndex + 1]!), 'utf8')) as {
   codex: { binary: string };
@@ -153,6 +157,51 @@ try {
       `${historyMode}: provider switch retains active/archived discovery, exact cwd, archive state and readable text; mismatched resume rejected`,
     );
     await adapter.stop();
+    if (historyMode === 'paginated' && outputIndex >= 0) {
+      const output = resolve(args[outputIndex + 1]!);
+      await mkdir(output, { recursive: true });
+      const config = parseConfig(
+        {
+          port: 8997,
+          publicOrigin: ['http://127.0.0.1:8997'],
+          dataDir: join(root, 'gateway'),
+          codex: { binary: codex.binary, home },
+          projects: [{ id: 'provider-probe', name: '跨 provider 历史', path: project }],
+        },
+        join(root, 'gateway.json'),
+      );
+      const gateway = await startGateway(config, { staticDir: resolve('dist/web') });
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({
+          viewport: { width: 1280, height: 1000 },
+          locale: 'zh-CN',
+        });
+        await page.goto(config.publicOrigin[0]!);
+        const active = page.locator(`[data-thread-id="${saved[0]!.id}"]`);
+        await expect(active).toBeVisible();
+        await active.click();
+        await expect(page.locator('.assistant-message .markdown').last()).toContainText(
+          'Saved provider history',
+        );
+        await page.screenshot({
+          path: join(output, 'provider-active-history.png'),
+          fullPage: true,
+        });
+        await page.getByRole('button', { name: '已归档会话', exact: true }).click();
+        await expect(page.locator(`[data-thread-id="${saved[1]!.id}"]`)).toBeVisible();
+        await page.screenshot({
+          path: join(output, 'provider-archived-history.png'),
+          fullPage: true,
+        });
+        checks.push(
+          'production browser: old-provider active and archived rows visible; saved text remains readable',
+        );
+      } finally {
+        await browser.close();
+        await gateway.close();
+      }
+    }
   }
   console.log(
     JSON.stringify({ version: '0.167.0', inference: false, localStub: true, checks }, null, 2),

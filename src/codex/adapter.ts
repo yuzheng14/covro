@@ -114,7 +114,7 @@ export type {
 export { CodexError } from './transport.js';
 
 export const VERIFIED_CODEX_VERSION = CODEX_COMPATIBILITY.recommended;
-const LIVE_SETTINGS_CODEX_VERSION = '0.166.0';
+const LIVE_SETTINGS_CODEX_VERSION = '0.167.0';
 const CAPABILITIES = [
   'command/exec',
   'command/exec/terminate',
@@ -1190,7 +1190,7 @@ export class CodexAdapter implements CodexClient {
     turnId: string,
     settings: LiveSettings,
   ): Promise<Partial<Omit<LiveSettingsState, 'turnId'>>> {
-    // Exact experimental 0.166.0 contract; stable generation intentionally omits this method.
+    // Exact experimental 0.167.0 contract; stable generation intentionally omits this method.
     if (this.state.codexVersion !== LIVE_SETTINGS_CODEX_VERSION)
       throw new AppError('PROTOCOL_INCOMPATIBLE', '执行中配置更新尚未核验此 Codex 版本');
     const epoch = this.epoch;

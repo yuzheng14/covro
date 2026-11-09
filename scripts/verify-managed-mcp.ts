@@ -1,5 +1,6 @@
 /** Opt-in real Codex check: fresh home, local model stub, no account or remote inference. */
 import assert from 'node:assert/strict';
+import { CODEX_COMPATIBILITY } from '../src/codex/compatibility.js';
 import { createServer } from 'node:http';
 import { createServer as createPortProbe } from 'node:net';
 import { once } from 'node:events';
@@ -157,7 +158,7 @@ async function gatewayTurn(threadId: string, text: string) {
 }
 try {
   runtime = await startGateway(config, { staticDir: resolve('dist/web') });
-  assert.equal(runtime.codex.diagnostics().codexVersion, '0.166.0');
+  assert.equal(runtime.codex.diagnostics().codexVersion, CODEX_COMPATIBILITY.recommended);
   assert.equal(runtime.codex.ready, true);
   const pid = runtime.codex.pid;
   const managedRuntime = runtime;
@@ -243,7 +244,12 @@ try {
   );
   await external.stop();
   external = undefined;
-  const report = { codexVersion: '0.166.0', inference: false, model: 'local HTTP stub', checks };
+  const report = {
+    codexVersion: CODEX_COMPATIBILITY.recommended,
+    inference: false,
+    model: 'local HTTP stub',
+    checks,
+  };
   const outputIndex = args.indexOf('--output');
   if (outputIndex >= 0)
     await writeFile(resolve(args[outputIndex + 1]!), JSON.stringify(report, null, 2) + '\n');

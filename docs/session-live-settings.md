@@ -1,6 +1,6 @@
 # Session settings during execution / 执行中调整会话配置
 
-2026-11-02: the exact version gate is now 0.166.0, rechecked with the native CLI and local Responses stub. The original 0.164.0 record below remains historical evidence; current results and limits are in [0.166.0 verification](codex-0.166.0-verification.md). / 当前门禁与实测目标为 0.166.0，以下保留原 0.164.0 源码依据与历史记录。
+2026-11-09: the exact version gate is now 0.167.0, rechecked with the native CLI and local Responses stub. The original 0.164.0 record below remains historical evidence; current results and limits are in [0.167.0 verification](codex-0.167.0-verification.md). / 当前门禁与实测目标为 0.167.0，以下保留原 0.164.0 源码依据与历史记录。
 
 Verified on 2026-10-27 against **Codex 0.164.0**, tag `rust-v0.164.0`, commit `6aaac694803004a63c6f393d153c96d22521a6b9`. This records the original verification baseline. Generated stable types alone do not establish live-update support. [OpenAI Docs](https://learn.chatgpt.com/docs/app-server) describes the app-server lifecycle; the exact tagged implementation below determines this feature's boundaries.
 
