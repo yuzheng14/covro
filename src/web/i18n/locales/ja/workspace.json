@@ -81,10 +81,11 @@
   "export_response_lacks_history_completeness_information_no_file": "履歴の完全性情報がないため、ダウンロードは行いません。",
   "request_failed_please_try_again": "リクエストに失敗しました。再試行してください。",
   "open_github_repository": "GitHub リポジトリを開く",
-  "end_question_tracking": "追跡を終了",
-  "end_remaining_tracking": "残りの追跡を終了",
-  "end_tracking_hint": "Codex に回答を送信せず、Covro の通知を停止します。",
-  "question_tracking_ended": "追跡終了 · 回答は未送信",
+  "end_question_tracking": "スキップ",
+  "end_remaining_tracking": "すべてスキップ",
+  "end_tracking_hint": "Covro の通知のみを停止します。回答や下書きは送信せず、タスクも停止しません。",
+  "question_tracking_ended": "スキップ済み · 回答は未送信",
   "questions_handled": "処理済み",
-  "answer_receipt_pending": "回答の受領確認待ち"
+  "answer_receipt_pending": "回答の受領確認待ち",
+  "skip_all_questions_hint": "入力済みの下書きを含め、このグループの未回答の質問をすべてスキップします。回答は送信せず、タスクも停止しません。"
 }

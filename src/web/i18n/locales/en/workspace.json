@@ -81,10 +81,11 @@
   "export_response_lacks_history_completeness_information_no_file": "Export response lacks history completeness information. No file downloaded.",
   "request_failed_please_try_again": "Request failed. Please try again.",
   "open_github_repository": "Open GitHub repository",
-  "end_question_tracking": "End tracking",
-  "end_remaining_tracking": "End remaining tracking",
-  "end_tracking_hint": "Stop reminders in Covro without sending an answer to Codex.",
-  "question_tracking_ended": "Tracking ended · no answer sent",
+  "end_question_tracking": "Skip",
+  "end_remaining_tracking": "Skip all",
+  "end_tracking_hint": "Stop Covro reminders without sending an answer or draft, or stopping the task.",
+  "question_tracking_ended": "Skipped · no answer sent",
   "questions_handled": "Handled",
-  "answer_receipt_pending": "Answer receipt pending"
+  "answer_receipt_pending": "Answer receipt pending",
+  "skip_all_questions_hint": "Skip every unanswered question in this group, including filled drafts. No answers are sent and the task continues."
 }

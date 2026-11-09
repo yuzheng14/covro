@@ -283,7 +283,7 @@ export function AsyncQuestionCard({
                   type="button"
                   variant="secondary"
                   disabled={locked}
-                  title={t('workspace:end_tracking_hint')}
+                  title={t('workspace:skip_all_questions_hint')}
                   onClick={() =>
                     void dismiss(settled.flatMap((done, index) => (done ? [] : [index])))
                   }

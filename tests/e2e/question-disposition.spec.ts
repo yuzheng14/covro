@@ -24,10 +24,10 @@ async function send(page: import('@playwright/test').Page, text: string) {
 }
 
 for (const [locale, end, ended] of [
-  ['zh-Hans', '结束追踪', '已结束追踪 · 未发送回答'],
-  ['en', 'End tracking', 'Tracking ended · no answer sent'],
-  ['ja', '追跡を終了', '追跡終了 · 回答は未送信'],
-  ['ko', '추적 종료', '추적 종료 · 답변 미전송'],
+  ['zh-Hans', '跳过', '已跳过 · 未发送回答'],
+  ['en', 'Skip', 'Skipped · no answer sent'],
+  ['ja', 'スキップ', 'スキップ済み · 回答は未送信'],
+  ['ko', '건너뛰기', '건너뜀 · 답변 미전송'],
 ])
   for (const width of [1280, 390]) {
     test(`${locale} tracking entry and history at ${width}px`, async ({ page, request }, info) => {
@@ -165,7 +165,7 @@ test('dismissal failure retains inputs and repeated dismissal does not send an a
       body: JSON.stringify({ error: { code: 'QUESTION_BUSY', message: '回答正在提交' } }),
     }),
   );
-  await card.getByRole('button', { name: '结束追踪', exact: true }).first().click();
+  await card.getByRole('button', { name: '跳过', exact: true }).first().click();
   await expect(card.getByRole('textbox')).toHaveValue('保留草稿');
   await page.unroute('**/questions/dismiss');
   const id = await page.locator('.thread-selected').getAttribute('data-thread-id');
@@ -190,10 +190,10 @@ test('dismissal failure retains inputs and repeated dismissal does not send an a
 test('remaining answers stay attached after one question ends tracking', async ({ page }) => {
   await send(page, '[async-questions] 部分追踪与部分回答');
   const card = page.locator('.async-question-card');
-  await card.getByRole('button', { name: '结束追踪', exact: true }).first().click();
+  await card.getByRole('button', { name: '跳过', exact: true }).first().click();
   await card.getByRole('textbox').fill('继续回答这道题');
   await card.getByRole('button', { name: '发送回答', exact: true }).click();
-  await expect(card).toContainText('已结束追踪 · 未发送回答');
+  await expect(card).toContainText('已跳过 · 未发送回答');
   await expect(card).toContainText('继续回答这道题');
   await expect(indicator(page)).toHaveCount(0);
   await page.reload();
@@ -201,17 +201,21 @@ test('remaining answers stay attached after one question ends tracking', async (
   await expect(card.getByRole('button')).toHaveCount(0);
 });
 
-test('ending async tracking coexists with a running task', async ({ page }) => {
-  await send(page, '[async-questions-running] 运行中结束追踪');
+test('skipping all ignores filled drafts and coexists with a running task', async ({ page }) => {
+  await send(page, '[async-questions-running] 运行中跳过');
   const card = page.locator('.async-question-card');
   await expect(page.locator('.turn-heading .status')).toHaveText('执行中');
-  await card.getByRole('button', { name: '结束剩余追踪', exact: true }).click();
+  await card.getByRole('textbox').fill('这份草稿不应发送给 Codex');
+  await card.getByRole('button', { name: '全部跳过', exact: true }).click();
   await expect(indicator(page)).toHaveCount(0);
   await expect(page.locator('.turn-heading .status')).toHaveText('执行中');
   await expect(
     page.locator('.thread-row:has(.thread-selected) .thread-status-running'),
   ).toBeVisible();
   await expect(page.locator('.turn')).toHaveCount(1);
+  const id = await page.locator('.thread-selected').getAttribute('data-thread-id');
+  const history = (await (await page.request.get(`/api/threads/${id}`)).json()) as ThreadView;
+  expect(JSON.stringify(history.turns)).not.toContain('这份草稿不应发送给 Codex');
 });
 
 test('a single native question can be skipped without a replacement turn', async ({
@@ -246,7 +250,7 @@ test('an acknowledged answer awaiting native input keeps accurate tracking throu
     fullPage: true,
   });
   await expect(indicator(page)).toHaveAccessibleName('等待回答 · 1 项待处理');
-  await expect(card.getByRole('button', { name: '结束剩余追踪', exact: true })).toBeDisabled();
+  await expect(card.getByRole('button', { name: '全部跳过', exact: true })).toBeDisabled();
   await page.reload();
   await expect(card).toContainText('回答回执待确认');
   await expect(indicator(page)).toHaveAccessibleName('等待回答 · 1 项待处理');
