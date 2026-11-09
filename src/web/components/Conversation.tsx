@@ -759,7 +759,9 @@ function ConversationContent({
           onClick={() => {
             stickToBottom.current = true;
             setShowBottom(false);
-            endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            // Complete the jump before scroll events or streamed updates can save
+            // a halfway position as the reader's anchor and interrupt the motion.
+            endRef.current?.scrollIntoView({ block: 'end' });
           }}
         >
           <Icon name="down" size={15} />
