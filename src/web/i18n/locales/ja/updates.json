@@ -26,7 +26,7 @@
   "cannot_confirm": "確認できません",
   "unrecognized": "識別できません",
   "close_update_settings": "更新設定を閉じる",
-  "current_codex": "現在の Codex",
+  "current_codex": "実行中の Codex",
   "verified_releases_for_everyday_use": "日常利用に適した検証済み正式版です。",
   "try_features_being_prepared_for_release": "Beta と新しい安定版を受け取ります。更新後も Beta の購読を維持します。",
   "follows_checked_main_commits_for_developers_testing_new": "チェック済み main の変更と新しい安定版を受け取ります。Beta は含まず、更新後も開発版の購読を維持します。",
@@ -37,7 +37,7 @@
   "target_version_compatibility": "対象バージョンの互換性",
   "allow_trying_an_unverified_codex_combination": "未検証の Codex の組み合わせを試す",
   "auto_update_is_paused_adjust_the_codex_version": "自動更新は一時停止中です。Codex のバージョンを変更して再確認するか、同意して手動で試してください。",
-  "auto_update_is_paused_restore_the_codex_connection": "自動更新は一時停止中です。Codex の接続やバージョンを調整するか、有効な互換性情報を含むリリースを待ってから再確認してください。",
+  "auto_update_is_paused_restore_the_codex_connection": "自動更新を停止しています。再起動後の Codex の起動元と更新先の互換性情報を確認し、再確認してください。",
   "processing": "処理中…",
   "check_for_updates": "更新を確認",
   "use_this_channel": "このチャンネルを使用",
@@ -73,5 +73,10 @@
   "migrate_and_restart": "Node を切り替えて再起動",
   "cancelled": "更新をキャンセルしました",
   "cancel_pending_update": "待機中の更新をキャンセル",
-  "cancelledDescription": "待機中の更新をキャンセルしました。現在のサービスは稼働を続けます。"
+  "cancelledDescription": "待機中の更新をキャンセルしました。現在のサービスは稼働を続けます。",
+  "after_restart": "再起動後の Codex",
+  "unverified_combination": "Codex {{version}} とこの Covro の組み合わせは未検証です。",
+  "unknown_compatibility": "Codex のバージョンまたは互換性情報を確認できません。再確認してください。",
+  "restart_unavailable": "再起動後の Codex を確認できません。起動元を確認して再試行してください。",
+  "unsupported_combination": "この Covro は Codex {{version}} をサポートしていません。"
 }

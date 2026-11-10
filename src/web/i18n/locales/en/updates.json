@@ -26,7 +26,7 @@
   "cannot_confirm": "Cannot confirm",
   "unrecognized": "Unrecognized",
   "close_update_settings": "Close update settings",
-  "current_codex": "Current Codex",
+  "current_codex": "Running Codex",
   "verified_releases_for_everyday_use": "Verified releases for everyday use.",
   "try_features_being_prepared_for_release": "Try Beta features and newer stable releases; updates keep your Beta subscription.",
   "follows_checked_main_commits_for_developers_testing_new": "Follow checked main commits and newer stable releases, without Beta; updates keep your Dev subscription.",
@@ -37,7 +37,7 @@
   "target_version_compatibility": "Target version compatibility",
   "allow_trying_an_unverified_codex_combination": "Allow trying an unverified Codex combination",
   "auto_update_is_paused_adjust_the_codex_version": "Auto-update is paused. Adjust the Codex version and check again, or confirm to try manually.",
-  "auto_update_is_paused_restore_the_codex_connection": "Auto-update is paused. Restore the Codex connection, adjust its version, or wait for a release with valid compatibility metadata before checking again.",
+  "auto_update_is_paused_restore_the_codex_connection": "Auto-update is paused. Check the Codex launch source after restart and the target compatibility declaration, then check again.",
   "processing": "Processing…",
   "check_for_updates": "Check for updates",
   "use_this_channel": "Use this channel",
@@ -73,5 +73,10 @@
   "migrate_and_restart": "Switch Node and restart",
   "cancelled": "Update cancelled",
   "cancel_pending_update": "Cancel pending update",
-  "cancelledDescription": "The pending update was cancelled. The current service continues running."
+  "cancelledDescription": "The pending update was cancelled. The current service continues running.",
+  "after_restart": "Codex after restart",
+  "unverified_combination": "Codex {{version}} has not been verified with this Covro version.",
+  "unknown_compatibility": "Cannot confirm the Codex version or compatibility declaration. Check again.",
+  "restart_unavailable": "Cannot confirm Codex after restart. Check the launch source and try again.",
+  "unsupported_combination": "This Covro version does not support Codex {{version}}."
 }

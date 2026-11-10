@@ -35,6 +35,7 @@ async function updatesFixture(page: Page) {
     settings: { channel: 'stable', automatic: false },
   };
   let candidateMetadata: unknown = CODEX_COMPATIBILITY;
+  let restartVersion: string | null | undefined;
   let candidateRelease: { version: string; channel: ReleaseChannel } | undefined;
   const requests: { path: string; body: Record<string, unknown> }[] = [];
   let reload = false;
@@ -63,7 +64,12 @@ async function updatesFixture(page: Page) {
         requestedChannel: body.channel as ReleaseChannel,
         downgrade: false,
         commit: '8fb09cabcdef',
-        codex: assessCodexCompatibility(candidateMetadata, state.codex.version),
+        codex: assessCodexCompatibility(
+          candidateMetadata,
+          restartVersion === undefined ? state.codex.version : restartVersion,
+        ),
+        codexTarget: state.available?.codexTarget,
+        codexError: state.available?.codexError,
       };
     if (path.endsWith('/settings')) state.settings = body as unknown as UpdateStatus['settings'];
     if (path.endsWith('/run'))
@@ -86,6 +92,9 @@ async function updatesFixture(page: Page) {
   return {
     state,
     requests,
+    setRestart: (version: string | null) => {
+      restartVersion = version;
+    },
     setCandidate: (metadata: unknown) => {
       candidateMetadata = metadata;
     },
@@ -256,14 +265,14 @@ for (const viewport of [
       await page.getByRole('button', { name: '打开项目与会话', exact: true }).click();
     await page.getByRole('button', { name: 'Covro 更新', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Covro 更新', exact: true });
-    const currentCodex = dialog.getByRole('region', { name: '当前 Codex', exact: true });
+    const currentCodex = dialog.getByRole('region', { name: '正在运行的 Codex', exact: true });
     await expect(currentCodex).toContainText(CODEX_COMPATIBILITY.recommended);
     await expect(currentCodex).toContainText('已验证');
     fixture.setCandidate(undefined);
     await dialog.getByRole('button', { name: '检查更新', exact: true }).click();
     const candidate = dialog.getByRole('region', { name: '目标版本兼容性', exact: true });
     const upgrade = dialog.getByRole('button', { name: '升级并重启', exact: true });
-    await expect(candidate).toContainText('缺少有效的 Codex 兼容声明');
+    await expect(candidate).toContainText('无法确认 Codex 版本或兼容声明');
     await expect(upgrade).toBeDisabled();
     await screenshot(page, `codex-${viewport.name}-missing-metadata.png`);
     const unsupported = {
@@ -296,7 +305,7 @@ for (const viewport of [
     await expect(upgrade).toBeDisabled();
     fixture.setCodex('0.163.0');
     await dialog.getByRole('button', { name: '检查更新', exact: true }).click();
-    await expect(candidate).toContainText('当前 Codex 0.163.0');
+    await expect(candidate).toContainText('Codex 0.163.0');
     await expect(consent).not.toBeChecked();
     await consent.check();
     await expect(upgrade).toBeEnabled();
@@ -324,7 +333,7 @@ test('unknown configured Codex blocks managed upgrades even when the candidate d
   const dialog = page.getByRole('dialog', { name: 'Covro 更新', exact: true });
   await dialog.getByRole('button', { name: '检查更新', exact: true }).click();
   await expect(dialog.getByRole('region', { name: '目标版本兼容性', exact: true })).toContainText(
-    '无法确认当前 Codex CLI 版本',
+    '无法确认 Codex 版本或兼容声明',
   );
   await expect(dialog.getByRole('button', { name: '升级并重启', exact: true })).toBeDisabled();
   await screenshot(page, 'codex-desktop-unknown-runtime.png');
@@ -673,6 +682,104 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
         await screenshot(page, `325-${locale}-${viewport.name}-${theme}-succeeded.png`);
         expect(await dialog.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
         expect(f.requests.filter((r) => r.path.endsWith('/run'))).toHaveLength(0);
+      });
+    }
+  }
+}
+
+for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
+  for (const theme of ['light', 'dark'] as const) {
+    for (const viewport of [
+      { name: 'desktop', width: 1440, height: 1200 },
+      { name: 'mobile', width: 390, height: 844 },
+    ]) {
+      test(`restart Codex: ${locale} ${theme} ${viewport.name} keeps the running version separate and blocks unknown launch sources`, async ({
+        page,
+      }) => {
+        const strings = JSON.parse(
+          readFileSync(
+            new URL(`../../src/web/i18n/locales/${locale}/updates.json`, import.meta.url),
+            'utf8',
+          ),
+        ) as Record<string, string>;
+        const common = JSON.parse(
+          readFileSync(
+            new URL(`../../src/web/i18n/locales/${locale}/common.json`, import.meta.url),
+            'utf8',
+          ),
+        ) as Record<string, string>;
+        const fixture = await updatesFixture(page);
+        fixture.state.codex = assessCodexCompatibility(
+          { recommended: '0.166.0', verified: ['0.166.0'], unsupported: [] },
+          '0.166.0',
+        );
+        fixture.state.settings.automatic = true;
+        fixture.setRestart('0.167.0');
+        // An equal-version Node migration lets the fixture render activation without a synthetic frontend reload.
+        fixture.setRelease({ version: currentVersion, channel: 'stable' });
+        const current = {
+          node: '/opt/node-a/bin/node',
+          nodeVersion: '24.19.0',
+          root: '/opt/node-a/lib/node_modules/@covro/covro',
+          entry: '/opt/node-a/lib/node_modules/@covro/covro/bin/covro.mjs',
+        };
+        const target = {
+          node: '/opt/node-b/bin/node',
+          nodeVersion: '24.22.1',
+          root: '/opt/node-b/lib/node_modules/@covro/covro',
+          entry: '/opt/node-b/lib/node_modules/@covro/covro/bin/covro.mjs',
+        };
+        fixture.state.runtime = { current, target, migration: true };
+        await page.emulateMedia({ colorScheme: theme });
+        await page.setViewportSize(viewport);
+        await page.goto('/');
+        await confirmCompatibility(page);
+        await selectInterfaceLocale(page, locale);
+        await page.getByRole('button', { name: common.covro_updates, exact: true }).click();
+        const dialog = page.locator('.update-dialog');
+        await dialog.getByRole('button', { name: strings.check_for_updates, exact: true }).click();
+        const running = dialog.getByRole('region', { name: strings.current_codex, exact: true });
+        const candidate = dialog.getByRole('region', {
+          name: strings.target_version_compatibility,
+          exact: true,
+        });
+        await expect(running).toContainText('0.166.0');
+        await expect(candidate).toContainText('0.167.0');
+        await expect(candidate).toContainText(strings.after_restart!);
+        const migrate = dialog.getByRole('button', {
+          name: strings.migrate_and_restart,
+          exact: true,
+        });
+        await expect(migrate).toBeEnabled();
+        await expect(dialog.locator('.update-codex-consent')).toHaveCount(0);
+        await running.scrollIntoViewIfNeeded();
+        await screenshot(page, `335-${locale}-${theme}-${viewport.name}-running.png`);
+        await candidate.scrollIntoViewIfNeeded();
+        await screenshot(page, `335-${locale}-${theme}-${viewport.name}-target.png`);
+        expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+          true,
+        );
+        await migrate.click();
+        expect(fixture.requests.filter((request) => request.path.endsWith('/run'))).toHaveLength(1);
+        fixture.state.codex = assessCodexCompatibility(CODEX_COMPATIBILITY, '0.167.0');
+        fixture.state.runtime = { current: target, migration: false };
+        fixture.state.run = { ...fixture.state.run!, phase: 'succeeded', committed: true };
+        await expect(running).toContainText('0.167.0', { timeout: 10_000 });
+        await expect(dialog.locator('.update-progress')).toContainText(strings.update_successful!);
+        await running.scrollIntoViewIfNeeded();
+        await screenshot(page, `335-${locale}-${theme}-${viewport.name}-restarted.png`);
+        await dialog.locator('.update-progress').scrollIntoViewIfNeeded();
+        await screenshot(page, `335-${locale}-${theme}-${viewport.name}-succeeded.png`);
+        fixture.state.runtime = { current: target, target: current, migration: true };
+        fixture.setRestart(null);
+        fixture.state.available!.codexError = 'isolated probe failure';
+        await dialog.getByRole('button', { name: strings.check_for_updates, exact: true }).click();
+        await expect(candidate).toContainText(strings.restart_unavailable!);
+        await expect(
+          dialog.getByRole('button', { name: strings.migrate_and_restart, exact: true }),
+        ).toBeDisabled();
+        await candidate.scrollIntoViewIfNeeded();
+        await screenshot(page, `335-${locale}-${theme}-${viewport.name}-unknown.png`);
       });
     }
   }

@@ -1,0 +1,93 @@
+{
+  "issue": "https://github.com/yuzheng14/covro/issues/335",
+  "base": "0ce65cc254df93c80ce470033551bf6a39a9651d",
+  "environment": {
+    "platform": "macOS",
+    "node": "24.22.1",
+    "new_dependencies": false,
+    "user_covro_upgraded_or_restarted": false
+  },
+  "checks": [
+    {
+      "command": "pnpm test",
+      "result": "passed",
+      "passed": 1600,
+      "skipped": 1,
+      "note": "One pre-existing opt-in test skipped; final run after candidate-parser integration."
+    },
+    {
+      "command": "pnpm exec vitest run tests/integration/node-runtime-migration.test.ts",
+      "result": "passed",
+      "passed": 14,
+      "coverage": [
+        "manual and automatic restart-target compatibility",
+        "exact dev.5/0.166.0 to dev.6/0.167.0 example",
+        "explicit old path",
+        "real approval wait: upgrade/downgrade/removal/path/config changes",
+        "preinstalled and staged candidate parser differences",
+        "Node migration and readiness rollback",
+        "SQLite data preservation"
+      ],
+      "transport": "real isolated Covro daemon/worker/Node/SQLite; repository-owned npm and Codex fixtures"
+    },
+    {
+      "command": "pnpm exec playwright test tests/e2e/covro-updates.spec.ts",
+      "result": "passed",
+      "passed": 38,
+      "coverage": "Built UI with controlled update API; includes 16 language/viewport/system-color combinations and unknown-source blocking."
+    },
+    {
+      "command": "COVRO_SCREENSHOTS=<temporary output> pnpm exec vitest run tests/integration/node-runtime-migration.test.ts -t \"reported 0.8.1\"",
+      "result": "passed",
+      "passed": 1,
+      "note": "Actual isolated service page triggers the exact example upgrade; copied frontend build version metadata matches disposable package versions; npm and Codex remain fixtures."
+    },
+    {
+      "command": "node --import tsx scripts/verify-upgrade.ts",
+      "result": "passed",
+      "scenarios": 16,
+      "note": "Real worker/SQLite activation, rollback, repair, commit protection and Codex gates; local fixture package transport."
+    },
+    {
+      "command": "pnpm exec vitest run tests/integration/codex-adapter.test.ts tests/integration/codex-target.test.ts",
+      "result": "passed",
+      "passed": 111
+    },
+    {
+      "command": "native installed Codex through probeRestartCodex with temporary config/CODEX_HOME",
+      "result": "passed",
+      "version": "0.167.0",
+      "inference": false,
+      "app_server_started": false
+    },
+    {
+      "command": "pnpm typecheck; pnpm lint; pnpm format:check; git diff --check; pnpm build",
+      "result": "passed",
+      "note": "Existing Vite chunk-size advisory remains."
+    },
+    {
+      "command": "node --import tsx scripts/sync-compatibility.ts --check; node --import tsx scripts/verify-database-contract.ts",
+      "result": "passed"
+    },
+    {
+      "command": "node --import tsx scripts/verify-production.ts; node --import tsx scripts/verify-package.ts",
+      "result": "passed",
+      "packaged_files": 376,
+      "note": "Package check uses a temporary npm cache; includes standalone worker logging and CLI probe entry."
+    }
+  ],
+  "resolved_failures": [
+    "Initial local-listener checks were denied by the sandbox and rerun with scoped execution approval.",
+    "HTTP/Shell fixtures explicitly declare an unverified Codex version instead of relying on the Node launcher version.",
+    "Temporary frontend version metadata was aligned to fixture package versions before taking actual-service screenshots.",
+    "Local package verification was rerun with a disposable npm cache instead of changing the user cache."
+  ],
+  "limitations": [
+    "Persistent launchd/systemd manager command construction and cleanup are simulated tests; no real persistent service upgrade was performed.",
+    "Native Codex was used only for CLI target probing, not a complete production upgrade or inference.",
+    "Unsupported custom service directives, missing probe entry or CLI, unknown identity, and source changes fail closed.",
+    "System light/dark preferences were tested; this component currently has no separate dark theme.",
+    "PR #339 implements #325 independently. Shared manager/worker/UI changes require synchronization and combined checks when one PR lands."
+  ],
+  "research": "docs/update-codex-identity.md"
+}

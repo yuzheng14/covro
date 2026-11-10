@@ -1,5 +1,4 @@
 import { spawn, execFile } from 'node:child_process';
-import { createHash, randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { once } from 'node:events';
 import { createHash, randomUUID } from 'node:crypto';
@@ -12,7 +11,6 @@ import {
   readFile,
   readdir,
   realpath,
-  readdir,
   rm,
   symlink,
   writeFile,
@@ -33,14 +31,15 @@ beforeAll(async () => {
   await exec(process.execPath, ['--import', 'tsx', 'scripts/build-server.ts']);
 }, 30_000);
 
-async function fixture(codex?: {
-  explicit?: boolean;
-  mismatch?: boolean;
-  automatic?: boolean;
-  ui?: boolean;
-  web?: boolean;
-}) {
-  const web = codex?.web ?? false;
+async function fixture(
+  codex?: {
+    explicit?: boolean;
+    mismatch?: boolean;
+    automatic?: boolean;
+    ui?: boolean;
+  },
+  web = false,
+) {
   // Short private Unix socket paths; HOME, Codex data and all npm prefixes are disposable.
   const directory = await realpath(await mkdtemp('/tmp/c281-'));
   cleanups.push(() => rm(directory, { recursive: true, force: true }));
@@ -87,7 +86,7 @@ async function fixture(codex?: {
     await writeFile(
       join(root, 'package.json'),
       JSON.stringify(
-        codex && !codex.web
+        codex
           ? {
               ...packageInfo,
               version: index === 0 ? '0.8.1-dev.5' : '0.8.1-dev.6',
@@ -101,7 +100,7 @@ async function fixture(codex?: {
           : packageInfo,
       ),
     );
-    if (codex && !codex.web) {
+    if (codex) {
       await writeFile(
         join(prefix, 'bin/codex-version.json'),
         JSON.stringify({
@@ -135,20 +134,16 @@ async function fixture(codex?: {
     publicOrigin: [`http://127.0.0.1:${address.port}`],
     dataDir: './data',
     codex: {
-      binary:
-        codex && !codex.web
-          ? codex.explicit
-            ? join(directory, '0/bin/codex')
-            : 'codex'
-          : resolve('tests/fixtures/codex.mjs'),
+      binary: codex
+        ? codex.explicit
+          ? join(directory, '0/bin/codex')
+          : 'codex'
+        : resolve('tests/fixtures/codex.mjs'),
     },
   });
   await writeFile(config, configText);
   const releaseMetadata = join(directory, 'release.json');
-  await writeFile(
-    releaseMetadata,
-    await readFile(join(roots[codex && !codex.web ? 1 : 0]!, 'package.json')),
-  );
+  await writeFile(releaseMetadata, await readFile(join(roots[codex ? 1 : 0]!, 'package.json')));
   const env = {
     ...process.env,
     HOME: shellHome,
@@ -543,7 +538,7 @@ it('restores the original runtime and data when an equal-version target fails st
 it.each(['success', 'rollback'] as const)(
   'refreshes one idle automatic plan and pins its real %s transaction',
   async (mode) => {
-    const f = await fixture({ web: Boolean(process.env.COVRO_SCREENSHOTS) });
+    const f = await fixture(undefined, Boolean(process.env.COVRO_SCREENSHOTS));
     const prefix = join(f.directory, '1');
     const npm = join(prefix, 'npm/bin/npm-cli.js');
     await mkdir(dirname(npm), { recursive: true });

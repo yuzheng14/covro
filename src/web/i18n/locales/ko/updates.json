@@ -26,7 +26,7 @@
   "cannot_confirm": "확인할 수 없음",
   "unrecognized": "인식되지 않음",
   "close_update_settings": "업데이트 설정 닫기",
-  "current_codex": "현재 Codex",
+  "current_codex": "실행 중인 Codex",
   "verified_releases_for_everyday_use": "일상적인 사용에 적합한 검증된 정식 버전입니다.",
   "try_features_being_prepared_for_release": "베타와 더 최신의 안정 버전을 받으며 업데이트 후에도 베타 구독을 유지합니다.",
   "follows_checked_main_commits_for_developers_testing_new": "검증된 main 변경 사항과 더 최신의 안정 버전을 받습니다. 베타는 포함하지 않으며 업데이트 후에도 개발 버전 구독을 유지합니다.",
@@ -37,7 +37,7 @@
   "target_version_compatibility": "대상 버전 호환성",
   "allow_trying_an_unverified_codex_combination": "검증되지 않은 Codex 조합 시도 허용",
   "auto_update_is_paused_adjust_the_codex_version": "자동 업데이트가 일시 중지되었습니다. Codex 버전을 조정한 후 다시 확인하거나 동의한 후 수동으로 시도하세요.",
-  "auto_update_is_paused_restore_the_codex_connection": "자동 업데이트가 일시 중지되었습니다. Codex 연결을 복구하거나 버전을 조정하거나 유효한 호환성 정보가 있는 출시를 기다린 후 다시 확인하세요.",
+  "auto_update_is_paused_restore_the_codex_connection": "자동 업데이트가 일시 중지되었습니다. 재시작 후 Codex 실행 경로와 대상 버전의 호환성 정보를 확인한 후 다시 확인하세요.",
   "processing": "처리 중…",
   "check_for_updates": "업데이트 확인",
   "use_this_channel": "이 채널 사용",
@@ -73,5 +73,10 @@
   "migrate_and_restart": "Node 전환 후 다시 시작",
   "cancelled": "업데이트 취소됨",
   "cancel_pending_update": "대기 중인 업데이트 취소",
-  "cancelledDescription": "대기 중인 업데이트가 취소되었습니다. 현재 서비스는 계속 실행됩니다."
+  "cancelledDescription": "대기 중인 업데이트가 취소되었습니다. 현재 서비스는 계속 실행됩니다.",
+  "after_restart": "재시작 후 Codex",
+  "unverified_combination": "Codex {{version}}과(와) 이 Covro 버전의 조합은 검증되지 않았습니다.",
+  "unknown_compatibility": "Codex 버전 또는 호환성 정보를 확인할 수 없습니다. 다시 확인하세요.",
+  "restart_unavailable": "재시작 후 Codex를 확인할 수 없습니다. 실행 경로를 확인하고 다시 시도하세요.",
+  "unsupported_combination": "이 Covro 버전은 Codex {{version}}을(를) 지원하지 않습니다."
 }
