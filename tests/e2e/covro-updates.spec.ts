@@ -616,13 +616,17 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
         ) as Record<string, string>;
         const f = await updatesFixture(page);
         f.state.settings = { channel: 'dev', automatic: true };
+        f.state.codex = assessCodexCompatibility(
+          { recommended: '0.166.0', verified: ['0.166.0'], unsupported: [] },
+          '0.166.0',
+        );
         const candidate = (n: number) => ({
           version: `${nextVersion}-dev.${n}`,
           requestedChannel: 'dev' as const,
           channel: 'dev' as const,
           commit: String(n).repeat(40),
           downgrade: false,
-          codex: f.state.codex,
+          codex: assessCodexCompatibility(CODEX_COMPATIBILITY, '0.167.0', 'restart'),
         });
         f.state.available = candidate(3);
         f.state.run = {
@@ -647,6 +651,12 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
         await page.getByRole('button', { name: common.covro_updates, exact: true }).click();
         const dialog = page.locator('.update-dialog');
         await expect(dialog.locator('.update-progress')).toContainText(candidate(3).version);
+        await expect(
+          dialog.getByRole('region', { name: strings.current_codex, exact: true }),
+        ).toContainText('0.166.0');
+        await expect(
+          dialog.getByRole('region', { name: strings.target_version_compatibility, exact: true }),
+        ).toContainText('0.167.0');
         await expect(dialog.getByRole('switch')).toBeEnabled();
         await expect(
           dialog.getByRole('button', { name: strings.cancel_pending_update, exact: true }),
@@ -670,10 +680,16 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
         await dialog.locator('.update-progress').scrollIntoViewIfNeeded();
         await screenshot(page, `325-${locale}-${viewport.name}-${theme}-refreshed.png`);
         f.state.run = { ...f.state.run!, phase: 'installing', transactionStartedAt: Date.now() };
-        f.state.available = candidate(5);
+        f.state.available = {
+          ...candidate(5),
+          codex: assessCodexCompatibility(CODEX_COMPATIBILITY, '0.168.0', 'restart'),
+        };
         await page.clock.fastForward(5000);
         await expect(dialog.locator('.update-available')).toContainText(candidate(4).version);
         await expect(dialog.locator('.update-release-notes')).toContainText(candidate(4).version);
+        await expect(
+          dialog.getByRole('region', { name: strings.target_version_compatibility, exact: true }),
+        ).toContainText('0.167.0');
         await expect(dialog.getByRole('switch')).toBeDisabled();
         f.state.run = { ...f.state.run!, phase: 'succeeded', committed: true };
         f.state.available = candidate(4);

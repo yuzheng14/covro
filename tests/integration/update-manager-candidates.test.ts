@@ -331,6 +331,7 @@ it('merges automatic targets into one plan and freezes exact metadata only after
   expect(frozen.run).toMatchObject({
     id: original.id,
     target: '0.3.0-dev.4',
+    codex: { target: { identity } },
     commit: 'commit-0.3.0-dev.4',
     phase: 'installing',
     transactionStartedAt: expect.any(Number),

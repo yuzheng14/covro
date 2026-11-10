@@ -37,6 +37,7 @@ async function fixture(
     mismatch?: boolean;
     automatic?: boolean;
     ui?: boolean;
+    keepCovroVersion?: boolean;
   },
   web = false,
 ) {
@@ -89,7 +90,11 @@ async function fixture(
         codex
           ? {
               ...packageInfo,
-              version: index === 0 ? '0.8.1-dev.5' : '0.8.1-dev.6',
+              version: codex.keepCovroVersion
+                ? packageInfo.version
+                : index === 0
+                  ? '0.8.1-dev.5'
+                  : '0.8.1-dev.6',
               covroCommit: String(index === 0 ? 5 : 6).repeat(40),
               covroCodex: {
                 recommended: index === 0 ? '0.166.0' : '0.167.0',
@@ -170,6 +175,7 @@ async function fixture(
       pid: number;
       runtime: RuntimeIdentity;
       codexReady: boolean;
+      codexVersion: string | null;
     };
   cleanups.push(async () => {
     await exec(nodes[0]!, [join(roots[0]!, 'bin/covro.mjs'), 'stop', '--config', config], { env });
@@ -538,7 +544,7 @@ it('restores the original runtime and data when an equal-version target fails st
 it.each(['success', 'rollback'] as const)(
   'refreshes one idle automatic plan and pins its real %s transaction',
   async (mode) => {
-    const f = await fixture(undefined, Boolean(process.env.COVRO_SCREENSHOTS));
+    const f = await fixture({ keepCovroVersion: true }, Boolean(process.env.COVRO_SCREENSHOTS));
     const prefix = join(f.directory, '1');
     const npm = join(prefix, 'npm/bin/npm-cli.js');
     await mkdir(dirname(npm), { recursive: true });
@@ -691,6 +697,8 @@ it.each(['success', 'rollback'] as const)(
         )
         .toBe(`99.0.0-dev.${n}`);
       expect((await status()).id).toBe(run.id);
+      expect((await status()).codex?.target?.identity.version).toBe('0.167.0');
+      expect((await f.cli('status')).codexVersion).toBe('0.166.0');
       if (page) {
         await page
           .locator('.update-progress')
@@ -734,7 +742,9 @@ it.each(['success', 'rollback'] as const)(
       target: '99.0.0-dev.5',
       commit: '5'.repeat(40),
       transactionStartedAt: expect.any(Number),
+      codex: { version: '0.167.0', target: { identity: { version: '0.167.0' } } },
     });
+    expect((await f.cli('status')).codexVersion).toBe(mode === 'success' ? '0.167.0' : '0.166.0');
     const installedBy = JSON.parse(await readFile(f.releaseMetadata + '.npm.json', 'utf8')) as {
       args: string[];
     };

@@ -34,9 +34,11 @@ worker 在 npm 安装前、候选核验后、每次等待空闲时、准入关�
 
 ## 与 #325 的边界
 
-#325 负责等待空闲期间重新选择 Covro 发行候选，包括自动升级订阅与候选记录。#335 不刷新渠道标签，不改变候选选择时序，不改写自动任务归属。
+[#339](https://github.com/yuzheng14/covro/pull/339) 已合并到 main（`7114f5f`），负责等待空闲期间重新选择 Covro 候选、取消与订阅 revision、空闲复核及固定安装事务。本分支已在其上变基，保留上述规则，不重复实现候选刷新。
 
-共享接点是 `UpdateManager.check/start` 与 worker 的候选准备、`waitForIdle`、`beforeStop`。`probeRestartCodex`/`assertCodexTarget` 是重启身份检查；`checkRunningCodex` 只用于新实例。#325 若替换候选，必须对新候选的 manifest 使用同一个重启目标身份；Node/安装来源一起改变时需重新探测并持久化 `run.codex.target`，不能恢复成当前 app-server 版本。刷新候选不得把未验证组合自动确认。对应的独立 PR 是 [#339](https://github.com/yuzheng14/covro/pull/339)。两个分支均从 main 独立实现，当前无跨 PR 代码依赖。两者都修改 manager、worker 和更新面板，不能把普通串联分支称为 Stack。合并前后都需核对共享改动；先合并任一个后，后一个需变基并保留 `performCheck/freezeAutomatic/commitActivation` 的候选固定规则，以及本 PR 的目标 Codex 探测、`beforeStop` 和实际 app-server 校验；还需将重启身份保存到 #339 的候选快照并让面板沿用它，重新执行组合测试。
+`performCheck` 原子发布的候选同时携带 `codexTarget`。`waitForAutomaticPlan` 刷新候选时将该身份同步到 `run.codex.target`；`freezeAutomatic` 串行固定相同候选、Node/npm 和重启 Codex 身份，不使用当前 app-server 的旧版本重算兼容性。worker 在固定后、安装前及停止前继续核对这份记录，重启后只核对新 app-server。面板使用当前计划/事务的完整候选快照，保留取消与控制禁用规则。
+
+组合用例让当前 Codex 保持 `0.166.0`，目标为 `0.167.0`：候选从 dev.3 刷新到 dev.4/dev.5，固定后渠道变为 dev.6 时仍只安装 dev.5 一次，并分别验证成功和回滚。四语界面用例还检查：固定后即使另一次预览得到不同 Codex，也不得替换当前事务的兼容性依据。
 
 ## 验证范围
 
