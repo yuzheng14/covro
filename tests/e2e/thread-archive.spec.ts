@@ -56,11 +56,17 @@ async function seedThread(request: APIRequestContext, project = 'fixture') {
     data: { clientOperationId: randomUUID(), text: '已有会话历史 [title-fail]' },
   });
   expect(started.ok()).toBe(true);
+  const turnId = ((await started.json()).result as { turnId: string }).turnId;
   await expect
-    .poll(async () => {
-      const detail = await request.get(`/api/threads/${id}`);
-      return ((await detail.json()) as ThreadView).turns.at(-1)?.status;
-    })
+    .poll(
+      async () => {
+        const detail = await request.get(`/api/threads/${id}`);
+        expect(detail.ok()).toBe(true);
+        return ((await detail.json()) as ThreadView).turns.find((turn) => turn.id === turnId)
+          ?.status;
+      },
+      { message: `Seeded history turn ${turnId} in thread ${id} must complete` },
+    )
     .toBe('completed');
   return id;
 }
@@ -298,7 +304,11 @@ test('archiving another conversation preserves the current draft, loaded pages a
 }) => {
   const current = await create(page, '继续阅读的会话');
   await expect(page.locator('.turn-heading .status')).toHaveText('已完成');
-  const ids = await Promise.all(Array.from({ length: 18 }, () => seedThread(request)));
+  const ids: string[] = [];
+  // The fixture serializes fragmented RPC output. Bound setup concurrency so its
+  // queue cannot consume the completion deadline before the archive assertions.
+  for (let batch = 0; batch < 6; batch++)
+    ids.push(...(await Promise.all(Array.from({ length: 3 }, () => seedThread(request)))));
   const target = ids[8]!;
   // The fixture has a single upstream page. Split real records to exercise browser pagination.
   const snapshot = (await (
