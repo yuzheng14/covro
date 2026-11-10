@@ -8,7 +8,9 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 10_000 },
   retries: process.env.CI ? 1 : 0,
-  reporter: 'list',
+  reporter: process.env.CI
+    ? [['list'], ['json', { outputFile: 'test-results/report.json' }]]
+    : 'list',
   use: {
     baseURL: origin,
     locale: 'zh-CN',

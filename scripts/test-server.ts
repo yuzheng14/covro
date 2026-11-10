@@ -1,5 +1,5 @@
 /** Explicit fixture-backed browser test entry. Production never imports this module. */
-import { mkdtemp, rm, mkdir, writeFile, rename } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, rename, realpath } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -145,7 +145,8 @@ class ControlledFixture implements CodexClient {
   }
 }
 
-const root = await mkdtemp(join(tmpdir(), 'codex-web-e2e-'));
+// External fixture sessions must use the same canonical cwd as the project registry.
+const root = await realpath(await mkdtemp(join(tmpdir(), 'codex-web-e2e-')));
 const project = join(root, 'project');
 const otherProject = join(root, 'other-project');
 const historyPath = join(root, 'history.json');

@@ -114,6 +114,14 @@ jobs:
           node --import tsx scripts/plan-e2e-shard.ts .local/e2e-tests.json "$SHARD_INDEX" "$SHARD_TOTAL" .local/e2e-shard.txt
       # Each runner has its own fixture server; tests within a shard stay serial.
       - run: pnpm test:e2e --test-list=.local/e2e-shard.txt
+      - name: Upload E2E failure diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-failure-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
   # Keep the existing required check green only when every job passed.
   verify:
     if: ${{ always() }}
