@@ -74,13 +74,19 @@
       "result": "passed",
       "packaged_files": 376,
       "note": "Package check uses a temporary npm cache; includes standalone worker logging and CLI probe entry."
+    },
+    {
+      "command": "INVOCATION_ID=c335-simulated-runner pnpm exec vitest run tests/integration/codex-target.test.ts",
+      "result": "passed",
+      "passed": 10
     }
   ],
   "resolved_failures": [
     "Initial local-listener checks were denied by the sandbox and rerun with scoped execution approval.",
     "HTTP/Shell fixtures explicitly declare an unverified Codex version instead of relying on the Node launcher version.",
     "Temporary frontend version metadata was aligned to fixture package versions before taking actual-service screenshots.",
-    "Local package verification was rerun with a disposable npm cache instead of changing the user cache."
+    "Local package verification was rerun with a disposable npm cache instead of changing the user cache.",
+    "The first Linux CI quality job inherited systemd INVOCATION_ID, so standalone probe fixtures correctly hit the production external-manager guard. Reproduced all nine failures locally with a simulated runner invocation; the fixture now clears/restores service-owner variables, and all ten tests pass under that invocation. Production checks remain unchanged."
   ],
   "limitations": [
     "Persistent launchd/systemd manager command construction and cleanup are simulated tests; no real persistent service upgrade was performed.",

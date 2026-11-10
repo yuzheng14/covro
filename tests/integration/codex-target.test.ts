@@ -2,13 +2,17 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { afterEach, beforeAll, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { paths } from '../../src/cli/paths.js';
 import { assertCodexTarget, probeRestartCodex } from '../../src/updates/codex-target.js';
 import { saveJson } from '../../src/updates/files.js';
 import { codexServerVersion } from '../../src/codex/identity.js';
 
 const directories: string[] = [];
+beforeEach(() => {
+  // GitHub's Linux runner may itself be a systemd service. This fixture owns no service.
+  for (const key of ['INVOCATION_ID', 'PM2_HOME', 'SUPERVISOR_ENABLED']) vi.stubEnv(key, undefined);
+});
 it('reads the server build version rather than client metadata, including custom originator names', () => {
   expect(
     codexServerVersion('codex_web_ui/0.167.0 (Darwin 26; arm64) Terminal (codex_web_ui; 0.1.0)'),
@@ -23,6 +27,7 @@ beforeAll(async () => {
   await promisify(execFile)(process.execPath, ['--import', 'tsx', 'scripts/build-server.ts']);
 }, 30_000);
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const directory of directories.splice(0))
     await rm(directory, { recursive: true, force: true });
 });
