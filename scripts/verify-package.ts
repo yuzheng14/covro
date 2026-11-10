@@ -14,6 +14,9 @@ const files = artifact.files.map((entry) => entry.path);
 for (const required of [
   'bin/covro.mjs',
   'dist/cli/main.js',
+  'dist/cli/codex-probe.js',
+  'dist/codex/identity.js',
+  'dist/updates/codex-target.js',
   'dist/codex/compatibility.js',
   'dist/shared/codex-compatibility.js',
   'dist/shared/package.js',

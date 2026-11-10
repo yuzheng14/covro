@@ -8,10 +8,17 @@ import type { GetAccountRateLimitsResponse } from './generated/v2/GetAccountRate
 import { SHELL_TIMEOUT_MS, SHELL_OUTPUT_BYTES } from '../shared/shell.js';
 import type { CommandExecResponse } from './generated/v2/CommandExecResponse.js';
 import type { CommandExecTerminateResponse } from './generated/v2/CommandExecTerminateResponse.js';
-import { spawn, execFile, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { realpath } from 'node:fs/promises';
+import {
+  codexEnvironment,
+  codexFile,
+  codexServerVersion,
+  probeCodexIdentity,
+  type CodexIdentity,
+} from './identity.js';
 import { managedMcpArguments } from './managed-mcp.js';
 import { randomUUID } from 'node:crypto';
-import { promisify } from 'node:util';
 import { readGoal } from './thread-goals.js';
 import { GuardianDenials } from './guardian-denials.js';
 import type { ThreadGoal, GoalMutation } from '../shared/thread-goal.js';
@@ -249,6 +256,10 @@ export class CodexAdapter implements CodexClient {
   >();
   epoch = randomUUID();
   private child?: ChildProcessWithoutNullStreams;
+  private identity?: CodexIdentity;
+  launchIdentity() {
+    return this.identity ? { ...this.identity } : undefined;
+  }
   private rpc?: RpcTransport;
   private stopped = true;
   private starting?: Promise<void>;
@@ -332,17 +343,17 @@ export class CodexAdapter implements CodexClient {
     };
     this.accountUsage.invalidate('loading');
     this.publishRuntime();
+    this.identity = undefined;
     try {
-      const env = {
-        ...process.env,
-        ...(this.options.home === undefined ? {} : { CODEX_HOME: this.options.home }),
-      };
-      const { stdout } = await promisify(execFile)(this.options.binary, ['--version'], {
-        env,
-        timeout: 5000,
-        maxBuffer: 64 * 1024,
-      });
-      const version = stdout.trim().replace(/^codex-cli\s+/, '');
+      const env = codexEnvironment(this.options.home);
+      // Custom stdio transports (embedded callers/tests) may use Node rather than the CLI.
+      // Managed configuration never supplies args and always requires a Codex CLI probe.
+      const identity = await probeCodexIdentity(
+        this.options.binary,
+        this.options.home,
+        this.options.args !== undefined,
+      );
+      const version = identity.version;
       this.state.codexVersion = version;
       this.logger.info('codex.starting', { codexEpoch: this.epoch, codexVersion: version });
       this.permissionState.clear();
@@ -352,7 +363,7 @@ export class CodexAdapter implements CodexClient {
         ? 'verified'
         : 'unverified';
       const child = spawn(
-        this.options.binary,
+        identity.resolved,
         [
           ...(this.options.args ?? ['app-server', '--listen', 'stdio://']),
           ...(this.options.managedMcp
@@ -454,6 +465,23 @@ export class CodexAdapter implements CodexClient {
           'Codex initialize returned a malformed result',
           true,
         );
+      const serverVersion = codexServerVersion(initialized.userAgent);
+      this.state.codexVersion = serverVersion ?? null;
+      this.state.compatibility = CODEX_COMPATIBILITY.verified.includes(serverVersion ?? '')
+        ? 'verified'
+        : 'unverified';
+      if (
+        !serverVersion ||
+        (/^\d+\./.test(version) && serverVersion !== version) ||
+        (await realpath(identity.resolved)) !== identity.executable ||
+        (await codexFile(identity.executable)) !== identity.file
+      )
+        throw new CodexError(
+          'PROTOCOL_INCOMPATIBLE',
+          'Codex app-server identity differs from its CLI launch probe',
+          true,
+        );
+      this.identity = { ...identity, version: serverVersion };
       await rpc.notify('initialized');
       const [account, models] = await Promise.all([
         this.call('account/read', { refreshToken: false }, true),

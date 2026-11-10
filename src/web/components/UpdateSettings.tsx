@@ -1,9 +1,6 @@
 import { displayMessage } from '../i18n/messages';
 import { t, formatList } from '../i18n';
-import {
-  assessCodexCompatibility,
-  type CodexCompatibility,
-} from '../../shared/codex-compatibility';
+import type { CodexCompatibility } from '../../shared/codex-compatibility';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpCircle, ExternalLink } from 'lucide-react';
 import { releaseChannels, updateActive, type ReleaseChannel } from '../../shared/updates';
@@ -14,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Icon } from './Icon';
 import { UpdateReleaseNotes } from './UpdateReleaseNotes';
 import { releasesUrl } from '../../shared/release-notes';
+import type { CodexTarget } from '../../shared/codex-identity';
 
 const labels: Record<ReleaseChannel, string> = {
   get stable() {
@@ -66,12 +64,24 @@ const compatibilityLabels = {
     return t('updates:cannot_confirm');
   },
 };
-function CodexCompatibilityDetails({ title, value }: { title: string; value: CodexCompatibility }) {
+function CodexCompatibilityDetails({
+  title,
+  value,
+  restart,
+  source,
+  probeFailed,
+}: {
+  title: string;
+  value: CodexCompatibility;
+  restart?: boolean;
+  source?: CodexTarget;
+  probeFailed?: boolean;
+}) {
   return (
     <section className="update-codex" aria-label={title} data-state={value.status}>
       <h3>{title}</h3>
       <div>
-        <span>Codex CLI</span>
+        <span>{restart ? t('updates:after_restart') : 'Codex CLI'}</span>
         <strong>{value.version ?? t('updates:unrecognized')}</strong>
         <span className="update-codex-status">{compatibilityLabels[value.status]}</span>
       </div>
@@ -83,7 +93,26 @@ function CodexCompatibilityDetails({ title, value }: { title: string; value: Cod
           })}
         </p>
       )}
-      {value.reason && <p>{value.reason}</p>}
+      {value.reason && (
+        <p>
+          {probeFailed
+            ? t('updates:restart_unavailable')
+            : t(
+                `updates:${value.status === 'unverified' ? 'unverified_combination' : value.status === 'unsupported' ? 'unsupported_combination' : 'unknown_compatibility'}`,
+                { version: value.version },
+              )}
+        </p>
+      )}
+      {source && (
+        <details>
+          <summary>{t('updates:installation_source')}</summary>
+          <pre>
+            {source.identity.resolved}
+            {source.identity.resolved !== source.identity.executable &&
+              `\n→ ${source.identity.executable}`}
+          </pre>
+        </details>
+      )}
     </section>
   );
 }
@@ -99,16 +128,7 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
       : undefined;
   const active = updateActive(status?.run);
   const pending = Boolean(active && status?.run?.automatic && !status.run.transactionStartedAt);
-  const selected =
-    active && status?.run?.candidate
-      ? {
-          ...status.run.candidate,
-          codex: assessCodexCompatibility(
-            status.run.candidate.codex.manifest,
-            status.codex.version,
-          ),
-        }
-      : available;
+  const selected = active && status?.run?.candidate ? status.run.candidate : available;
   const migration = Boolean(status?.runtime?.migration);
   const current =
     selected &&
@@ -120,6 +140,7 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
     channel,
     selected?.version,
     selected?.codex,
+    selected?.codexTarget,
     status?.runtime?.target,
   ]);
   const confirmedCodex = codexConsent === identity;
@@ -292,6 +313,9 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
         <CodexCompatibilityDetails
           title={t('updates:target_version_compatibility')}
           value={selected.codex}
+          restart
+          source={selected.codexTarget}
+          probeFailed={Boolean(selected.codexError)}
         />
       )}
       {needsCodexConsent && (

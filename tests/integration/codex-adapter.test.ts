@@ -779,7 +779,7 @@ describe('verified protocol adapter with a real subprocess', () => {
     expect(list?.params.sourceKinds).toEqual(['cli', 'appServer', 'vscode']);
     expect(list?.params.cwd).toBe('/tmp');
     expect(adapter.diagnostics().authenticated).toBe(true);
-    expect(adapter.diagnostics().compatibility).toBe('unverified'); // Node's version must not pretend to be Codex.
+    expect(adapter.diagnostics().compatibility).toBe('verified'); // The initialized app-server, rather than the fixture's Node launcher, reports Codex.
   });
   it.each([false, true])(
     'filters history upstream by exact CWD without scanning aliases, subdirectories or other projects (archived: %s)',

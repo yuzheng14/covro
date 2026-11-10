@@ -26,7 +26,7 @@
   "cannot_confirm": "无法确认",
   "unrecognized": "未识别",
   "close_update_settings": "关闭更新设置",
-  "current_codex": "当前 Codex",
+  "current_codex": "正在运行的 Codex",
   "verified_releases_for_everyday_use": "经过验证的正式版本，适合日常使用。",
   "try_features_being_prepared_for_release": "接收预览版和较新的稳定版；更新后保留预览版订阅。",
   "follows_checked_main_commits_for_developers_testing_new": "跟随通过检查的 main 提交，也接收较新的稳定版，不接收预览版；更新后保留开发版订阅。",
@@ -37,7 +37,7 @@
   "target_version_compatibility": "目标版本兼容性",
   "allow_trying_an_unverified_codex_combination": "允许尝试未验证的 Codex 组合",
   "auto_update_is_paused_adjust_the_codex_version": "自动升级已暂停。可以调整 Codex 版本后重新检查，或勾选确认后手动尝试。",
-  "auto_update_is_paused_restore_the_codex_connection": "自动升级已暂停。请先恢复 Codex 连接、调整版本或等待含有效兼容声明的发行版，再重新检查。",
+  "auto_update_is_paused_restore_the_codex_connection": "自动升级已暂停。请核对重启后的 Codex 来源及目标版本的兼容声明，再重新检查。",
   "processing": "正在处理…",
   "check_for_updates": "检查更新",
   "use_this_channel": "使用此渠道",
@@ -73,5 +73,10 @@
   "migrate_and_restart": "切换 Node 并重启",
   "cancelled": "升级已取消",
   "cancel_pending_update": "取消待执行升级",
-  "cancelledDescription": "待执行升级已取消，当前服务继续运行。"
+  "cancelledDescription": "待执行升级已取消，当前服务继续运行。",
+  "after_restart": "重启后的 Codex",
+  "unverified_combination": "Codex {{version}} 与此 Covro 的组合尚未验证。",
+  "unknown_compatibility": "无法确认 Codex 版本或兼容声明，请重新检查。",
+  "restart_unavailable": "无法确认重启后的 Codex。请核对启动来源后重新检查。",
+  "unsupported_combination": "此 Covro 明确不支持 Codex {{version}}。"
 }

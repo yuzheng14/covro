@@ -10,6 +10,18 @@ import { paths, packageInfo } from '../../src/cli/paths.js';
 import { UpdateManager } from '../../src/updates/manager.js';
 import * as registry from '../../src/updates/registry.js';
 import * as runtime from '../../src/updates/runtime.js';
+import * as codexTarget from '../../src/updates/codex-target.js';
+import { nullLogger } from '../../src/logging/logger.js';
+const identity = {
+  binary: 'codex',
+  resolved: '/codex',
+  executable: '/codex',
+  file: 'test',
+  version: CODEX_COMPATIBILITY.recommended,
+  node: process.execPath,
+  cwd: process.cwd(),
+  environment: 'test',
+};
 import { runningRuntime } from '../../src/cli/runtime.js';
 import { readJson, saveJson } from '../../src/updates/files.js';
 import type { ReleaseChannel, UpdateRun, UpdateSettings } from '../../src/shared/updates.js';
@@ -36,6 +48,12 @@ async function fixture(channel: ReleaseChannel, version = '0.2.0', automatic = f
   const directory = await mkdtemp(join(tmpdir(), 'covro-candidates-'));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   vi.spyOn(registry, 'inspectInstallation').mockResolvedValue(undefined);
+  vi.spyOn(codexTarget, 'probeRestartCodex').mockResolvedValue({
+    identity,
+    configuration: 'test',
+    launch: 'test',
+  });
+  vi.spyOn(codexTarget, 'codexConfiguration').mockResolvedValue('test');
   vi.spyOn(runtime, 'resolveRuntimeTarget').mockResolvedValue({
     ...runningRuntime(),
     npm: '/npm/bin/npm-cli.js',
@@ -74,7 +92,13 @@ async function fixture(channel: ReleaseChannel, version = '0.2.0', automatic = f
     home: directory,
     state: join(directory, 'state'),
   };
-  const manager = new UpdateManager(location, directory, () => CODEX_COMPATIBILITY.recommended);
+  const manager = new UpdateManager(
+    location,
+    directory,
+    () => CODEX_COMPATIBILITY.recommended,
+    nullLogger,
+    () => identity,
+  );
   cleanup.push(() => manager.close());
   await saveJson(join(manager.context!.directory, 'settings.json'), { channel, automatic });
   await manager.initialize();
@@ -129,7 +153,13 @@ it.each(['beta', 'dev'] as const)(
     });
     packageInfo.version = '0.2.0';
     manager.close();
-    const restarted = new UpdateManager(location, directory, () => CODEX_COMPATIBILITY.recommended);
+    const restarted = new UpdateManager(
+      location,
+      directory,
+      () => CODEX_COMPATIBILITY.recommended,
+      nullLogger,
+      () => identity,
+    );
     cleanup.push(() => restarted.close());
     await restarted.initialize();
     await restarted.commitActivation(id);
@@ -241,7 +271,13 @@ it('migrates an equal version while retaining Codex activation checks and the du
   });
   // Matching Covro versions alone cannot authorize an old Node process to commit the new runtime.
   await expect(manager.commitActivation(started.run!.id)).rejects.toThrow('Node');
-  const restarted = new UpdateManager(location, directory, () => CODEX_COMPATIBILITY.recommended);
+  const restarted = new UpdateManager(
+    location,
+    directory,
+    () => CODEX_COMPATIBILITY.recommended,
+    nullLogger,
+    () => identity,
+  );
   cleanup.push(() => restarted.close());
   await restarted.initialize();
   expect(restarted.context!.directory).toBe(manager.context!.directory);
@@ -295,6 +331,7 @@ it('merges automatic targets into one plan and freezes exact metadata only after
   expect(frozen.run).toMatchObject({
     id: original.id,
     target: '0.3.0-dev.4',
+    codex: { target: { identity } },
     commit: 'commit-0.3.0-dev.4',
     phase: 'installing',
     transactionStartedAt: expect.any(Number),

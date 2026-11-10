@@ -27,6 +27,7 @@ export async function waitForAutomaticPlan(run: UpdateRun, effects: AutomaticPla
                 version: candidate.codex.version,
                 manifest: candidate.codex.manifest,
                 confirmedUnverified: false,
+                target: candidate.codexTarget,
               }
             : undefined,
         runtime:

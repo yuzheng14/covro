@@ -52,6 +52,7 @@ export type CodexEvent =
   | { type: 'actionResolved'; actionId: string }
   | { type: 'runtime'; diagnostics: CodexDiagnostics };
 export interface CodexClient {
+  launchIdentity?(): import('./identity.js').CodexIdentity | undefined;
   refreshAccountUsage?(): Promise<import('../shared/account-usage.js').AccountUsage>;
   executeCommand?(
     processId: string,
