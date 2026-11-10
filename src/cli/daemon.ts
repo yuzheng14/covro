@@ -1,3 +1,4 @@
+import { AppError } from '../shared/errors.js';
 import { trimBootstrap } from '../logging/bootstrap.js';
 import { createLogging } from '../logging/logger.js';
 import { loggingOptions } from '../logging/config.js';
@@ -69,6 +70,20 @@ export async function runDaemon(configPath: string) {
         response.end(JSON.stringify({ ...(await doctor()), logging: logging.health() }));
       } else if (request.url === '/stop') {
         await stop(() => response.end(JSON.stringify({ stopped: true })));
+      } else if (request.url === '/update-readiness') {
+        response.end(JSON.stringify(runtime!.service.prepareUpdate('update', false)));
+      } else if (request.url === '/automatic-update-plan') {
+        const { id, fresh } = input as { id: string; fresh?: boolean };
+        response.end(JSON.stringify(await updates!.automaticPlan(id, fresh)));
+      } else if (request.url === '/freeze-automatic-update') {
+        const { id, checkedAt } = input as { id: string; checkedAt: number };
+        response.end(
+          JSON.stringify(
+            await updates!.freezeAutomatic(id, checkedAt, () =>
+              runtime!.service.prepareUpdate('update', false),
+            ),
+          ),
+        );
       } else if (request.url === '/prepare-update') {
         response.end(JSON.stringify(runtime!.service.prepareUpdate()));
       } else if (request.url === '/cancel-update') {
@@ -108,7 +123,10 @@ export async function runDaemon(configPath: string) {
       requestLogger.warn('control.failed', errorFields(error));
       response.statusCode = 400;
       response.end(
-        JSON.stringify({ error: error instanceof Error ? error.message : 'Control failed' }),
+        JSON.stringify({
+          error: error instanceof Error ? error.message : 'Control failed',
+          code: error instanceof AppError ? error.code : undefined,
+        }),
       );
     });
   });

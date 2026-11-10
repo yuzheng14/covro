@@ -245,3 +245,17 @@ it('does not replace the package or migrate when the required backup fails', asy
   expect(effects.verify).not.toHaveBeenCalled();
   expect(effects.commit).not.toHaveBeenCalled();
 });
+
+it('checks idle readiness without closing task admission and still blocks unknown operations', async () => {
+  const h = harness();
+  cleanups.push(h.close);
+  expect(h.service.prepareUpdate('update', false)).toEqual({ ready: true });
+  expect(h.service.isInMaintenance()).toBe(false);
+  const created = await h.service.createThread('project', { clientOperationId: operationId() });
+  const id = (created.result as { threadId: string }).threadId;
+  await h.service.startTurn(id, { clientOperationId: operationId(), text: 'still admitted' });
+  expect(h.service.prepareUpdate('update', false).ready).toBe(false);
+  h.codex.reset();
+  expect(h.service.prepareUpdate('update', false).ready).toBe(false);
+  expect(h.service.isInMaintenance()).toBe(false);
+});

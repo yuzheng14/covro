@@ -1,6 +1,9 @@
 import { displayMessage } from '../i18n/messages';
 import { t, formatList } from '../i18n';
-import type { CodexCompatibility } from '../../shared/codex-compatibility';
+import {
+  assessCodexCompatibility,
+  type CodexCompatibility,
+} from '../../shared/codex-compatibility';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpCircle, ExternalLink } from 'lucide-react';
 import { releaseChannels, updateActive, type ReleaseChannel } from '../../shared/updates';
@@ -41,6 +44,9 @@ const phaseLabels = {
   },
   get rolledBack() {
     return t('updates:previous_version_restored');
+  },
+  get cancelled() {
+    return t('updates:cancelled');
   },
   get failed() {
     return t('updates:update_failed');
@@ -87,11 +93,22 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
   const [selectedChannel, setChannel] = useState<ReleaseChannel>();
   const channel = selectedChannel ?? status?.settings.channel ?? 'stable';
   const [allowDowngrade, setAllowDowngrade] = useState(false);
-  const selected =
+  const available =
     (status?.available?.requestedChannel ?? status?.available?.channel) === channel
       ? status?.available
       : undefined;
   const active = updateActive(status?.run);
+  const pending = Boolean(active && status?.run?.automatic && !status.run.transactionStartedAt);
+  const selected =
+    active && status?.run?.candidate
+      ? {
+          ...status.run.candidate,
+          codex: assessCodexCompatibility(
+            status.run.candidate.codex.manifest,
+            status.codex.version,
+          ),
+        }
+      : available;
   const migration = Boolean(status?.runtime?.migration);
   const current =
     selected &&
@@ -195,12 +212,13 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
         {t('updates:release_channel')}
         <Select
           value={channel}
-          disabled={busy || active}
+          disabled={busy || (active && !pending)}
           onValueChange={(value) => {
             const next = value as ReleaseChannel;
             setChannel(next);
             setAllowDowngrade(false);
             setCodexConsent(undefined);
+            if (pending && status) void updates.configure({ ...status.settings, channel: next });
             void updates.check(next);
           }}
         >
@@ -236,7 +254,7 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
           aria-checked={status?.settings.automatic ?? false}
           variant="secondary"
           size="sm"
-          disabled={busy || active || !status?.supported}
+          disabled={busy || (active && !pending) || !status?.supported}
           onClick={() =>
             status &&
             void updates.configure({ ...status.settings, automatic: !status.settings.automatic })
@@ -305,7 +323,7 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
       <div className="update-buttons">
         <Button
           variant="secondary"
-          disabled={busy || active}
+          disabled={busy || (active && !pending)}
           onClick={() => void updates.check(channel)}
         >
           {busy ? t('updates:processing') : t('updates:check_for_updates')}
@@ -349,6 +367,15 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
           />
           {t('updates:allow_downgrade_incompatible_databases_still_block_switching')}
         </label>
+      )}
+      {pending && status?.run && (
+        <Button
+          variant="secondary"
+          disabled={busy}
+          onClick={() => void updates.cancel(status.run!.id)}
+        >
+          {t('updates:cancel_pending_update')}
+        </Button>
       )}
       {status?.run && (
         <section className="update-progress" data-phase={status.run.phase} role="status">

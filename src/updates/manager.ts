@@ -70,6 +70,13 @@ export class UpdateManager implements UpdateController {
           : 'stable'),
     automatic: false,
   };
+  private revision = 'initial';
+  private mutations: Promise<unknown> = Promise.resolve();
+  private serialize<T>(work: () => Promise<T>): Promise<T> {
+    const result = this.mutations.then(work);
+    this.mutations = result.catch(() => {});
+    return result;
+  }
   private available?: UpdateStatus['available'];
   private checkedAt?: number;
   private checkError?: string;
@@ -77,6 +84,7 @@ export class UpdateManager implements UpdateController {
   private runtimeError?: string;
   private reason = '当前服务未通过 covro 启动，网页仅支持版本检测；升级请使用原部署方式。';
   private timer?: ReturnType<typeof setInterval>;
+  private checks: Promise<unknown> = Promise.resolve();
   private checking?: Promise<UpdateStatus>;
   private readonly network = new AbortController();
   readonly context?: UpdateContext;
@@ -103,6 +111,8 @@ export class UpdateManager implements UpdateController {
     await this.loadDirectory();
     const saved = await readJson<unknown>(join(this.context.directory, 'settings.json'));
     if (saved !== undefined) this.settings = settingsSchema.parse(saved);
+    this.revision =
+      (await readJson<string>(join(this.context.directory, 'settings-revision.json'))) ?? 'initial';
     this.reason =
       process.platform === 'win32'
         ? 'Windows 暂不支持受管自动升级，请使用 npm 更新并重启。'
@@ -161,25 +171,33 @@ export class UpdateManager implements UpdateController {
       },
     };
   }
-  async check(channel: ReleaseChannel = this.settings.channel) {
+  check(channel: ReleaseChannel = this.settings.channel) {
+    const result = this.checks.then(() => this.performCheck(channel));
+    this.checks = result.catch(() => {});
+    return result;
+  }
+  private async performCheck(channel: ReleaseChannel) {
     const started = performance.now();
     this.logger.debug('update.check_started');
-    this.target = undefined;
-    this.runtimeError = undefined;
+    let target: RuntimeTarget | undefined;
+    let runtimeError: string | undefined;
+    let available: UpdateStatus['available'];
+    let checkError: string | undefined;
     if (this.context && !this.reason) {
       try {
-        this.target = await resolveRuntimeTarget();
+        target = await resolveRuntimeTarget();
       } catch (error) {
-        this.runtimeError = (error as Error).message;
+        runtimeError = (error as Error).message;
       }
     }
     try {
-      const local = this.target && runtimeChanged(this.target) ? this.target : undefined;
+      const local = target && runtimeChanged(target) ? target : undefined;
       let release;
       try {
         release = await lookupRelease(channel, this.network.signal);
       } catch (error) {
         if (!local) throw error;
+        checkError = error instanceof Error ? error.message : '无法检查更新';
       }
       // A preinstalled newer target must never be overwritten by an older channel tag.
       if (local && (!release || compareVersions(local.version, release.version) >= 0))
@@ -195,7 +213,7 @@ export class UpdateManager implements UpdateController {
           covroCodex: local.covroCodex,
         };
       if (!release) throw new Error('未找到可用版本');
-      this.available = {
+      available = {
         version: release.version,
         requestedChannel: channel,
         channel: release.channel,
@@ -203,27 +221,129 @@ export class UpdateManager implements UpdateController {
         downgrade: compareVersions(release.version, packageInfo.version) < 0,
         codex: assessCodexCompatibility(release.covroCodex, this.codexVersion()),
       };
-      this.checkError = undefined;
     } catch (error) {
-      this.available = undefined;
-      this.checkError = error instanceof Error ? error.message : '无法检查更新';
+      available = undefined;
+      checkError = error instanceof Error ? error.message : '无法检查更新';
       this.logger.warn('update.check_failed', {
         ...errorFields(error),
         durationMs: Math.round(performance.now() - started),
       });
     }
+    this.target = target;
+    this.runtimeError = runtimeError;
+    this.available = available;
+    this.checkError = checkError;
     this.checkedAt = Date.now();
     this.logger.debug('update.check_finished', {
-      outcome: this.checkError ? 'failed' : 'succeeded',
+      outcome: checkError ? 'failed' : 'succeeded',
       durationMs: Math.round(performance.now() - started),
     });
     return this.status();
   }
   async configure(input: UpdateSettings) {
     if (!this.context || this.reason) throw new AppError('UPDATE_UNSUPPORTED', this.reason, 409);
-    this.settings = settingsSchema.parse(input);
-    await saveJson(join(this.context.directory, 'settings.json'), this.settings);
-    return this.status();
+    return this.serialize(async () => {
+      const run = (await this.status()).run;
+      if (updateActive(run) && (!run?.automatic || run.transactionStartedAt))
+        throw new AppError('UPDATE_PLAN_FIXED', '升级事务已开始，请等待完成后更改设置', 409);
+      this.settings = settingsSchema.parse(input);
+      this.revision = crypto.randomUUID();
+      await saveJson(join(this.context!.directory, 'settings-revision.json'), this.revision);
+      await saveJson(join(this.context!.directory, 'settings.json'), this.settings);
+      return this.status();
+    });
+  }
+  private async assertAutomaticPlan(run: UpdateRun) {
+    if (!run.automatic || run.transactionStartedAt || run.phase !== 'waiting')
+      throw new AppError('UPDATE_PLAN_FIXED', '升级已开始或不是自动升级计划', 409);
+    if (
+      !this.settings.automatic ||
+      this.settings.channel !== run.channel ||
+      this.revision !== run.automatic.revision ||
+      (await readJson(join(this.context!.directory, `cancel-${run.id}.json`)))
+    )
+      throw new AppError('UPDATE_PLAN_CANCELLED', '自动升级计划已取消或设置已变化', 409);
+  }
+  async cancel(id: string) {
+    z.uuid().parse(id);
+    return this.serialize(async () => {
+      const run = (await this.status()).run;
+      if (!run || run.id !== id) throw new AppError('UPDATE_PLAN_CHANGED', '升级计划已变化', 409);
+      // A retry of an acknowledged cancellation is harmless.
+      if (run.phase === 'cancelled') return this.status();
+      if (!run.automatic || run.transactionStartedAt || run.phase !== 'waiting')
+        throw new AppError('UPDATE_PLAN_FIXED', '升级已开始，不能取消事务', 409);
+      await saveJson(join(this.context!.directory, `cancel-${id}.json`), { cancelled: true });
+      return this.status();
+    });
+  }
+  async automaticPlan(id: string, fresh = false) {
+    const run = (await this.status()).run;
+    if (!run || run.id !== id) throw new Error('升级计划已变化');
+    await this.assertAutomaticPlan(run);
+    const otherChannel = this.available && this.available.requestedChannel !== run.channel;
+    const result = fresh || otherChannel ? await this.check(run.channel) : await this.status();
+    // Settings/cancellation may have changed while a network/runtime probe was pending.
+    await this.assertAutomaticPlan(run);
+    return result;
+  }
+  async freezeAutomatic(id: string, checkedAt: number, readiness: () => { ready: boolean }) {
+    return this.serialize(async () => {
+      const status = await this.status();
+      const run = status.run;
+      if (!run || run.id !== id) throw new Error('升级计划已变化');
+      await this.assertAutomaticPlan(run);
+      const candidate = status.available;
+      const target = status.runtime?.target as RuntimeTarget | undefined;
+      if (
+        checkedAt !== status.checkedAt ||
+        !candidate ||
+        JSON.stringify(candidate) !== JSON.stringify(run.candidate) ||
+        JSON.stringify(target) !== JSON.stringify(run.runtime?.target)
+      )
+        return { ready: false };
+      if (
+        status.checkError ||
+        status.runtime?.error ||
+        candidate.codex.status !== 'verified' ||
+        candidate.downgrade ||
+        compareVersions(candidate.version, packageInfo.version) <= 0 ||
+        candidate.requestedChannel !== run.channel ||
+        !candidate.commit
+      )
+        throw new Error('自动升级目标或兼容性无法确认，请重新检查更新');
+      const context = await readJson<UpdateContext>(join(this.context!.directory, 'context.json'));
+      if (!context || !target) throw new Error('缺少升级运行环境');
+      if (!readiness().ready) return { ready: false };
+      // Serialize the durable freeze with configure/cancel. No channel retargeting after this point.
+      await saveJson(join(this.context!.directory, 'context.json'), {
+        ...context,
+        target,
+        reuseTarget:
+          runtimeChanged(target) &&
+          target.root !== context.root.replace(/\/$/, '') &&
+          target.version === candidate.version,
+      });
+      const frozen: UpdateRun = {
+        ...run,
+        target: candidate.version,
+        commit: candidate.commit,
+        sourceChannel: candidate.channel,
+        candidate,
+        codex: {
+          version: candidate.codex.version!,
+          manifest: candidate.codex.manifest!,
+          confirmedUnverified: false,
+        },
+        runtime: { from: run.runtime!.from, target },
+        phase: 'installing',
+        message: '正在安装候选 npm 包',
+        transactionStartedAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await saveJson(join(this.context!.directory, 'run.json'), frozen);
+      return { ready: true, run: frozen };
+    });
   }
   async activationPending() {
     const run = (await this.status()).run;
@@ -270,8 +390,9 @@ export class UpdateManager implements UpdateController {
       runtime: run.runtime ? { ...run.runtime, actual: runningRuntime() } : undefined,
     });
   }
-  async start(input: z.infer<typeof updateRequestSchema>) {
+  async start(input: z.infer<typeof updateRequestSchema>, automatic = false) {
     const request = updateRequestSchema.parse(input);
+    const automaticRevision = this.revision;
     if (!this.context || this.reason) throw new AppError('UPDATE_UNSUPPORTED', this.reason, 409);
     await mkdir(this.context.directory, { recursive: true, mode: 0o700 });
     let releaseLock: () => Promise<void>;
@@ -304,11 +425,19 @@ export class UpdateManager implements UpdateController {
       }
       const channel = request.channel ?? this.settings.channel;
       const checked = await this.check(channel);
-      const target = this.target;
-      if (this.runtimeError || !target)
+      const target = checked.runtime?.target as RuntimeTarget | undefined;
+      if (
+        automatic &&
+        (!this.settings.automatic ||
+          channel !== this.settings.channel ||
+          automaticRevision !== this.revision)
+      )
+        return this.status();
+      if (automatic && checked.available?.codex.status !== 'verified') return this.status();
+      if (checked.runtime?.error || !target)
         throw new AppError(
           'UPDATE_RUNTIME',
-          this.runtimeError ?? '无法确认目标 Node 环境，请重新检查。',
+          checked.runtime?.error ?? '无法确认目标 Node 环境，请重新检查。',
           409,
         );
       if (!checked.available)
@@ -351,8 +480,11 @@ export class UpdateManager implements UpdateController {
         sourceChannel: checked.available.channel,
         commit: checked.available.commit,
         codex: { version: codex.version!, manifest: codex.manifest!, confirmedUnverified },
-        phase: 'installing',
-        message: '正在安装候选 npm 包',
+        automatic: automatic ? { revision: automaticRevision } : undefined,
+        candidate: checked.available,
+        transactionStartedAt: automatic ? undefined : Date.now(),
+        phase: automatic ? 'waiting' : 'installing',
+        message: automatic ? '等待所有任务结束后重新检查更新' : '正在安装候选 npm 包',
         startedAt: Date.now(),
         updatedAt: Date.now(),
         runtime: { from: runningRuntime(), target: target },
@@ -472,7 +604,7 @@ export class UpdateManager implements UpdateController {
         result.run?.target !== result.available.version &&
         !updateActive(result.run)
       )
-        return this.start({ clientOperationId: crypto.randomUUID() });
+        return this.start({ clientOperationId: crypto.randomUUID() }, true);
       return result;
     })();
     try {

@@ -70,5 +70,8 @@
   "runtime": "Node 环境",
   "installation_source": "安装来源",
   "runtime_unavailable": "无法确认目标 Node 环境，请查看详情后重新检查。",
-  "migrate_and_restart": "切换 Node 并重启"
+  "migrate_and_restart": "切换 Node 并重启",
+  "cancelled": "升级已取消",
+  "cancel_pending_update": "取消待执行升级",
+  "cancelledDescription": "待执行升级已取消，当前服务继续运行。"
 }

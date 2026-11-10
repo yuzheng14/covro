@@ -27,6 +27,7 @@ import type { UpdateContext } from './manager.js';
 import { control, isNotRunning } from '../cli/control.js';
 import { startBackground, stopBackground } from '../cli/background.js';
 import { copyDurable, readJson, saveJson } from './files.js';
+import { confirmAutomaticFreeze, waitForAutomaticPlan } from './plan.js';
 import { activateUpdate, transactionPaths } from './transaction.js';
 import { inspectInstallation, registry } from './registry.js';
 import {
@@ -127,7 +128,7 @@ async function workerCore(directory: string, logger: Logger) {
     await saveJson(join(directory, 'run.json'), record);
     logger.info('update.phase_changed', { updateId: record.id, stage: phase });
   };
-  const paths = transactionPaths(
+  let paths = transactionPaths(
     context.target?.root ?? context.root,
     record.id,
     context.dataDir,
@@ -137,6 +138,35 @@ async function workerCore(directory: string, logger: Logger) {
   let releaseMaintenance: (() => Promise<void>) | undefined;
   let releaseData: (() => Promise<void>) | undefined;
   try {
+    if (record.automatic && !record.transactionStartedAt && process.argv[3] !== '--repair') {
+      record = await waitForAutomaticPlan(record, {
+        status: (fresh) =>
+          control(context.location, 'automatic-update-plan', { id: record!.id, fresh }),
+        readiness: () => control(context.location, 'update-readiness'),
+        save: async (next) => {
+          record = next;
+          await saveJson(join(directory, 'run.json'), record);
+        },
+        freeze: (checkedAt) =>
+          confirmAutomaticFreeze(
+            record!.id,
+            () =>
+              control(context.location, 'freeze-automatic-update', { id: record!.id, checkedAt }),
+            () => readJson<UpdateRun>(join(directory, 'run.json')),
+          ),
+        pause: () => setTimeout(2_000),
+      });
+      const frozen = await readJson<UpdateContext>(join(directory, 'context.json'));
+      if (!frozen) throw new Error('缺少固定目标运行环境');
+      Object.assign(context, frozen);
+      paths = transactionPaths(
+        context.target?.root ?? context.root,
+        record.id,
+        context.dataDir,
+        context.location.config,
+        join(backupDirectory(context.location.home, context.dataDir), record.id),
+      );
+    }
     if (record.runtime) await verifyRuntimeExecutable(record.runtime.from);
     const previousMetadata = await readJson<{ version: string }>(
       join(paths.previous, 'package.json'),
@@ -397,6 +427,10 @@ async function workerCore(directory: string, logger: Logger) {
             );
             if (result.ready) {
               await checkCodex();
+              await verifyMigrations(context, candidateRoot);
+              const pinned = await readJson<typeof candidate>(join(candidateRoot, 'package.json'));
+              if (JSON.stringify(pinned) !== JSON.stringify(candidate))
+                throw new Error('固定候选包在安装后发生变化，拒绝切换');
               return;
             }
             await update('waiting', result.reason ?? '等待所有任务结束');
@@ -450,9 +484,13 @@ async function workerCore(directory: string, logger: Logger) {
       // A lost commit response cannot authorize restoring older data.
       record = latest;
     } else if (!['rolledBack', 'failed'].includes(record.phase))
-      await update('failed', message(error));
+      await update(
+        (error as NodeJS.ErrnoException).code === 'UPDATE_PLAN_CANCELLED' ? 'cancelled' : 'failed',
+        message(error),
+      );
     logger.error('update.failed', { updateId: record.id, ...errorFields(error) });
-    process.exitCode = record.committed || record.phase === 'rolledBack' ? 0 : 1;
+    process.exitCode =
+      record.committed || ['rolledBack', 'cancelled'].includes(record.phase) ? 0 : 1;
   } finally {
     await releaseData?.();
     await releaseMaintenance?.();
