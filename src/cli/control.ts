@@ -30,9 +30,13 @@ export function control<T = unknown>(
         incoming.on('error', reject);
         incoming.on('end', () => {
           try {
-            const result = JSON.parse(body) as T & { error?: string };
+            const result = JSON.parse(body) as T & { error?: string; code?: string };
             if (incoming.statusCode !== 200)
-              reject(new Error(result.error ?? 'Control request failed'));
+              reject(
+                Object.assign(new Error(result.error ?? 'Control request failed'), {
+                  code: result.code,
+                }),
+              );
             else resolve(result);
           } catch (error) {
             reject(error);

@@ -1,4 +1,5 @@
-import { execFile } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
@@ -8,6 +9,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   realpath,
   rm,
   symlink,
@@ -16,8 +18,9 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeAll, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
+import { chromium } from '@playwright/test';
 import { packageInfo } from '../../src/cli/paths.js';
-import type { UpdateStatus } from '../../src/shared/updates.js';
+import type { RuntimeIdentity, UpdateRun, UpdateStatus } from '../../src/shared/updates.js';
 
 const exec = promisify(execFile);
 const cleanups: (() => Promise<unknown>)[] = [];
@@ -28,7 +31,7 @@ beforeAll(async () => {
   await exec(process.execPath, ['--import', 'tsx', 'scripts/build-server.ts']);
 }, 30_000);
 
-async function fixture() {
+async function fixture(web = false) {
   // Short private Unix socket paths; HOME, Codex data and all npm prefixes are disposable.
   const directory = await realpath(await mkdtemp('/tmp/c281-'));
   cleanups.push(() => rm(directory, { recursive: true, force: true }));
@@ -54,7 +57,7 @@ async function fixture() {
     await cp('bin', join(root, 'bin'), { recursive: true });
     await cp('dist', join(root, 'dist'), {
       recursive: true,
-      filter: (path) => !/^dist\/web(?:\/|$)/.test(path) && !path.endsWith('.map'),
+      filter: (path) => (web || !/^dist\/web(?:\/|$)/.test(path)) && !path.endsWith('.map'),
     });
     await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
     await writeFile(join(root, 'package.json'), JSON.stringify(packageInfo));
@@ -106,7 +109,7 @@ async function fixture() {
       ).stdout,
     ) as UpdateStatus & {
       pid: number;
-      runtime: { node: string; nodeVersion: string; root: string };
+      runtime: RuntimeIdentity;
       codexReady: boolean;
     };
   cleanups.push(async () => {
@@ -117,7 +120,29 @@ async function fixture() {
   const db = new Database(join(directory, 'data/app.sqlite'));
   db.prepare('INSERT INTO preferences VALUES (?, ?)').run('runtime-test', '"preserved"');
   db.close();
-  return { cli, directory, roots, nodes, config, configText, home, releaseMetadata };
+  const origin = `http://127.0.0.1:${address.port}`;
+  const post = async (path: string, body: object) => {
+    const response = await fetch(origin + path, {
+      method: 'POST',
+      headers: { origin, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  };
+  return {
+    cli,
+    directory,
+    roots,
+    nodes,
+    config,
+    configText,
+    home,
+    releaseMetadata,
+    env,
+    origin,
+    post,
+  };
 }
 
 it('migrates an equal Covro version to the default Node and keeps it on a later old-CLI start', async () => {
@@ -223,3 +248,222 @@ it('restores the original runtime and data when an equal-version target fails st
   });
   db.close();
 }, 60_000);
+
+it.each(['success', 'rollback'] as const)(
+  'refreshes one idle automatic plan and pins its real %s transaction',
+  async (mode) => {
+    const f = await fixture(Boolean(process.env.COVRO_SCREENSHOTS));
+    const prefix = join(f.directory, '1');
+    const npm = join(prefix, 'npm/bin/npm-cli.js');
+    await mkdir(dirname(npm), { recursive: true });
+    await cp('tests/fixtures/runtime-npm.mjs', npm);
+    await chmod(npm, 0o755);
+    await writeFile(join(prefix, 'npm/package.json'), JSON.stringify({ name: 'npm' }));
+    await rm(join(prefix, 'bin/npm'));
+    await symlink(npm, join(prefix, 'bin/npm'));
+    if (process.env.COVRO_SCREENSHOTS) {
+      // Fixture packages change version without rebuilding Vite. Keep the candidate UI identity
+      // aligned as a real release would, so its normal upgrade reload settles after activation.
+      const assets = join(f.roots[1]!, 'dist/web/assets');
+      for (const file of await readdir(assets)) {
+        if (!file.startsWith('index-') || !file.endsWith('.js')) continue;
+        const path = join(assets, file);
+        await writeFile(
+          path,
+          (await readFile(path, 'utf8')).replaceAll(packageInfo.version, '99.0.0-dev.5'),
+        );
+      }
+    }
+    if (mode === 'rollback') {
+      const entry = join(f.roots[1]!, 'bin/covro.mjs');
+      await writeFile(
+        entry,
+        `if (process.argv[2] === 'run') throw new Error('isolated automatic failure');\n` +
+          (await readFile(entry, 'utf8')).replace(/^#!.*\n/, ''),
+      );
+    }
+    const project = (await f.post('/api/projects', {
+      path: f.directory,
+      name: 'Idle update verification',
+    })) as { id: string };
+    const held = (await f.post(`/api/projects/${project.id}/shell`, {
+      clientOperationId: randomUUID(),
+      command: 'sleep 120',
+    })) as { result: { shellCommand: { id: string } } };
+    const updateDir = join(
+      f.home,
+      'updates',
+      createHash('sha256')
+        .update(f.roots[0]! + '/')
+        .digest('hex')
+        .slice(0, 16),
+    );
+    const writeRelease = (n: number) =>
+      writeFile(
+        f.releaseMetadata,
+        JSON.stringify({
+          ...packageInfo,
+          version: `99.0.0-dev.${n}`,
+          covroCommit: String(n).repeat(40),
+        }),
+      );
+    await f.cli('update', 'status');
+    await writeRelease(3);
+    await f.post('/api/updates/settings', { channel: 'dev', automatic: true });
+    const checked = (await f.post('/api/updates/check', { channel: 'dev' })) as UpdateStatus;
+    const source = await f.cli('status');
+    const run: UpdateRun = {
+      id: randomUUID(),
+      from: packageInfo.version,
+      target: checked.available!.version,
+      channel: 'dev',
+      sourceChannel: checked.available!.channel,
+      commit: checked.available!.commit,
+      automatic: {
+        revision: JSON.parse(await readFile(join(updateDir, 'settings-revision.json'), 'utf8')),
+      },
+      candidate: checked.available,
+      runtime: { from: source.runtime, target: checked.runtime!.target! },
+      phase: 'waiting',
+      message: 'Waiting for shell task',
+      startedAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await writeFile(
+      join(updateDir, 'context.json'),
+      JSON.stringify({
+        location: (await import('../../src/cli/paths.js')).paths(f.config),
+        root: f.roots[0] + '/',
+        directory: updateDir,
+        dataDir: join(f.directory, 'data'),
+        source: { node: f.nodes[0], entry: join(f.roots[0]!, 'bin/covro.mjs'), path: f.env.PATH },
+        target: checked.runtime!.target,
+      }),
+    );
+    // paths() is evaluated in the test process; explicitly use the isolated home/socket.
+    const context = JSON.parse(await readFile(join(updateDir, 'context.json'), 'utf8'));
+    const location = context.location;
+    const isolatedState = join(f.home, 'instances', location.key);
+    Object.assign(location, {
+      home: f.home,
+      state: isolatedState,
+      socket: join(f.home, `c-${location.key}.sock`),
+      logs: join(isolatedState, 'logs'),
+      log: join(isolatedState, 'covro.log'),
+    });
+    await writeFile(join(updateDir, 'context.json'), JSON.stringify(context));
+    await writeFile(join(updateDir, 'run.json'), JSON.stringify(run));
+    await writeFile(join(isolatedState, 'updates.json'), JSON.stringify({ directory: updateDir }));
+    const child = spawn(f.nodes[0]!, [resolve('dist/update-worker.cjs'), updateDir], {
+      env: f.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let errors = '';
+    child.stderr.on('data', (chunk: Buffer) => {
+      errors += chunk.toString();
+      process.stderr.write(chunk);
+    });
+    cleanups.push(async () => {
+      if (child.exitCode === null) {
+        child.kill('SIGTERM');
+        await once(child, 'exit');
+      }
+    });
+    const status = async () =>
+      JSON.parse(await readFile(join(updateDir, 'run.json'), 'utf8')) as UpdateRun;
+    const browser = process.env.COVRO_SCREENSHOTS ? await chromium.launch() : undefined;
+    if (browser) cleanups.push(() => browser.close());
+    const page = await browser?.newPage({
+      viewport: { width: 1440, height: 1200 },
+      locale: 'zh-CN',
+    });
+    if (page) {
+      await page.goto(f.origin);
+      await page.getByRole('button', { name: 'Covro 更新', exact: true }).click();
+    }
+    const capture = async (state: string) => {
+      if (!page || !process.env.COVRO_SCREENSHOTS) return;
+      const progress = page.locator('.update-progress');
+      await progress.scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: join(process.env.COVRO_SCREENSHOTS, `325-isolated-${mode}-${state}.png`),
+        fullPage: true,
+      });
+    };
+
+    for (const n of [4, 5]) {
+      await writeRelease(n);
+      await f.post('/api/updates/check', { channel: 'dev' });
+      await expect
+        .poll(
+          async () => {
+            const r = await status();
+            if (r.phase === 'failed') throw new Error(JSON.stringify(r) + errors);
+            return r.target;
+          },
+          { timeout: 15_000 },
+        )
+        .toBe(`99.0.0-dev.${n}`);
+      expect((await status()).id).toBe(run.id);
+      if (page) {
+        await page
+          .locator('.update-progress')
+          .filter({ hasText: `99.0.0-dev.${n}` })
+          .waitFor();
+        await capture(`refreshed-${n}`);
+      }
+      expect((await f.cli('status')).pid).toBe(source.pid);
+      expect(
+        await readFile(f.releaseMetadata + '.npm.json', 'utf8').catch(() => undefined),
+      ).toBeUndefined();
+    }
+    // The npm fixture moves the channel again while installing. This cannot change the frozen target.
+    const afterInstall = join(f.directory, 'after-install.json');
+    await writeFile(
+      afterInstall,
+      JSON.stringify({ ...packageInfo, version: '99.0.0-dev.6', covroCommit: '6'.repeat(40) }),
+    );
+    await writeFile(f.releaseMetadata + '.after-install', await readFile(afterInstall));
+    await f.post(`/api/shell/${held.result.shellCommand.id}/interrupt`, {
+      clientOperationId: randomUUID(),
+    });
+    await expect
+      .poll(async () => (await status()).phase, { timeout: 60_000 })
+      .toBe(mode === 'success' ? 'succeeded' : 'rolledBack');
+    // rolledBack is recorded before the old daemon finishes starting; wait for verified recovery.
+    await expect.poll(() => child.exitCode, { timeout: 60_000 }).toBe(0);
+    if (page) {
+      await page.goto(f.origin);
+      await page.getByRole('button', { name: 'Covro 更新', exact: true }).click();
+      await page
+        .locator(
+          `.update-progress[data-phase="${mode === 'success' ? 'succeeded' : 'rolledBack'}"]`,
+        )
+        .waitFor({ timeout: 15_000 });
+      await capture('final');
+    }
+    const final = await status();
+    expect(final).toMatchObject({
+      id: run.id,
+      target: '99.0.0-dev.5',
+      commit: '5'.repeat(40),
+      transactionStartedAt: expect.any(Number),
+    });
+    const installedBy = JSON.parse(await readFile(f.releaseMetadata + '.npm.json', 'utf8')) as {
+      args: string[];
+    };
+    expect(installedBy.args.at(-1)).toBe('@covro/covro@99.0.0-dev.5');
+    expect(
+      (await readFile(f.releaseMetadata + '.installs', 'utf8')).trim().split('\n'),
+    ).toHaveLength(1);
+    expect((await f.cli('status')).version).toBe(
+      mode === 'success' ? '99.0.0-dev.5' : packageInfo.version,
+    );
+    const db = new Database(join(f.directory, 'data/app.sqlite'));
+    expect(db.prepare('SELECT value FROM preferences WHERE key=?').get('runtime-test')).toEqual({
+      value: '"preserved"',
+    });
+    db.close();
+  },
+  90_000,
+);

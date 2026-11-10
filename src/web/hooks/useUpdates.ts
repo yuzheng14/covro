@@ -25,7 +25,9 @@ export function useUpdates() {
       next.version !== 'unknown' &&
       next.version !== builtVersion &&
       !reloading.current &&
-      (!next.run || next.run.committed || ['rolledBack', 'failed'].includes(next.run.phase))
+      (!next.run ||
+        next.run.committed ||
+        ['rolledBack', 'failed', 'cancelled'].includes(next.run.phase))
     ) {
       reloading.current = true;
       try {
@@ -93,6 +95,7 @@ export function useUpdates() {
     reloadError,
     check: (channel: ReleaseChannel) => perform('/api/updates/check', { channel }),
     configure: (settings: UpdateSettings) => perform('/api/updates/settings', settings),
+    cancel: (id: string) => perform('/api/updates/cancel', { id }),
     start: (
       channel: ReleaseChannel,
       allowDowngrade: boolean,

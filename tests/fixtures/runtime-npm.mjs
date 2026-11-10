@@ -1,6 +1,6 @@
 // Test-only npm protocol simulator; never downloads or installs external packages.
 import process from 'node:process';
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 const metadata = process.env.COVRO_TEST_RELEASE_METADATA;
@@ -19,4 +19,7 @@ else if (args[0] === 'install') {
   });
   await writeFile(join(staged, 'package.json'), await readFile(metadata));
   await writeFile(metadata + '.npm.json', JSON.stringify({ node: process.execPath, args }));
+  await appendFile(metadata + '.installs', args.at(-1) + '\n');
+  const after = await readFile(metadata + '.after-install').catch(() => undefined);
+  if (after) await writeFile(metadata, after);
 } else throw new Error('Unexpected fixture npm command');

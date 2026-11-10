@@ -81,7 +81,7 @@ async function fixture(channel: ReleaseChannel, version = '0.2.0', automatic = f
   await vi.waitFor(async () => expect((await manager.status()).checkedAt).toBeDefined());
   // Startup checks are asynchronous; let the automatic handler finish before later assertions.
   await vi.waitFor(async () =>
-    expect((await manager.status()).run?.phase ?? 'idle').toBe(automatic ? 'installing' : 'idle'),
+    expect((await manager.status()).run?.phase ?? 'idle').toBe(automatic ? 'waiting' : 'idle'),
   );
   if (automatic)
     await vi.waitFor(async () =>
@@ -261,4 +261,146 @@ it('selects a newer preinstalled target without silently downgrading it to the c
   expect((await manager.start({ clientOperationId: crypto.randomUUID() })).run?.target).toBe(
     '0.4.0',
   );
+});
+
+it('merges automatic targets into one plan and freezes exact metadata only after a fresh idle check', async () => {
+  packageInfo.version = '0.1.0';
+  const { manager, setTags } = await fixture('dev', '0.2.0', true);
+  const original = (await manager.status()).run!;
+  expect(original).toMatchObject({ phase: 'waiting', automatic: { revision: 'initial' } });
+  for (const version of ['0.3.0-dev.3', '0.3.0-dev.4']) {
+    setTags({ latest: '0.2.0', dev: version });
+    const checked = await manager.automaticPlan(original.id, true);
+    const candidate = checked.available!;
+    await saveJson(join(manager.context!.directory, 'run.json'), {
+      ...original,
+      target: candidate.version,
+      commit: candidate.commit,
+      candidate,
+      codex: {
+        version: candidate.codex.version!,
+        manifest: candidate.codex.manifest!,
+        confirmedUnverified: false,
+      },
+      runtime: { from: original.runtime!.from, target: checked.runtime!.target! },
+    });
+    expect(
+      await manager.freezeAutomatic(original.id, checked.checkedAt!, () => ({ ready: false })),
+    ).toEqual({ ready: false });
+  }
+  const checked = await manager.automaticPlan(original.id, true);
+  const frozen = await manager.freezeAutomatic(original.id, checked.checkedAt!, () => ({
+    ready: true,
+  }));
+  expect(frozen.run).toMatchObject({
+    id: original.id,
+    target: '0.3.0-dev.4',
+    commit: 'commit-0.3.0-dev.4',
+    phase: 'installing',
+    transactionStartedAt: expect.any(Number),
+  });
+  expect(spawn).toHaveBeenCalledOnce();
+  await expect(manager.cancel(original.id)).rejects.toMatchObject({ code: 'UPDATE_PLAN_FIXED' });
+  await expect(manager.configure({ channel: 'stable', automatic: false })).rejects.toMatchObject({
+    code: 'UPDATE_PLAN_FIXED',
+  });
+  setTags({ latest: '0.4.0', dev: '0.5.0-dev.1' });
+  await manager.check();
+  expect((await manager.status()).run?.target).toBe('0.3.0-dev.4');
+});
+
+it.each(['disable', 'channel', 'cancel', 'off-on'] as const)(
+  'invalidates waiting plans on %s, including changes during probes',
+  async (change) => {
+    packageInfo.version = '0.1.0';
+    const { manager, fetch } = await fixture('dev', '0.2.0', true);
+    const run = (await manager.status()).run!;
+    let release!: () => void;
+    const pending = new Promise<void>((done) => {
+      release = done;
+    });
+    const original = fetch.getMockImplementation()!;
+    fetch.mockImplementation(async (...args) => {
+      await pending;
+      return original(...args);
+    });
+    const probe = expect(manager.automaticPlan(run.id, true)).rejects.toMatchObject({
+      code: 'UPDATE_PLAN_CANCELLED',
+    });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    if (change === 'cancel') await manager.cancel(run.id);
+    else {
+      await manager.configure({
+        channel: change === 'channel' ? 'stable' : 'dev',
+        automatic: change === 'channel',
+      });
+      if (change === 'off-on') await manager.configure({ channel: 'dev', automatic: true });
+    }
+    release();
+    await probe;
+    await expect(
+      manager.freezeAutomatic(run.id, Date.now(), () => ({ ready: true })),
+    ).rejects.toMatchObject({ code: 'UPDATE_PLAN_CANCELLED' });
+    expect(spawn).toHaveBeenCalledOnce();
+  },
+);
+
+it('never marks a manually selected candidate as a moving automatic plan', async () => {
+  packageInfo.version = '0.1.0';
+  const { manager, setTags } = await fixture('dev');
+  const started = await manager.start({ clientOperationId: crypto.randomUUID() });
+  expect(started.run?.automatic).toBeUndefined();
+  setTags({ latest: '0.3.0', dev: '0.4.0-dev.1' });
+  await manager.check();
+  expect((await manager.status()).run?.target).toBe('0.2.0');
+});
+
+it('publishes complete check snapshots while another runtime probe is pending', async () => {
+  packageInfo.version = '0.1.0';
+  const { manager, setTags } = await fixture('dev');
+  const before = await manager.status();
+  const target = await runtime.resolveRuntimeTarget();
+  let release!: () => void;
+  const pending = new Promise<void>((done) => {
+    release = done;
+  });
+  vi.mocked(runtime.resolveRuntimeTarget).mockImplementationOnce(async () => {
+    await pending;
+    return target;
+  });
+  setTags({ latest: '0.3.0', dev: '0.4.0-dev.1' });
+  const check = manager.check();
+  await Promise.resolve();
+  expect(await manager.status()).toMatchObject({
+    available: before.available,
+    runtime: before.runtime,
+  });
+  release();
+  expect((await check).available?.version).toBe('0.4.0-dev.1');
+});
+
+it('reports a channel probe failure even with a preinstalled fallback, so automatic plans cannot use incomplete channel results', async () => {
+  packageInfo.version = '0.1.0';
+  const { manager, setTags } = await fixture('dev');
+  vi.mocked(runtime.resolveRuntimeTarget).mockResolvedValue({
+    ...(await runtime.resolveRuntimeTarget()),
+    node: '/new/node',
+    version: '0.4.0',
+    covroCommit: 'local-commit',
+    covroCodex: CODEX_COMPATIBILITY,
+  });
+  setTags({ latest: '0.2.0', dev: 503 });
+  expect(await manager.check()).toMatchObject({
+    available: { version: '0.4.0' },
+    checkError: expect.stringContaining('503'),
+  });
+});
+
+it('keeps a waiting automatic subscription when another client previews a different channel', async () => {
+  packageInfo.version = '0.1.0';
+  const { manager } = await fixture('dev', '0.2.0', true);
+  const run = (await manager.status()).run!;
+  await manager.check('stable');
+  expect((await manager.automaticPlan(run.id)).available?.requestedChannel).toBe('dev');
+  expect((await manager.status()).run?.id).toBe(run.id);
 });

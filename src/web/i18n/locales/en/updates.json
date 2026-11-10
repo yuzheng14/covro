@@ -70,5 +70,8 @@
   "runtime": "Node environment",
   "installation_source": "Installation source",
   "runtime_unavailable": "Cannot confirm the target Node environment. Review details and check again.",
-  "migrate_and_restart": "Switch Node and restart"
+  "migrate_and_restart": "Switch Node and restart",
+  "cancelled": "Update cancelled",
+  "cancel_pending_update": "Cancel pending update",
+  "cancelledDescription": "The pending update was cancelled. The current service continues running."
 }

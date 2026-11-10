@@ -583,3 +583,97 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
     });
   }
 }
+
+for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
+  for (const viewport of [
+    { name: 'desktop', width: 1440, height: 1200 },
+    { name: 'mobile', width: 390, height: 844 },
+  ]) {
+    for (const theme of ['light', 'dark'] as const) {
+      test(`${viewport.name}: ${locale} ${theme} refreshes a waiting automatic target and keeps a frozen transaction consistent`, async ({
+        page,
+      }) => {
+        const strings = JSON.parse(
+          readFileSync(
+            new URL(`../../src/web/i18n/locales/${locale}/updates.json`, import.meta.url),
+            'utf8',
+          ),
+        ) as Record<string, string>;
+        const common = JSON.parse(
+          readFileSync(
+            new URL(`../../src/web/i18n/locales/${locale}/common.json`, import.meta.url),
+            'utf8',
+          ),
+        ) as Record<string, string>;
+        const f = await updatesFixture(page);
+        f.state.settings = { channel: 'dev', automatic: true };
+        const candidate = (n: number) => ({
+          version: `${nextVersion}-dev.${n}`,
+          requestedChannel: 'dev' as const,
+          channel: 'dev' as const,
+          commit: String(n).repeat(40),
+          downgrade: false,
+          codex: f.state.codex,
+        });
+        f.state.available = candidate(3);
+        f.state.run = {
+          id: crypto.randomUUID(),
+          from: currentVersion,
+          target: f.state.available.version,
+          channel: 'dev',
+          sourceChannel: 'dev',
+          automatic: { revision: 'fixture' },
+          candidate: f.state.available,
+          phase: 'waiting',
+          message: 'Waiting for a task',
+          startedAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        await page.setViewportSize(viewport);
+        await page.emulateMedia({ colorScheme: theme });
+        await page.clock.install();
+        await page.goto('/');
+        await confirmCompatibility(page);
+        await selectInterfaceLocale(page, locale);
+        await page.getByRole('button', { name: common.covro_updates, exact: true }).click();
+        const dialog = page.locator('.update-dialog');
+        await expect(dialog.locator('.update-progress')).toContainText(candidate(3).version);
+        await expect(dialog.getByRole('switch')).toBeEnabled();
+        await expect(
+          dialog.getByRole('button', { name: strings.cancel_pending_update, exact: true }),
+        ).toBeEnabled();
+        await screenshot(page, `325-${locale}-${viewport.name}-${theme}-before.png`);
+        f.state.available = candidate(4);
+        f.state.run = {
+          ...f.state.run!,
+          target: candidate(4).version,
+          candidate: candidate(4),
+          commit: candidate(4).commit,
+        };
+        await page.clock.fastForward(5000);
+        await expect(dialog.locator('.update-progress')).toContainText(candidate(4).version);
+        await expect(dialog.locator('.update-available')).toContainText(candidate(4).version);
+        await expect(dialog.locator('.update-release-notes')).toContainText(candidate(4).version);
+        await expect(dialog.locator('.update-codex').last()).toHaveAttribute(
+          'data-state',
+          'verified',
+        );
+        await dialog.locator('.update-progress').scrollIntoViewIfNeeded();
+        await screenshot(page, `325-${locale}-${viewport.name}-${theme}-refreshed.png`);
+        f.state.run = { ...f.state.run!, phase: 'installing', transactionStartedAt: Date.now() };
+        f.state.available = candidate(5);
+        await page.clock.fastForward(5000);
+        await expect(dialog.locator('.update-available')).toContainText(candidate(4).version);
+        await expect(dialog.locator('.update-release-notes')).toContainText(candidate(4).version);
+        await expect(dialog.getByRole('switch')).toBeDisabled();
+        f.state.run = { ...f.state.run!, phase: 'succeeded', committed: true };
+        f.state.available = candidate(4);
+        await page.clock.fastForward(5000);
+        await expect(dialog.locator('.update-progress')).toContainText(strings.update_successful!);
+        await screenshot(page, `325-${locale}-${viewport.name}-${theme}-succeeded.png`);
+        expect(await dialog.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+        expect(f.requests.filter((r) => r.path.endsWith('/run'))).toHaveLength(0);
+      });
+    }
+  }
+}

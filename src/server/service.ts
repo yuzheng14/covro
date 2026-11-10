@@ -259,7 +259,10 @@ export class GatewayService {
       ? new AppError('BACKUP_MAINTENANCE', '正在备份，请完成后重试。', 503)
       : new AppError('UPDATE_MAINTENANCE', '正在升级，请等待服务重新连接', 503);
   }
-  prepareUpdate(reason: 'update' | 'backup' = 'update'): { ready: boolean; reason?: string } {
+  prepareUpdate(
+    reason: 'update' | 'backup' = 'update',
+    closeAdmission = true,
+  ): { ready: boolean; reason?: string } {
     if (this.capacityRetries.active())
       return { ready: false, reason: '等待模型容量重试结束或取消' };
     if (this.projectClones.hasActive) return { ready: false, reason: '等待项目克隆完成或取消' };
@@ -276,7 +279,7 @@ export class GatewayService {
     )
       return { ready: false, reason: '等待执行中的任务、审批或输入结束' };
     // Synchronous gate and check share one event-loop boundary with perform().
-    this.setMaintenance(true, reason);
+    if (closeAdmission) this.setMaintenance(true, reason);
     return { ready: true };
   }
   addProject(input: CreateProjectInput) {

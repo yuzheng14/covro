@@ -70,5 +70,8 @@
   "runtime": "Node 環境",
   "installation_source": "インストール元",
   "runtime_unavailable": "移行先の Node 環境を確認できません。詳細を確認して再チェックしてください。",
-  "migrate_and_restart": "Node を切り替えて再起動"
+  "migrate_and_restart": "Node を切り替えて再起動",
+  "cancelled": "更新をキャンセルしました",
+  "cancel_pending_update": "待機中の更新をキャンセル",
+  "cancelledDescription": "待機中の更新をキャンセルしました。現在のサービスは稼働を続けます。"
 }

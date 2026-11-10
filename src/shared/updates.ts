@@ -10,7 +10,14 @@ export interface UpdateSettings {
   automatic: boolean;
 }
 export type UpdatePhase =
-  'installing' | 'waiting' | 'stopping' | 'verifying' | 'succeeded' | 'rolledBack' | 'failed';
+  | 'installing'
+  | 'waiting'
+  | 'stopping'
+  | 'verifying'
+  | 'succeeded'
+  | 'rolledBack'
+  | 'failed'
+  | 'cancelled';
 export interface RuntimeIdentity {
   node: string;
   nodeVersion: string;
@@ -34,6 +41,10 @@ export interface UpdateRun {
   startedAt: number;
   updatedAt: number;
   committed?: boolean;
+  /** Only channel-following automatic plans can change before installation. */
+  automatic?: { revision: string };
+  transactionStartedAt?: number;
+  candidate?: UpdateStatus['available'];
   runtime?: { from: RuntimeIdentity; target: RuntimeIdentity; actual?: RuntimeIdentity };
   codex?: { version: string; manifest: CodexCompatibilityManifest; confirmedUnverified: boolean };
 }
@@ -76,5 +87,6 @@ export interface UpdateController {
     allowDowngrade?: boolean;
     codexConfirmation?: CodexUpdateConfirmation;
   }): Promise<UpdateStatus>;
+  cancel?(id: string): Promise<UpdateStatus>;
   close(): void;
 }

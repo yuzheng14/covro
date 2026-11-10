@@ -27,6 +27,7 @@ function fixture() {
     check: vi.fn(async () => status),
     configure: vi.fn(async () => status),
     start: vi.fn(async () => status),
+    cancel: vi.fn(async () => status),
     close: () => {},
   };
   const origin = 'http://127.0.0.1:8787';
@@ -90,4 +91,16 @@ it('validates release-note selectors and keeps update controls independent of Gi
     (await post('/api/updates/run', { clientOperationId: randomUUID(), channel: 'stable' })).status,
   ).toBe(202);
   expect(updates.start).toHaveBeenCalledTimes(1);
+});
+
+it('validates cancellation identities and retains the normal origin boundary', async () => {
+  const { post, updates } = fixture();
+  const id = randomUUID();
+  expect(
+    (await post('/api/updates/cancel', { id }, { origin: 'https://attacker.example' })).status,
+  ).toBe(403);
+  expect((await post('/api/updates/cancel', { id: '../run' })).status).toBe(400);
+  expect(updates.cancel).not.toHaveBeenCalled();
+  expect((await post('/api/updates/cancel', { id })).status).toBe(200);
+  expect(updates.cancel).toHaveBeenCalledExactlyOnceWith(id);
 });
