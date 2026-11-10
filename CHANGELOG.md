@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.9.0](https://github.com/yuzheng14/covro/compare/v0.8.0...v0.9.0) (2026-11-10)
+
+
+### Features
+
+* **codex:** require one-time human command approval ([#331](https://github.com/yuzheng14/covro/issues/331)) ([6fdaf54](https://github.com/yuzheng14/covro/commit/6fdaf5429088afb7976568f4ed4fb447e70a5f91)), closes [#327](https://github.com/yuzheng14/covro/issues/327)
+* **codex:** verify compatibility with CLI 0.167.0 ([#330](https://github.com/yuzheng14/covro/issues/330)) ([1078ad1](https://github.com/yuzheng14/covro/commit/1078ad19f4c2961da4715b1282c573178a657040)), closes [#327](https://github.com/yuzheng14/covro/issues/327)
+* **composer:** reference workspace files with @ ([#319](https://github.com/yuzheng14/covro/issues/319)) ([c68972b](https://github.com/yuzheng14/covro/commit/c68972bda713606eab5e8ec5667fc592e8134fe1)), closes [#265](https://github.com/yuzheng14/covro/issues/265)
+* **logging:** add log queries and operational diagnostics ([#323](https://github.com/yuzheng14/covro/issues/323)) ([9bb5d26](https://github.com/yuzheng14/covro/commit/9bb5d263758e0991001e919eae918c9d6b7af76a))
+* **logging:** add private structured logs with bounded rotation ([#321](https://github.com/yuzheng14/covro/issues/321)) ([d768c0d](https://github.com/yuzheng14/covro/commit/d768c0d56f0ae6eff64e8751c0a6015b5fe6b082))
+* **logging:** trace requests and Codex background jobs ([#322](https://github.com/yuzheng14/covro/issues/322)) ([c9dd68c](https://github.com/yuzheng14/covro/commit/c9dd68c685b7db22727b158c49c10d15d8d06ed3))
+* **mcp:** expose managed project and session tools ([#310](https://github.com/yuzheng14/covro/issues/310)) ([97b0eb8](https://github.com/yuzheng14/covro/commit/97b0eb822f8a029aeb35f27e4f79f08ff93628df)), closes [#295](https://github.com/yuzheng14/covro/issues/295)
+* **questions:** skip native input and persist ended tracking ([#318](https://github.com/yuzheng14/covro/issues/318)) ([8b13d8f](https://github.com/yuzheng14/covro/commit/8b13d8fbecfa3f725260ad5838fff190cede5525)), closes [#302](https://github.com/yuzheng14/covro/issues/302)
+* **sessions:** create managed sessions with an initial prompt ([#309](https://github.com/yuzheng14/covro/issues/309)) ([e01b7d7](https://github.com/yuzheng14/covro/commit/e01b7d74cd51678ff28aeeedd4917fd5b9bb3469))
+
+
+### Bug Fixes
+
+* **chat:** complete jumps before applying streamed updates ([#328](https://github.com/yuzheng14/covro/issues/328)) ([83a0c95](https://github.com/yuzheng14/covro/commit/83a0c95c7e042765158ff887960ca04a8fbe859d))
+* **chat:** persist user messages until native confirmation ([#314](https://github.com/yuzheng14/covro/issues/314)) ([999dea7](https://github.com/yuzheng14/covro/commit/999dea76b6c26f3b7df20c49d0dd1061e2727495))
+* **chat:** show submitted prompts during context compaction ([#315](https://github.com/yuzheng14/covro/issues/315)) ([3d0b586](https://github.com/yuzheng14/covro/commit/3d0b586f8340f59b0e010e354f6f20787b2d6c83)), closes [#313](https://github.com/yuzheng14/covro/issues/313)
+* **ci:** stabilize archive E2E setup and retain diagnostics ([#336](https://github.com/yuzheng14/covro/issues/336)) ([305afbf](https://github.com/yuzheng14/covro/commit/305afbfd6ac1769f972cff6661df709e05b48451))
+* **codex:** preserve history across provider changes ([#332](https://github.com/yuzheng14/covro/issues/332)) ([570d779](https://github.com/yuzheng14/covro/commit/570d779152b5ac194f87b2843db34446beebfa3c)), closes [#327](https://github.com/yuzheng14/covro/issues/327)
+* **sidebar:** deduplicate waiting input indicators ([#320](https://github.com/yuzheng14/covro/issues/320)) ([0be9354](https://github.com/yuzheng14/covro/commit/0be9354c358b02064539eabf6c17e0439d75abbc))
+* **sidebar:** keep long title tooltips from blocking navigation ([#317](https://github.com/yuzheng14/covro/issues/317)) ([cfcc456](https://github.com/yuzheng14/covro/commit/cfcc45651d7701d46228d045142ced6a284df881))
+
 ## [0.8.0](https://github.com/yuzheng14/covro/compare/v0.7.0...v0.8.0) (2026-11-03)
 
 
