@@ -283,8 +283,9 @@ export class ThreadTitles {
     job?: Job,
   ) {
     if (job) job.stage = 'config_read';
-    // Config reads may redact values to empty strings. Override only enabled flags,
-    // never round-trip the returned server definitions (timeouts/credentials/etc.).
+    // CLI-injected MCP tables are replaced by overrides, so disabled entries still
+    // need their transport fields. Keep names literal (they may contain dots), and
+    // never round-trip optional settings that config/read may redact or credentials.
     // The filesystem sandbox does not constrain MCP tools.
     const { config } = await this.call('config/read', {
       cwd: source.cwd,
@@ -297,10 +298,18 @@ export class ThreadTitles {
       'tools.experimental_request_user_input.enabled': false,
       'tools.update_plan.enabled': false,
       mcp_servers: Object.fromEntries(
-        Object.keys(isRecord(config.mcp_servers) ? config.mcp_servers : {}).map((name) => [
-          name,
-          { enabled: false },
-        ]),
+        Object.entries(isRecord(config.mcp_servers) ? config.mcp_servers : {}).map(
+          ([name, server]) => [
+            name,
+            {
+              ...(isRecord(server) && typeof server.command === 'string'
+                ? { command: server.command }
+                : {}),
+              ...(isRecord(server) && typeof server.url === 'string' ? { url: server.url } : {}),
+              enabled: false,
+            },
+          ],
+        ),
       ) as JsonValue,
     };
     for (const feature of [
