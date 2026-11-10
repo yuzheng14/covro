@@ -354,7 +354,7 @@ test('lost fork receipts recover after reload without dispatching a duplicate', 
     await route.abort('failed');
   });
   await forkButton(page).click();
-  await expect(page.locator('.pending-notice')).toContainText('Fork 结果尚未确认');
+  await expect(page.locator('.pending-notice')).toContainText('复制会话');
   await expect(page.getByRole('button', { name: '正在确认 Fork…', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: '正在确认 Fork…', exact: true })).toHaveAttribute(
     'aria-busy',
@@ -399,9 +399,9 @@ test('RESULT_UNKNOWN 409 remains durable and blocks another fork after reload', 
     });
   });
   await forkButton(page).click();
-  await expect(page.locator('.pending-notice')).toContainText('Fork 结果尚未确认');
+  await expect(page.locator('.pending-notice')).toContainText('复制会话');
   await page.reload();
-  await expect(page.locator('.pending-notice')).toContainText('Fork 结果尚未确认');
+  await expect(page.locator('.pending-notice')).toContainText('复制会话');
   await expect(page.getByRole('button', { name: '正在确认 Fork…', exact: true })).toBeDisabled();
   expect(await selectedId(page)).toBe(source);
   expect(submissions).toBe(1);

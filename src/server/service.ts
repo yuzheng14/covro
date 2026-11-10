@@ -1023,7 +1023,7 @@ export class GatewayService {
     if (cached) {
       this.workspaces.assertOwnership(cached.projectId, cached.cwd, cached.id);
       const marker = this.store.activeForThread(threadId);
-      if (marker?.turnId && this.codex.ready) {
+      if (marker && this.codex.ready) {
         await this.refreshExecution(marker);
         return this.threadView(cached);
       }
@@ -2129,7 +2129,7 @@ export class GatewayService {
 
   /** Refresh only this thread; missing completion events must not block its next turn. */
   private async refreshExecution(marker: ExecutionMarker): Promise<void> {
-    if (!marker.turnId || !this.codex.ready) return;
+    if (!this.codex.ready) return;
     const existing = this.executionReads.get(marker.operationId);
     if (existing) return existing;
     const epoch = this.codex.epoch;
@@ -2154,7 +2154,16 @@ export class GatewayService {
           ? this.workspaces.assertOwnership(link.projectId, actual.cwd, actual.id)
           : this.workspaces.findOwner(actual.cwd, actual.id);
         if (ownership.workspaceKey !== marker.workspaceKey) return;
-        const turn = actual.turns.find((entry) => entry.id === marker.turnId);
+        // A lost start receipt can leave turnId absent. Only the native client ID,
+        // never matching text, timestamps or an arbitrary terminal turn, can bind it.
+        const candidates = marker.turnId
+          ? actual.turns.filter((entry) => entry.id === marker.turnId)
+          : actual.turns.filter((entry) =>
+              entry.items.some(
+                (item) => item.type === 'userMessage' && item.clientId === marker.operationId,
+              ),
+            );
+        const turn = candidates.length === 1 ? candidates[0] : undefined;
         if (
           turn &&
           isActive(turn.status) &&
@@ -2174,7 +2183,15 @@ export class GatewayService {
           actual.turns.some((entry) => isActive(entry.status))
         )
           return;
+        if (!marker.turnId) this.store.attachTurn(marker.operationId, turn.id);
         this.store.finishTurn(marker.threadId, turn.id, marker.codexEpoch);
+        this.logger.info('execution.recovered', {
+          operationId: marker.operationId,
+          threadId: marker.threadId,
+          turnId: turn.id,
+          codexEpoch: marker.codexEpoch,
+          reason: marker.turnId ? 'terminal_history' : 'native_message_identity',
+        });
         this.projection.thread(this.normalize(actual));
         this.projection.expireTurn(marker.threadId, turn.id);
         this.publishThread(marker.threadId);

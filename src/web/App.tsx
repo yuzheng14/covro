@@ -2,7 +2,7 @@ import { UNASSIGNED_SCOPE } from '../shared/workspace-scope';
 import { displayMessage, messageDetails } from './i18n/messages';
 import { t, useInterfaceLocale } from './i18n';
 import { BackupSettings } from './components/BackupSettings';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, Pencil } from 'lucide-react';
 import type { Settings, ThreadSummary, ReviewTarget } from '../shared/types';
 import { useCommandPrompt } from './hooks/useCommandPrompt';
@@ -26,7 +26,8 @@ import { isActive, Status } from './components/Status';
 import { Icon } from './components/Icon';
 import { Button } from './components/ui/button';
 import { ControlHint } from './components/ControlHint';
-import { blocksTarget } from './lib/operations';
+import { blocksTarget, type SavedOperation } from './lib/operations';
+import { operationName, operationReason } from './components/OperationCard';
 import { createSlashCommands, type SlashCommandContext } from './lib/slash-commands';
 import { downloadThreadExport } from './lib/thread-export';
 import { encodeQuestionReplies } from '../shared/async-questions';
@@ -76,6 +77,11 @@ function WorkspaceLayout({
 export function App() {
   useInterfaceLocale();
   const workspace = useWorkspace();
+  const diagnosticThreads = useMemo(
+    () => Object.values(workspace.projectThreads).flatMap((page) => page.data),
+    [workspace.projectThreads],
+  );
+  const [focusedOperationId, setFocusedOperationId] = useState<string>();
   const [backupsOpen, setBackupsOpen] = useState(false);
   const [shellOpen, setShellOpen] = useState(false);
   const shell = useShell(shellOpen);
@@ -220,6 +226,9 @@ export function App() {
       (thread.managed && thread.status === 'unknown') ||
       (thread.execution && !thread.execution.ended && thread.status === 'unknown')
     : !busyFor('create', workspace.projectId) && unsettledFor(workspace.projectId);
+  const blockingOperation = workspace.operations.find((entry) =>
+    blocksTarget(entry, thread?.id ?? workspace.projectId),
+  );
   const resumeBlocked = Boolean(
     thread &&
     (!canOperate ||
@@ -311,6 +320,25 @@ export function App() {
       statusCheck.current = false;
       setCheckingStatus(false);
     }
+  }
+
+  function openRecovery(entry?: SavedOperation) {
+    setFocusedOperationId(entry?.clientOperationId);
+    setDiagnosticsOpen(true);
+    void refreshStatus();
+  }
+  function recoveryNotice(entry: SavedOperation) {
+    return (
+      <div className="pending-notice recovery-notice" role="status">
+        <Icon name="alert" size={15} />
+        <span>
+          <strong>{operationName(entry.kind)}</strong> · {operationReason(entry)}
+        </span>
+        <Button variant="ghost" size="sm" onClick={() => openRecovery(entry)}>
+          {t('errors:recovery_handle_submission')}
+        </Button>
+      </div>
+    );
   }
 
   async function confirmCurrentCompatibility() {
@@ -651,6 +679,14 @@ export function App() {
               operations={workspace.operations}
               thread={thread}
               selectedId={workspace.selectedId}
+              projectId={workspace.projectId}
+              projects={workspace.projects}
+              threads={diagnosticThreads}
+              focusedOperationId={focusedOperationId}
+              onOpenThread={(id, projectId) => {
+                setDiagnosticsOpen(false);
+                void workspace.selectThread(id, projectId === null ? UNASSIGNED_SCOPE : projectId);
+              }}
               threadReadFailed={Boolean(workspace.threadReadFailure?.id === workspace.selectedId)}
               busy={workspace.busy}
               open={diagnosticsOpen}
@@ -895,56 +931,73 @@ export function App() {
           {actions.length > 0 && (
             <div className="pending-actions" aria-label={t('workspace:pending_requests')}>
               {actions.map((action) => (
-                <ActionCard
-                  key={action.actionId}
-                  action={action}
-                  disabled={
-                    !canOperate ||
-                    busyFor('resolve', action.actionId) ||
-                    unsettledFor(action.actionId)
-                  }
-                  onResolve={(resolution) => {
-                    void workspace.run(
-                      'resolve',
-                      action.actionId,
-                      `/api/actions/${encode(action.actionId)}/resolve`,
-                      { resolution },
-                    );
-                  }}
-                />
+                <div className="action-recovery-group" key={action.actionId}>
+                  <ActionCard
+                    action={action}
+                    disabled={
+                      !canOperate ||
+                      busyFor('resolve', action.actionId) ||
+                      unsettledFor(action.actionId)
+                    }
+                    onResolve={(resolution) => {
+                      void workspace.run(
+                        'resolve',
+                        action.actionId,
+                        `/api/actions/${encode(action.actionId)}/resolve`,
+                        { resolution },
+                      );
+                    }}
+                  />
+                  {workspace.operations
+                    .filter((entry) => blocksTarget(entry, action.actionId))
+                    .map((entry) => (
+                      <div key={entry.clientOperationId}>{recoveryNotice(entry)}</div>
+                    ))}
+                </div>
               ))}
             </div>
           )}
-          {waitingForConfirmation && (
-            <div className="pending-notice" role="status">
-              <Icon name="alert" size={15} />
-              <span>
-                {!thread
-                  ? t('workspace:the_new_session_submission_is_unconfirmed_check_it')
-                  : pendingFork
-                    ? t('workspace:the_fork_result_is_unconfirmed_check_the_submission')
-                    : t('workspace:the_submission_result_is_unconfirmed_check_it_or')}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={checkingStatus}
-                aria-expanded={diagnosticsOpen}
-                aria-controls="diagnostics-panel"
-                onClick={() => {
-                  setDiagnosticsOpen(true);
-                  void refreshStatus();
-                }}
-              >
-                {checkingStatus ? t('common:checking') : t('workspace:check_submission')}
-              </Button>
-              {thread && !pendingFork && (
-                <Button variant="secondary" size="sm" disabled={!canFork} onClick={forkThread}>
-                  {t('common:fork_into_a_new_session')}
+          {waitingForConfirmation &&
+            !workspace.operations.some(
+              (entry) =>
+                blocksTarget(entry, thread?.id ?? workspace.projectId) &&
+                busyFor(entry.kind, entry.target),
+            ) && (
+              <div className="pending-notice" role="status">
+                <Icon name="alert" size={15} />
+                <span>
+                  {blockingOperation ? (
+                    <>
+                      <strong>{operationName(blockingOperation.kind)}</strong> ·{' '}
+                      {operationReason(blockingOperation)}
+                    </>
+                  ) : !thread ? (
+                    t('workspace:the_new_session_submission_is_unconfirmed_check_it')
+                  ) : pendingFork ? (
+                    t('workspace:the_fork_result_is_unconfirmed_check_the_submission')
+                  ) : (
+                    t('workspace:the_submission_result_is_unconfirmed_check_it_or')
+                  )}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={checkingStatus}
+                  aria-expanded={diagnosticsOpen}
+                  aria-controls="diagnostics-panel"
+                  onClick={() => {
+                    openRecovery(blockingOperation);
+                  }}
+                >
+                  {checkingStatus ? t('common:checking') : t('workspace:check_submission')}
                 </Button>
-              )}
-            </div>
-          )}
+                {thread && !pendingFork && (
+                  <Button variant="secondary" size="sm" disabled={!canFork} onClick={forkThread}>
+                    {t('common:fork_into_a_new_session')}
+                  </Button>
+                )}
+              </div>
+            )}
           {thread?.goal && (
             <div className="goal-banner">
               <GoalSummary goal={thread.goal} />

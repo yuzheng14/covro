@@ -163,7 +163,7 @@ test('a late failure does not take navigation back from another project', async 
   await projectGroup(page, '另一个项目').locator('.project-link').click();
   await page.getByRole('textbox', { name: '任务内容', exact: true }).fill('另一个项目的草稿');
   blocked.release();
-  await expect(page.locator('.error-banner.dismissible')).toContainText('归档失败');
+  await expect(page.locator('.error-banner.dismissible')).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: '任务内容', exact: true })).toHaveValue(
     '另一个项目的草稿',
   );
@@ -172,6 +172,8 @@ test('a late failure does not take navigation back from another project', async 
     'true',
   );
   await expect(row(page, id)).toBeVisible();
+  await row(page, id).locator('[data-thread-id]').click();
+  await expect(page.locator('.error-banner.dismissible')).toContainText('归档失败');
 });
 
 test('an explicitly reconciled unknown receipt clears its projection without retaining a pending notice', async ({
@@ -205,8 +207,7 @@ test('an explicitly reconciled unknown receipt clears its projection without ret
     JSON.parse(localStorage.getItem('codex-web.operations.v1') ?? '[]'),
   );
   expect(
-    saved.find((entry: { clientOperationId: string }) => entry.clientOperationId === operationId)
-      .mutation,
+    saved.find((entry: { clientOperationId: string }) => entry.clientOperationId === operationId),
   ).toBeUndefined();
 });
 
