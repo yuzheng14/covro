@@ -69,6 +69,7 @@ export interface SimulatorOptions {
   ackDelayMs?: number;
   interruptCompletionDelayMs?: number;
   turnDelayMs?: number;
+  codexVersion?: string;
   compactStartDelayMs?: number;
   compactFailure?: boolean;
   outputBytes?: number;
@@ -1831,7 +1832,7 @@ function receive(request: ClientRequest): void {
     }
     initialized = true;
     reply(request.id, {
-      userAgent: `codex/${CODEX_COMPATIBILITY.recommended}`,
+      userAgent: `codex/${options.codexVersion ?? process.env.COVRO_FIXTURE_CODEX_VERSION ?? CODEX_COMPATIBILITY.recommended}`,
       codexHome: '/tmp/simulated-codex',
       platformFamily: 'unix',
       platformOs: 'macos',

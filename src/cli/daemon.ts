@@ -61,6 +61,7 @@ export async function runDaemon(configPath: string) {
             maintenance: runtime?.service.isInMaintenance(),
             codexVersion: runtime?.codex.diagnostics().codexVersion ?? null,
             codexReady: runtime?.codex.ready ?? false,
+            codexIdentity: runtime?.codex.launchIdentity?.(),
             launchContext: context,
             runtime: runningRuntime(),
             logging: logging.health(),
@@ -162,6 +163,7 @@ export async function runDaemon(configPath: string) {
       config.dataDir,
       () => runtime?.codex.diagnostics().codexVersion ?? null,
       logger.child({ component: 'updates' }),
+      () => runtime?.codex.launchIdentity?.(),
     );
     await updates.initialize();
     const maintenance = await updates.activationPending();

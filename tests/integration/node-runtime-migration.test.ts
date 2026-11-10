@@ -2,6 +2,7 @@ import { spawn, execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { once } from 'node:events';
+import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import {
   chmod,
@@ -11,6 +12,7 @@ import {
   readFile,
   readdir,
   realpath,
+  readdir,
   rm,
   symlink,
   writeFile,
@@ -31,7 +33,14 @@ beforeAll(async () => {
   await exec(process.execPath, ['--import', 'tsx', 'scripts/build-server.ts']);
 }, 30_000);
 
-async function fixture(web = false) {
+async function fixture(codex?: {
+  explicit?: boolean;
+  mismatch?: boolean;
+  automatic?: boolean;
+  ui?: boolean;
+  web?: boolean;
+}) {
+  const web = codex?.web ?? false;
   // Short private Unix socket paths; HOME, Codex data and all npm prefixes are disposable.
   const directory = await realpath(await mkdtemp('/tmp/c281-'));
   cleanups.push(() => rm(directory, { recursive: true, force: true }));
@@ -59,8 +68,53 @@ async function fixture(web = false) {
       recursive: true,
       filter: (path) => (web || !/^dist\/web(?:\/|$)/.test(path)) && !path.endsWith('.map'),
     });
+    if (codex?.ui) {
+      await cp('dist/web', join(root, 'dist/web'), { recursive: true });
+      // Each disposable package serves the frontend version matching its package metadata.
+      for (const file of await readdir(join(root, 'dist/web/assets'))) {
+        if (!file.endsWith('.js')) continue;
+        const path = join(root, 'dist/web/assets', file);
+        await writeFile(
+          path,
+          (await readFile(path, 'utf8')).replaceAll(
+            packageInfo.version,
+            index === 0 ? '0.8.1-dev.5' : '0.8.1-dev.6',
+          ),
+        );
+      }
+    }
     await symlink(resolve('node_modules'), join(root, 'node_modules'), 'dir');
-    await writeFile(join(root, 'package.json'), JSON.stringify(packageInfo));
+    await writeFile(
+      join(root, 'package.json'),
+      JSON.stringify(
+        codex && !codex.web
+          ? {
+              ...packageInfo,
+              version: index === 0 ? '0.8.1-dev.5' : '0.8.1-dev.6',
+              covroCommit: String(index === 0 ? 5 : 6).repeat(40),
+              covroCodex: {
+                recommended: index === 0 ? '0.166.0' : '0.167.0',
+                verified: [index === 0 ? '0.166.0' : '0.167.0'],
+                unsupported: [],
+              },
+            }
+          : packageInfo,
+      ),
+    );
+    if (codex && !codex.web) {
+      await writeFile(
+        join(prefix, 'bin/codex-version.json'),
+        JSON.stringify({
+          reported: index === 0 ? '0.166.0' : '0.167.0',
+          actual: codex.mismatch && index === 1 ? '0.168.0' : index === 0 ? '0.166.0' : '0.167.0',
+        }),
+      );
+      await writeFile(
+        join(prefix, 'bin/codex'),
+        `#!/usr/bin/env node\nimport {readFileSync} from 'node:fs';\nimport {spawn} from 'node:child_process';\nconst version=JSON.parse(readFileSync(new URL('./codex-version.json',import.meta.url)));\nif(process.argv.includes('--version')) console.log('codex-cli '+version.reported);\nelse { const child=spawn(process.execPath,['--import','tsx',${JSON.stringify(resolve('tests/fixtures/app-server.ts'))},...process.argv.slice(2)],{stdio:'inherit',env:{...process.env,COVRO_FIXTURE_CODEX_VERSION:version.actual}}); for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>child.kill(signal));child.on('exit',code=>process.exit(code??1)); }\n`,
+      );
+      await chmod(join(prefix, 'bin/codex'), 0o755);
+    }
     await symlink(join(root, 'bin/covro.mjs'), join(prefix, 'bin/covro'));
     roots.push(root);
     nodes.push(node);
@@ -80,11 +134,21 @@ async function fixture(web = false) {
     port: address.port,
     publicOrigin: [`http://127.0.0.1:${address.port}`],
     dataDir: './data',
-    codex: { binary: resolve('tests/fixtures/codex.mjs') },
+    codex: {
+      binary:
+        codex && !codex.web
+          ? codex.explicit
+            ? join(directory, '0/bin/codex')
+            : 'codex'
+          : resolve('tests/fixtures/codex.mjs'),
+    },
   });
   await writeFile(config, configText);
   const releaseMetadata = join(directory, 'release.json');
-  await writeFile(releaseMetadata, JSON.stringify(packageInfo));
+  await writeFile(
+    releaseMetadata,
+    await readFile(join(roots[codex && !codex.web ? 1 : 0]!, 'package.json')),
+  );
   const env = {
     ...process.env,
     HOME: shellHome,
@@ -115,6 +179,17 @@ async function fixture(web = false) {
   cleanups.push(async () => {
     await exec(nodes[0]!, [join(roots[0]!, 'bin/covro.mjs'), 'stop', '--config', config], { env });
   });
+  if (codex?.automatic) {
+    const updateKey = createHash('sha256')
+      .update(roots[0]! + '/')
+      .digest('hex')
+      .slice(0, 16);
+    await mkdir(join(home, 'updates', updateKey), { recursive: true });
+    await writeFile(
+      join(home, 'updates', updateKey, 'settings.json'),
+      JSON.stringify({ channel: 'dev', automatic: true }),
+    );
+  }
   await cli('start');
   await expect.poll(async () => (await cli('status')).codexReady, { timeout: 30_000 }).toBe(true);
   const db = new Database(join(directory, 'data/app.sqlite'));
@@ -144,6 +219,222 @@ async function fixture(web = false) {
     post,
   };
 }
+
+it('automatically activates the verified restart combination while the running Codex is still 0.166.0', async () => {
+  const f = await fixture({ automatic: true });
+  await expect
+    .poll(async () => (await f.cli('update', 'status')).run?.phase, { timeout: 30_000 })
+    .toBe('succeeded');
+  const result = await f.cli('update', 'status');
+  expect(result.run).toMatchObject({
+    from: '0.8.1-dev.5',
+    target: '0.8.1-dev.6',
+    codex: { version: '0.167.0', confirmedUnverified: false },
+  });
+  expect(await f.cli('status')).toMatchObject({
+    version: '0.8.1-dev.6',
+    codexVersion: '0.167.0',
+    codexReady: true,
+  });
+}, 60_000);
+
+it.each(['upgrade', 'downgrade', 'remove', 'path', 'config'] as const)(
+  'refuses %s during a real approval wait without stopping the original daemon',
+  async (change) => {
+    const f = await fixture({});
+    const post = async (path: string, body: object) => {
+      const response = await fetch(f.origin + path, {
+        method: 'POST',
+        headers: { origin: f.origin, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(response.ok).toBe(true);
+      return response.json();
+    };
+    const project = (await post('/api/projects', {
+      path: f.directory,
+      name: 'Isolated approval',
+    })) as { id: string };
+    const thread = (await post(`/api/projects/${project.id}/threads`, {
+      clientOperationId: randomUUID(),
+    })) as { result: { threadId: string } };
+    await post(`/api/threads/${thread.result.threadId}/turns`, {
+      clientOperationId: randomUUID(),
+      text: '[approval]',
+    });
+    const before = await f.cli('status');
+    await f.cli('update');
+    await expect
+      .poll(async () => (await f.cli('update', 'status')).run?.phase, { timeout: 30_000 })
+      .toBe('waiting');
+    const versionFile = join(f.directory, '1/bin/codex-version.json');
+    if (change === 'upgrade' || change === 'downgrade')
+      await writeFile(
+        versionFile,
+        JSON.stringify({
+          reported: change === 'upgrade' ? '0.168.0' : '0.166.0',
+          actual: '0.167.0',
+        }),
+      );
+    if (change === 'remove') await rm(join(f.directory, '1/bin/codex'));
+    if (change === 'path') {
+      const other = join(f.directory, 'other');
+      await mkdir(other);
+      await cp(join(f.directory, '1/bin/codex'), join(other, 'codex'));
+      await cp(versionFile, join(other, 'codex-version.json'));
+      await rm(join(f.directory, '1/bin/codex'));
+      await symlink(join(other, 'codex'), join(f.directory, '1/bin/codex'));
+    }
+    if (change === 'config')
+      await writeFile(
+        f.config,
+        JSON.stringify({
+          ...JSON.parse(f.configText),
+          codex: { binary: join(f.directory, '0/bin/codex') },
+        }),
+      );
+    await expect
+      .poll(async () => (await f.cli('update', 'status')).run?.phase, { timeout: 30_000 })
+      .toBe('failed');
+    expect(await f.cli('status')).toMatchObject({
+      pid: before.pid,
+      version: '0.8.1-dev.5',
+      codexVersion: '0.166.0',
+      maintenance: false,
+    });
+    expect((await f.cli('update', 'status')).run?.committed).not.toBe(true);
+  },
+  60_000,
+);
+
+it('upgrades the reported 0.8.1-dev.5 / Codex 0.166.0 example to dev.6 / 0.167.0 without stopping early', async () => {
+  const screenshots = process.env.COVRO_SCREENSHOTS;
+  const f = await fixture({ ui: Boolean(screenshots) });
+  const before = await f.cli('status');
+  const checked = await f.cli('update', 'status');
+  expect(checked).toMatchObject({
+    version: '0.8.1-dev.5',
+    codex: { version: '0.166.0', status: 'verified' },
+    available: { version: '0.8.1-dev.6', codex: { version: '0.167.0', status: 'verified' } },
+  });
+  expect((await f.cli('status')).pid).toBe(before.pid);
+  const browser = screenshots
+    ? await (await import('@playwright/test')).chromium.launch()
+    : undefined;
+  if (browser) cleanups.push(() => browser.close());
+  const page = await browser?.newPage({ viewport: { width: 1440, height: 1400 }, locale: 'zh-CN' });
+  if (page && screenshots) {
+    await mkdir(screenshots, { recursive: true });
+    await page.goto(f.origin);
+    await page.getByRole('button', { name: 'Covro 更新', exact: true }).click();
+    await page.getByRole('button', { name: '检查更新', exact: true }).click();
+    await page
+      .getByRole('region', { name: '目标版本兼容性', exact: true })
+      .getByText('0.167.0', { exact: true })
+      .waitFor();
+    await expect
+      .poll(() => page.getByRole('button', { name: '升级并重启', exact: true }).isEnabled())
+      .toBe(true);
+    await page
+      .getByRole('region', { name: '目标版本兼容性', exact: true })
+      .locator('summary')
+      .click();
+    await page.screenshot({ path: join(screenshots, '335-isolated-before.png'), fullPage: true });
+    await page.getByRole('button', { name: '升级并重启', exact: true }).click();
+  } else await f.cli('update');
+  await expect
+    .poll(async () => (await f.cli('update', 'status')).run?.phase, { timeout: 30_000 })
+    .toBe('succeeded');
+  expect(await f.cli('status')).toMatchObject({
+    version: '0.8.1-dev.6',
+    codexVersion: '0.167.0',
+    codexReady: true,
+  });
+  expect((await f.cli('update', 'status')).codex.version).toBe('0.167.0');
+  if (page && screenshots) {
+    await page.goto(f.origin);
+    await page.getByRole('button', { name: 'Covro 更新', exact: true }).click();
+    await page
+      .getByRole('region', { name: '正在运行的 Codex', exact: true })
+      .getByText('0.167.0', { exact: true })
+      .waitFor();
+    await page.screenshot({ path: join(screenshots, '335-isolated-after.png'), fullPage: true });
+  }
+}, 60_000);
+
+it('keeps an explicit old Codex path unverified even with a verified version elsewhere in the target PATH', async () => {
+  const f = await fixture({ explicit: true });
+  const before = await f.cli('status');
+  const checked = await f.cli('update', 'status');
+  expect(checked.available?.codex).toMatchObject({ version: '0.166.0', status: 'unverified' });
+  await expect(f.cli('update')).rejects.toThrow('尚未验证');
+  expect((await f.cli('status')).pid).toBe(before.pid);
+  expect((await f.cli('update', 'status')).run).toBeUndefined();
+}, 60_000);
+
+it('uses the selected preinstalled Covro parser and blocks a staged parser that changes the Codex source before stopping', async () => {
+  const f = await fixture({});
+  const configModule = join(f.roots[1]!, 'dist/server/config.js');
+  const source = await readFile(configModule, 'utf8');
+  const marker = 'const config = parseFileConfig(value);';
+  expect(source).toContain(marker);
+  await writeFile(
+    configModule,
+    source.replace(
+      marker,
+      `${marker}\nconfig.codex.binary = ${JSON.stringify(join(f.directory, '0/bin/codex'))};`,
+    ),
+  );
+  // The preinstalled candidate already has its own configuration interpretation.
+  expect((await f.cli('update', 'status')).available?.codex).toMatchObject({
+    version: '0.166.0',
+    status: 'unverified',
+  });
+  const prefix = join(f.directory, '1');
+  const npm = join(prefix, 'npm/bin/npm-cli.js');
+  await mkdir(dirname(npm), { recursive: true });
+  await cp('tests/fixtures/runtime-npm.mjs', npm);
+  await chmod(npm, 0o755);
+  await writeFile(join(prefix, 'npm/package.json'), JSON.stringify({ name: 'npm' }));
+  await rm(join(prefix, 'bin/npm'));
+  await symlink(npm, join(prefix, 'bin/npm'));
+  // A remote higher release is checked before its code is available locally.
+  await writeFile(f.releaseMetadata, JSON.stringify({ ...packageInfo, version: '99.0.0' }));
+  expect((await f.cli('update', 'status')).available?.codex).toMatchObject({
+    version: '0.167.0',
+    status: 'verified',
+  });
+  const before = await f.cli('status');
+  await f.cli('update');
+  await expect
+    .poll(async () => (await f.cli('update', 'status')).run?.phase, { timeout: 30_000 })
+    .toBe('failed');
+  expect(await readFile(f.releaseMetadata + '.npm.json', 'utf8')).toContain('@covro/covro@99.0.0');
+  expect(await f.cli('status')).toMatchObject({
+    pid: before.pid,
+    version: '0.8.1-dev.5',
+    codexVersion: '0.166.0',
+    maintenance: false,
+  });
+}, 60_000);
+
+it('rolls back when the restarted app-server reports a different version from its CLI probe', async () => {
+  const f = await fixture({ mismatch: true });
+  await f.cli('update');
+  await expect
+    .poll(async () => (await f.cli('update', 'status')).run?.phase, { timeout: 90_000 })
+    .toBe('rolledBack');
+  expect(await f.cli('status')).toMatchObject({
+    version: '0.8.1-dev.5',
+    codexVersion: '0.166.0',
+    codexReady: true,
+  });
+  const db = new Database(join(f.directory, 'data/app.sqlite'));
+  expect(db.prepare('SELECT value FROM preferences WHERE key=?').get('runtime-test')).toEqual({
+    value: '"preserved"',
+  });
+  db.close();
+}, 120_000);
 
 it('migrates an equal Covro version to the default Node and keeps it on a later old-CLI start', async () => {
   const f = await fixture();
@@ -252,7 +543,7 @@ it('restores the original runtime and data when an equal-version target fails st
 it.each(['success', 'rollback'] as const)(
   'refreshes one idle automatic plan and pins its real %s transaction',
   async (mode) => {
-    const f = await fixture(Boolean(process.env.COVRO_SCREENSHOTS));
+    const f = await fixture({ web: Boolean(process.env.COVRO_SCREENSHOTS) });
     const prefix = join(f.directory, '1');
     const npm = join(prefix, 'npm/bin/npm-cli.js');
     await mkdir(dirname(npm), { recursive: true });

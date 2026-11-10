@@ -2,7 +2,9 @@ import { backupDirectory } from '../src/backups/store.js';
 import { npmPackageName } from '../src/shared/package.js';
 import { CODEX_COMPATIBILITY } from '../src/codex/compatibility.js';
 /** Real daemon/worker/SQLite verification; npm transport is an explicit local fixture. */
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import type { CodexTarget } from '../src/updates/codex-target.js';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import {
@@ -236,10 +238,23 @@ for (const mode of [
       root: root + '/',
       dataDir: join(directory, 'data'),
       directory: updateDir,
+      source: { node: process.execPath, entry: join(root, 'bin/covro.mjs'), path: env.PATH },
     };
     await mkdir(updateDir, { recursive: true });
     await saveJson(join(updateDir, 'context.json'), context);
     const id = randomUUID();
+    let codexTarget: CodexTarget | undefined;
+    if (mode !== 'codex-unavailable') {
+      const probeScript = `const {probeRestartCodex}=await import(${JSON.stringify(pathToFileURL(resolve('dist/updates/codex-target.js')).href)}); console.log(JSON.stringify(await probeRestartCodex(${JSON.stringify(location)},${JSON.stringify(context.root)},${JSON.stringify(context.source)},${JSON.stringify(context.source)})));`;
+      codexTarget = JSON.parse(
+        (
+          await promisify(execFile)(process.execPath, ['--input-type=module', '-e', probeScript], {
+            env,
+            timeout: 15_000,
+          })
+        ).stdout,
+      );
+    }
     await saveJson(join(updateDir, 'run.json'), {
       id,
       from: metadata.version,
@@ -248,6 +263,7 @@ for (const mode of [
       sourceChannel: stableCandidate ? 'stable' : 'dev',
       commit: mode === 'commit-mismatch' ? 'b'.repeat(40) : next.covroCommit,
       codex: {
+        target: codexTarget,
         version: mode === 'codex-changed' ? '0.162.1' : CODEX_COMPATIBILITY.recommended,
         manifest:
           mode === 'codex-mismatch' || mode === 'codex-missing'

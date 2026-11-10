@@ -11,6 +11,7 @@ import {
 import { UpdateManager } from '../../src/updates/manager.js';
 import * as registry from '../../src/updates/registry.js';
 import * as runtime from '../../src/updates/runtime.js';
+import * as codexTarget from '../../src/updates/codex-target.js';
 import { runningRuntime } from '../../src/cli/runtime.js';
 import { paths, packageInfo } from '../../src/cli/paths.js';
 import { releaseCompatibilityNotes } from '../../scripts/release-compatibility.js';
@@ -66,6 +67,23 @@ async function managerFixture(metadata: unknown = manifest) {
     covroCodex: metadata,
   });
   let version: string | null = '0.163.0';
+  vi.spyOn(codexTarget, 'probeRestartCodex').mockImplementation(async () => {
+    if (!version) throw new Error('probe failed');
+    return {
+      identity: {
+        binary: 'codex',
+        resolved: '/codex',
+        executable: '/codex',
+        file: 'test',
+        version,
+        node: process.execPath,
+        cwd: process.cwd(),
+        environment: 'test',
+      },
+      configuration: 'test',
+      launch: 'test',
+    };
+  });
   const manager = new UpdateManager(
     { ...paths(join(directory, 'config.json')), home: directory, state: join(directory, 'state') },
     directory,
@@ -83,7 +101,7 @@ async function managerFixture(metadata: unknown = manifest) {
     },
   };
 }
-it('reassesses the live configured Codex and rejects stale manual confirmations before creating an upgrade run', async () => {
+it('reassesses the restart-target Codex and rejects stale manual confirmations before creating an upgrade run', async () => {
   const { manager, setVersion } = await managerFixture();
   expect((await manager.check()).available?.codex.status).toBe('unverified');
   await expect(manager.start({ clientOperationId: crypto.randomUUID() })).rejects.toMatchObject({
@@ -96,7 +114,7 @@ it('reassesses the live configured Codex and rejects stale manual confirmations 
     }),
   ).rejects.toMatchObject({ code: 'UPDATE_CODEX_CHANGED' });
   setVersion('0.164.0');
-  expect((await manager.status()).available?.codex.status).toBe('verified');
+  expect((await manager.check()).available?.codex.status).toBe('verified');
   await expect(
     manager.start({
       clientOperationId: crypto.randomUUID(),

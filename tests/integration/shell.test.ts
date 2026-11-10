@@ -29,7 +29,7 @@ async function setup(confirm = true, unsupportedMethod?: string) {
       'tsx',
       resolve('tests/fixtures/app-server.ts'),
       '--options',
-      JSON.stringify({ logPath: log, unsupportedMethod }),
+      JSON.stringify({ logPath: log, unsupportedMethod, codexVersion: '99.0.0' }),
     ],
   });
   const config = parseConfig(

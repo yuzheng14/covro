@@ -162,6 +162,21 @@ it('restores the complete package and original SQLite records after a candidate 
   expect(effects.start).toHaveBeenLastCalledWith(false);
 });
 
+it('reopens admission without stopping or backing up when the final restart-source probe fails', async () => {
+  const { paths, effects, phases } = await fixture();
+  effects.beforeStop = async () => {
+    throw new Error('restart source changed');
+  };
+  effects.resume = vi.fn(async () => {});
+  const backup = vi.spyOn(effects, 'backup');
+  await expect(activateUpdate(paths, effects)).rejects.toThrow('restart source changed');
+  expect(effects.stop).not.toHaveBeenCalled();
+  expect(backup).not.toHaveBeenCalled();
+  expect(effects.resume).toHaveBeenCalledOnce();
+  expect(phases).toEqual(['waiting', 'failed']);
+  expect(await readFile(join(paths.root, 'version'), 'utf8')).toBe('old');
+});
+
 it('keeps the candidate and new data after a committed activation response is lost', async () => {
   const { paths, effects } = await fixture();
   effects.commit = async () => {

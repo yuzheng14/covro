@@ -30,6 +30,7 @@ export interface CodexUpdateConfirmation {
 export function assessCodexCompatibility(
   metadata: unknown,
   running: string | null,
+  basis: 'running' | 'restart' = 'running',
 ): CodexCompatibility {
   const parsed = codexCompatibilitySchema.safeParse(metadata);
   if (!parsed.success)
@@ -44,7 +45,10 @@ export function assessCodexCompatibility(
       version: running,
       manifest,
       status: 'unknown',
-      reason: '无法确认当前 Codex CLI 版本，请先恢复 Codex 连接后重新检查。',
+      reason:
+        basis === 'restart'
+          ? '无法确认重启后的 Codex CLI 版本，请核对启动来源后重新检查。'
+          : '无法确认当前 Codex CLI 版本，请先恢复 Codex 连接后重新检查。',
     };
   const unsupported = manifest.unsupported.find((entry) => entry.version === running);
   if (unsupported)
@@ -60,15 +64,16 @@ export function assessCodexCompatibility(
     version: running,
     manifest,
     status: 'unverified',
-    reason: `当前 Codex ${running} 与目标 Covro 的组合尚未验证；自动升级已暂停。`,
+    reason: `${basis === 'restart' ? '重启后的' : '当前'} Codex ${running} 与目标 Covro 的组合尚未验证；自动升级已暂停。`,
   };
 }
 export function requireCodexCompatibility(
   metadata: unknown,
   running: string | null,
   confirmed = false,
+  basis: 'running' | 'restart' = 'running',
 ) {
-  const result = assessCodexCompatibility(metadata, running);
+  const result = assessCodexCompatibility(metadata, running, basis);
   if (result.status !== 'verified' && !(confirmed && result.status === 'unverified'))
     throw new Error(result.reason);
   return result;

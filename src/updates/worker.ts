@@ -42,6 +42,8 @@ import {
   restoreLaunch,
   type LaunchSnapshot,
 } from '../cli/runtime-launch.js';
+import { probeRestartCodex, assertCodexTarget } from './codex-target.js';
+import { assertCodexIdentity, type CodexIdentity } from '../codex/identity.js';
 
 const exec = promisify(execFile);
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -51,6 +53,7 @@ type DaemonStatus = {
   maintenance?: boolean;
   codexVersion?: string | null;
   codexReady?: boolean;
+  codexIdentity?: CodexIdentity;
   runtime?: RuntimeIdentity;
 };
 
@@ -325,6 +328,30 @@ async function workerCore(directory: string, logger: Logger) {
       context.target?.path ?? process.env.PATH ?? '/usr/bin:/bin',
       context.target?.npmConfig,
     );
+    const restartRuntime = context.target ?? context.source;
+    if (!record.codex?.target || !restartRuntime)
+      throw new Error('缺少重启目标 Codex 来源记录，请重新检查更新');
+    if (record.codex.version !== record.codex.target.identity.version)
+      throw new Error('Codex 版本与重启目标来源记录不匹配，请重新检查更新');
+    let probeRoot = context.reuseTarget ? candidateRoot : context.root;
+    const checkRestartCodex = async () => {
+      const actual = await probeRestartCodex(
+        context.location,
+        context.root,
+        restartRuntime,
+        context.source,
+        probeRoot,
+      );
+      assertCodexTarget(actual, record!.codex!.target!);
+      requireCodexCompatibility(
+        record!.codex!.manifest,
+        actual.identity.version,
+        record!.codex!.confirmedUnverified,
+        'restart',
+      );
+    };
+    // Recheck before npm installation as well as after every wait. Never compare against the old process.
+    await checkRestartCodex();
     // npm global layout keeps production dependencies nested in the package being swapped.
     if (!context.reuseTarget)
       await exec(
@@ -359,17 +386,18 @@ async function workerCore(directory: string, logger: Logger) {
     const manifest = codexCompatibilitySchema.parse(candidate.covroCodex);
     if (JSON.stringify(manifest) !== JSON.stringify(record.codex.manifest))
       throw new Error('候选包的 Codex 兼容声明与检查时不一致，拒绝切换');
-    const checkCodex = async (current?: DaemonStatus) => {
-      const state = current ?? (await control<DaemonStatus>(context.location, 'status'));
+    const checkRunningCodex = (state: DaemonStatus) => {
       if (state.codexVersion !== record!.codex!.version)
-        throw new Error('Codex 版本在等待升级期间发生变化，请重新检查更新');
+        throw new Error('重启后的 Codex 版本与升级校验记录不匹配');
+      assertCodexIdentity(state.codexIdentity, record!.codex!.target!.identity);
       requireCodexCompatibility(
         manifest,
         state.codexVersion ?? null,
         record!.codex!.confirmedUnverified,
       );
     };
-    await checkCodex();
+    probeRoot = candidateRoot;
+    await checkRestartCodex();
     const versionProbe = await exec(node, [join(candidateRoot, 'bin/covro.mjs'), '--version'], {
       timeout: 30_000,
       env,
@@ -420,13 +448,13 @@ async function workerCore(directory: string, logger: Logger) {
         waitForIdle: async () => {
           // Queue without blocking normal work; admission closes atomically only after all blockers clear.
           for (;;) {
-            await checkCodex();
+            await checkRestartCodex();
             const result = await control<{ ready: boolean; reason?: string }>(
               context.location,
               'prepare-update',
             );
             if (result.ready) {
-              await checkCodex();
+              await checkRestartCodex();
               await verifyMigrations(context, candidateRoot);
               const pinned = await readJson<typeof candidate>(join(candidateRoot, 'package.json'));
               if (JSON.stringify(pinned) !== JSON.stringify(candidate))
@@ -437,6 +465,7 @@ async function workerCore(directory: string, logger: Logger) {
             await setTimeout(2_000);
           }
         },
+        beforeStop: checkRestartCodex,
         stop: () => stopService(context),
         start: async (candidate) => {
           await releaseData?.();
@@ -453,8 +482,12 @@ async function workerCore(directory: string, logger: Logger) {
               if (current.version !== record!.target || !current.maintenance)
                 throw new Error('新版服务身份或维护状态不匹配');
               if (record!.runtime) assertRuntime(current.runtime, record!.runtime.target);
-              await checkCodex(current);
-              if (current.codexReady) return;
+              if (current.codexVersion && current.codexVersion !== record!.codex!.version)
+                throw new Error('重启后的 Codex 版本与升级校验记录不匹配');
+              if (current.codexReady) {
+                checkRunningCodex(current);
+                return;
+              }
             }
             await setTimeout(250);
           }

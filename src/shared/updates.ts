@@ -3,6 +3,7 @@ import type {
   CodexCompatibilityManifest,
   CodexUpdateConfirmation,
 } from './codex-compatibility.js';
+import type { CodexTarget } from './codex-identity.js';
 export const releaseChannels = ['stable', 'beta', 'dev'] as const;
 export type ReleaseChannel = (typeof releaseChannels)[number];
 export interface UpdateSettings {
@@ -46,7 +47,12 @@ export interface UpdateRun {
   transactionStartedAt?: number;
   candidate?: UpdateStatus['available'];
   runtime?: { from: RuntimeIdentity; target: RuntimeIdentity; actual?: RuntimeIdentity };
-  codex?: { version: string; manifest: CodexCompatibilityManifest; confirmedUnverified: boolean };
+  codex?: {
+    version: string;
+    manifest: CodexCompatibilityManifest;
+    confirmedUnverified: boolean;
+    target?: CodexTarget;
+  };
 }
 export interface UpdateStatus {
   version: string;
@@ -62,6 +68,8 @@ export interface UpdateStatus {
     commit?: string;
     downgrade: boolean;
     codex: CodexCompatibility;
+    codexTarget?: CodexTarget;
+    codexError?: string;
   };
   checkedAt?: number;
   checkError?: string;

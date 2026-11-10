@@ -37,7 +37,7 @@ export interface LaunchSnapshot {
   target?: LaunchRuntime;
   service?: { filename: string; content: string; platform: string };
 }
-function serviceContent(
+export function serviceContent(
   location: CovroPaths,
   runtime: LaunchRuntime,
   service: NonNullable<LaunchSnapshot['service']>,

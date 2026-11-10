@@ -33,6 +33,8 @@ import {
 } from './runtime.js';
 import { runningRuntime } from '../cli/runtime.js';
 import { launchRuntime, type LaunchRuntime } from '../cli/runtime-launch.js';
+import { probeRestartCodex, codexConfiguration, type CodexTarget } from './codex-target.js';
+import { assertCodexIdentity, type CodexIdentity } from '../codex/identity.js';
 const runtimeChanged = (target: Parameters<typeof changedRuntime>[0]) =>
   changedRuntime(target, runningRuntime());
 
@@ -82,6 +84,8 @@ export class UpdateManager implements UpdateController {
   private checkError?: string;
   private target?: RuntimeTarget;
   private runtimeError?: string;
+  private codexTarget?: CodexTarget;
+  private codexError?: string;
   private reason = '当前服务未通过 covro 启动，网页仅支持版本检测；升级请使用原部署方式。';
   private timer?: ReturnType<typeof setInterval>;
   private checks: Promise<unknown> = Promise.resolve();
@@ -93,6 +97,7 @@ export class UpdateManager implements UpdateController {
     dataDir?: string,
     private readonly codexVersion: () => string | null = () => null,
     private readonly logger: Logger = nullLogger,
+    private readonly codexIdentity: () => CodexIdentity | undefined = () => undefined,
   ) {
     if (location && dataDir)
       this.context = {
@@ -143,6 +148,8 @@ export class UpdateManager implements UpdateController {
     }
   }
   async status(): Promise<UpdateStatus> {
+    const { available, codexTarget, codexError, target, runtimeError, checkedAt, checkError } =
+      this;
     const run = this.context
       ? await readJson<UpdateRun>(join(this.context.directory, 'run.json'))
       : undefined;
@@ -154,20 +161,29 @@ export class UpdateManager implements UpdateController {
       settings: this.settings,
       supported: !this.reason,
       unsupportedReason: this.reason || undefined,
-      available: this.available
+      available: available
         ? {
-            ...this.available,
-            codex: assessCodexCompatibility(this.available.codex.manifest, this.codexVersion()),
+            ...available,
+            codex: {
+              ...assessCodexCompatibility(
+                available.codex.manifest,
+                codexTarget?.identity.version ?? null,
+                'restart',
+              ),
+              ...(codexError ? { reason: codexError } : {}),
+            },
+            codexTarget: codexTarget,
+            codexError: codexError,
           }
         : undefined,
-      checkedAt: this.checkedAt,
-      checkError: this.checkError,
+      checkedAt: checkedAt,
+      checkError: checkError,
       run,
       runtime: {
         current: runningRuntime(),
-        target: this.target,
-        migration: Boolean(this.target && runtimeChanged(this.target)),
-        error: this.runtimeError,
+        target: target,
+        migration: Boolean(target && runtimeChanged(target)),
+        error: runtimeError,
       },
     };
   }
@@ -181,11 +197,29 @@ export class UpdateManager implements UpdateController {
     this.logger.debug('update.check_started');
     let target: RuntimeTarget | undefined;
     let runtimeError: string | undefined;
+    let codexTarget: CodexTarget | undefined;
+    let codexError: string | undefined;
     let available: UpdateStatus['available'];
     let checkError: string | undefined;
     if (this.context && !this.reason) {
       try {
         target = await resolveRuntimeTarget();
+        const currentLaunch = await launchRuntime(this.context.location, runningRuntime().entry);
+        if (
+          currentLaunch.node !== process.execPath ||
+          currentLaunch.entry !== runningRuntime().entry
+        )
+          throw new Error('保存的启动来源与当前实例不一致，请核对实例后重试。');
+        try {
+          codexTarget = await probeRestartCodex(
+            this.context.location,
+            this.context.root,
+            target,
+            currentLaunch,
+          );
+        } catch (error) {
+          codexError = (error as Error).message;
+        }
       } catch (error) {
         runtimeError = (error as Error).message;
       }
@@ -213,13 +247,39 @@ export class UpdateManager implements UpdateController {
           covroCodex: local.covroCodex,
         };
       if (!release) throw new Error('未找到可用版本');
+      // A preinstalled selected Covro can already supply its own configuration semantics.
+      if (
+        this.context &&
+        target &&
+        !runtimeError &&
+        target.version === release.version &&
+        runtimeChanged(target)
+      ) {
+        try {
+          codexTarget = await probeRestartCodex(
+            this.context.location,
+            this.context.root,
+            target,
+            undefined,
+            target.root,
+          );
+          codexError = undefined;
+        } catch (error) {
+          codexTarget = undefined;
+          codexError = (error as Error).message;
+        }
+      }
       available = {
         version: release.version,
         requestedChannel: channel,
         channel: release.channel,
         commit: release.covroCommit ?? release.gitHead,
         downgrade: compareVersions(release.version, packageInfo.version) < 0,
-        codex: assessCodexCompatibility(release.covroCodex, this.codexVersion()),
+        codex: assessCodexCompatibility(
+          release.covroCodex,
+          codexTarget?.identity.version ?? null,
+          'restart',
+        ),
       };
     } catch (error) {
       available = undefined;
@@ -231,6 +291,8 @@ export class UpdateManager implements UpdateController {
     }
     this.target = target;
     this.runtimeError = runtimeError;
+    this.codexTarget = codexTarget;
+    this.codexError = codexError;
     this.available = available;
     this.checkError = checkError;
     this.checkedAt = Date.now();
@@ -334,6 +396,7 @@ export class UpdateManager implements UpdateController {
           version: candidate.codex.version!,
           manifest: candidate.codex.manifest!,
           confirmedUnverified: false,
+          target: candidate.codexTarget,
         },
         runtime: { from: run.runtime!.from, target },
         phase: 'installing',
@@ -374,6 +437,13 @@ export class UpdateManager implements UpdateController {
     if (run.runtime) assertRuntime(runningRuntime(), run.runtime.target);
     if (!run.codex || run.codex.version !== this.codexVersion())
       throw new Error('Codex 版本在升级期间发生变化或缺少校验记录，拒绝激活');
+    if (run.codex.target) {
+      assertCodexIdentity(this.codexIdentity(), run.codex.target.identity);
+      if (
+        (await codexConfiguration(this.context.location.config)) !== run.codex.target.configuration
+      )
+        throw new Error('Codex 配置在升级期间变化，拒绝激活');
+    }
     requireCodexCompatibility(
       CODEX_COMPATIBILITY,
       this.codexVersion(),
@@ -468,7 +538,7 @@ export class UpdateManager implements UpdateController {
           409,
         );
       try {
-        requireCodexCompatibility(codex.manifest, codex.version, confirmedUnverified);
+        requireCodexCompatibility(codex.manifest, codex.version, confirmedUnverified, 'restart');
       } catch (error) {
         throw new AppError('UPDATE_CODEX_INCOMPATIBLE', (error as Error).message, 409);
       }
@@ -479,7 +549,12 @@ export class UpdateManager implements UpdateController {
         channel,
         sourceChannel: checked.available.channel,
         commit: checked.available.commit,
-        codex: { version: codex.version!, manifest: codex.manifest!, confirmedUnverified },
+        codex: {
+          version: codex.version!,
+          manifest: codex.manifest!,
+          confirmedUnverified,
+          target: checked.available.codexTarget,
+        },
         automatic: automatic ? { revision: automaticRevision } : undefined,
         candidate: checked.available,
         transactionStartedAt: automatic ? undefined : Date.now(),

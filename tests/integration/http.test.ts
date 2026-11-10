@@ -71,6 +71,7 @@ async function setup(
       '--options',
       JSON.stringify({
         turnDelayMs: 150,
+        codexVersion: '99.0.0',
         fragmentBytes: 11,
         unsupportedMethod: options.unsupportedMethod,
       }),

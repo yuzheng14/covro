@@ -14,6 +14,7 @@ export interface TransactionPaths {
 }
 export interface UpdateEffects {
   waitForIdle(): Promise<void>;
+  beforeStop?(): Promise<void>;
   backup(): Promise<void>;
   restore(): Promise<void>;
   stop(): Promise<void>;
@@ -39,6 +40,7 @@ export async function activateUpdate(
   try {
     await effects.phase('waiting', '候选包已准备好，等待所有任务、审批与待核对操作结束');
     await effects.waitForIdle();
+    await effects.beforeStop?.();
     await effects.phase('stopping', '已关闭新任务入口，正在停止旧服务并备份数据');
     // stop may fail after the process has already exited; recovery must restart the old service.
     stopped = true;
