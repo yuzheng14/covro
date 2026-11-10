@@ -39,12 +39,15 @@ const model = createServer(async (request, response) => {
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString()) as {
       input?: { type: string; [key: string]: unknown }[];
+      tools?: unknown[];
     };
     const input = JSON.stringify(body.input);
     for (const item of body.input ?? [])
       if (item.type === 'custom_tool_call_output') outputs.push(JSON.stringify(item));
     const title = input.includes('Generate a concise');
     const task = JSON.stringify(body.input?.filter((item) => item.role === 'user').at(-1));
+    const recap = task.includes('covro-mcp-probe-recap');
+    if (title || recap) assert.equal(body.tools?.length ?? 0, 0);
     const phase = task.includes('covro-mcp-probe-denied')
       ? 'denied'
       : task.includes('covro-mcp-probe-parent')
@@ -78,9 +81,11 @@ const model = createServer(async (request, response) => {
         content: [
           {
             type: 'output_text',
-            text: title
-              ? JSON.stringify({ title: 'MCP verification' })
-              : 'Local MCP verification complete.',
+            text: recap
+              ? JSON.stringify({ summary: 'Local MCP recap verification complete.' })
+              : title
+                ? JSON.stringify({ title: 'MCP verification' })
+                : 'Local MCP verification complete.',
           },
         ],
         phase: 'final_answer',
@@ -112,7 +117,7 @@ model.listen(0, '127.0.0.1');
 await once(model, 'listening');
 const modelAddress = model.address();
 assert(modelAddress && typeof modelAddress !== 'string');
-const toml = `model="gpt-6.1-sol"\nmodel_provider="mcp_probe"\napproval_policy="on-request"\ndefault_permissions=":read-only"\n[features]\nbackground_paginated_rollout_migration=false\n[model_providers.mcp_probe]\nname="Local MCP probe"\nbase_url="http://127.0.0.1:${modelAddress.port}/v1"\nwire_api="responses"\nrequires_openai_auth=false\nrequest_max_retries=0\nstream_max_retries=0\n[mcp_servers.covro]\ncommand="/unused-user-covro-server"\nenabled=false\n`;
+const toml = `model="gpt-6.1-sol"\nmodel_provider="mcp_probe"\napproval_policy="on-request"\ndefault_permissions=":read-only"\n[features]\nbackground_paginated_rollout_migration=false\n[model_providers.mcp_probe]\nname="Local MCP probe"\nbase_url="http://127.0.0.1:${modelAddress.port}/v1"\nwire_api="responses"\nrequires_openai_auth=false\nrequest_max_retries=0\nstream_max_retries=0\n[mcp_servers.covro]\ncommand="/unused-user-covro-server"\nenabled=false\n[mcp_servers."local.tools"]\ncommand="/unused-dotted-server"\nenabled=false\n`;
 await writeFile(join(home, 'config.toml'), toml);
 const portProbe = createPortProbe();
 portProbe.listen(0, '127.0.0.1');
@@ -184,6 +189,18 @@ try {
   const parent = await runtime.service.createThread('source', { clientOperationId: randomUUID() });
   const parentId = (parent.result as { threadId: string }).threadId;
   await gatewayTurn(parentId, 'covro-mcp-probe-denied');
+  await waitFor(
+    () => runtime!.service.projection.get(parentId)?.title === 'MCP verification',
+    'automatic title with injected MCP configuration',
+  );
+  assert.equal((await runtime.codex.readThreadMetadata(parentId)).title, 'MCP verification');
+  checks.push('Automatic title is generated without tools and persisted with injected MCP enabled');
+  assert(runtime.codex.recapThread);
+  assert.equal(
+    await runtime.codex.recapThread(parentId, 'covro-mcp-probe-recap'),
+    'Local MCP recap verification complete.',
+  );
+  checks.push('Explicit recap completes without tools with the same injected MCP configuration');
   assert.equal((await runtime.service.listThreads('target')).data.length, 0);
   assert.equal(approvals, 1);
   checks.push('Declining the native MCP write approval creates no session');

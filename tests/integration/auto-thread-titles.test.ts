@@ -97,11 +97,11 @@ it('generates once outside the user history, persists the title, and hides tempo
       'skills.include_instructions': false,
       default_permissions: ':read-only',
       web_search: 'disabled',
-      mcp_servers: { 'fixture.tools': { enabled: false } },
+      mcp_servers: { 'fixture.tools': { command: 'unused', enabled: false } },
     },
   });
   expect(temporary?.params).toHaveProperty('config.mcp_servers', {
-    'fixture.tools': { enabled: false },
+    'fixture.tools': { command: 'unused', enabled: false },
   });
   expect(
     sent.find((entry) => entry.method === 'turn/start' && entry.params?.threadId !== thread.id)
@@ -123,6 +123,41 @@ it('generates once outside the user history, persists the title, and hides tempo
   expect((await adapter.listThreads(thread.cwd)).data.map((entry) => entry.id)).toEqual([
     thread.id,
   ]);
+});
+
+it('preserves MCP transports without copying redacted settings into internal threads', async () => {
+  const servers = {
+    covro_runtime: {
+      url: 'http://127.0.0.1:12345/mcp',
+      enabled: true,
+      http_headers: { Authorization: 'SECRET_HEADER' },
+      tool_timeout_sec: '',
+    },
+    'local.tools': {
+      command: '/unused-command',
+      enabled: true,
+      env: { TOKEN: 'SECRET_ENV' },
+      startup_timeout_sec: '',
+    },
+  };
+  const { adapter, requests } = await fixture({ configOverrides: { mcp_servers: servers } });
+  const thread = await adapter.createThread('/tmp');
+  await adapter.startTurn(thread.id, thread.cwd, 'Generate a title');
+  await vi.waitFor(async () => {
+    expect((await adapter.readThreadMetadata(thread.id)).title).toBe('Codex 配置继承与运行设置');
+  });
+  await adapter.recapThread(thread.id, 'Summarize the conversation');
+  const internal = (await requests()).filter(
+    (entry) => entry.method === 'thread/start' && entry.params?.ephemeral,
+  );
+  expect(internal).toHaveLength(2);
+  for (const entry of internal) {
+    const config = entry.params?.config as { mcp_servers: unknown };
+    expect(config.mcp_servers).toEqual({
+      covro_runtime: { url: servers.covro_runtime.url, enabled: false },
+      'local.tools': { command: servers['local.tools'].command, enabled: false },
+    });
+  }
 });
 
 it.each([
