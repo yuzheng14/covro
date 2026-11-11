@@ -13,6 +13,8 @@ if (artifact?.name !== npmPackageName) throw new Error('Unexpected package');
 const files = artifact.files.map((entry) => entry.path);
 for (const required of [
   'bin/covro.mjs',
+  'bin/process-darwin.js',
+  'dist/server/preview/processes.js',
   'dist/cli/main.js',
   'dist/cli/codex-probe.js',
   'dist/codex/identity.js',
@@ -36,7 +38,9 @@ if (
     (filename) =>
       /(^|\/)(config\.local\.json|\.env(?:\..*)?|.*\.sqlite(?:-wal|-shm)?)$/.test(filename) ||
       filename.startsWith('tests/') ||
-      filename.startsWith('src/'),
+      filename.startsWith('src/') ||
+      (filename.startsWith('bin/') &&
+        !['bin/covro.mjs', 'bin/process-darwin.js'].includes(filename)),
   )
 )
   throw new Error('Package contains local state or development source');

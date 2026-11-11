@@ -9,3 +9,6 @@ playwright-report/
 test-results/
 coverage/
 .DS_Store
+
+# Obsolete compiled preview artifacts must not return to source control.
+/bin/native/

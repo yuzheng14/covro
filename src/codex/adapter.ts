@@ -1615,6 +1615,17 @@ export class CodexAdapter implements CodexClient {
         break;
       case 'item/started':
       case 'item/completed':
+        if (event.params.item.type === 'commandExecution') {
+          const item = event.params.item;
+          this.emit({
+            type: 'previewExecution',
+            threadId: event.params.threadId,
+            itemId: item.id,
+            cwd: item.cwd,
+            command: item.command,
+            source: item.source,
+          });
+        }
         if (event.params.item.type === 'contextCompaction') {
           this.tokenUsage.compacted(event.params.threadId, event.params.turnId);
           this.totalTokenUsage.compacted(event.params.threadId, event.params.turnId);

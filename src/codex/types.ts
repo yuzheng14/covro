@@ -19,6 +19,14 @@ import type {
 
 export type CodexDiagnostics = Omit<SystemInfo, 'authMode' | 'demo' | 'compatibilityConfirmation'>;
 export type CodexEvent =
+  | {
+      type: 'previewExecution';
+      threadId: string;
+      itemId: string;
+      cwd: string;
+      command: string;
+      source: string;
+    }
   | { type: 'goal'; threadId: string; goal: import('../shared/thread-goal.js').ThreadGoal | null }
   | { type: 'thread'; thread: ThreadView }
   | { type: 'threadSettings'; threadId: string; settings: RuntimeSettings }

@@ -13,6 +13,13 @@ export default ts.config(
   js.configs.recommended,
   ...ts.configs.recommended,
   {
+    files: ['bin/process-darwin.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: { ObjC: 'readonly', $: 'readonly', Ref: 'readonly' },
+    },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
