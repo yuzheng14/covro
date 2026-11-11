@@ -1,6 +1,6 @@
 # Preview validation record — Issue #334
 
-This record separates actual native/transport checks from explicit execution fixtures. It is not a claim that every Issue acceptance item is complete. The four draft stack layers are discovery, authorization/isolation, Vite adaptation, then UI/settings/docs. Nothing was merged, released, installed over the active Covro, or restarted in the user's existing instance.
+This record separates actual native/transport checks from explicit execution fixtures. It is not a claim that every Issue acceptance item is complete. [Native Stack #347](https://github.com/yuzheng14/covro/stack/347) contains four reviewable layers: [discovery #341](https://github.com/yuzheng14/covro/pull/341), [authorization/isolation #343](https://github.com/yuzheng14/covro/pull/343), [Vite adaptation #344](https://github.com/yuzheng14/covro/pull/344), then [UI/settings/docs #346](https://github.com/yuzheng14/covro/pull/346). The stack relationship is verified in GitHub’s UI (4 of 4). Nothing was merged, released, installed over the active Covro, or restarted in the user's existing instance.
 
 | Check                                | Environment and result                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -20,7 +20,7 @@ This record separates actual native/transport checks from explicit execution fix
 
 ## Repository verification
 
-TypeScript, full ESLint, production build and package verification passed. An initial parallel non-browser run reported 8 failures: seven clone fixture timeouts passed when isolated; one real integration omission of the current-main update cancellation route was restored and its focused tests passed. A clean full-suite rerun is required before recording the suite as passing.
+TypeScript, full ESLint, production build and package verification passed. An initial parallel non-browser run reported 8 failures: seven clone fixture timeouts passed when isolated; one real integration omission of the current-main update cancellation route was restored and its focused tests passed. The clean integrated rerun passed **1,637 tests**, with **1 skipped** (151 files passed, 1 skipped). The final UI Playwright test also passed (12.9 seconds), against a fresh disposable gateway.
 
 ## Reproduction
 
@@ -40,6 +40,14 @@ For UI screenshots against an already running **explicit fixture** gateway, set 
 - Real Tailscale and real authenticated Cloudflare Access end-to-end checks remain open. A suitable isolated authenticated entry is needed; existing live configuration must not be changed to manufacture a pass.
 - Path adaptation does not virtualize Location. Routers hardcoded to `/` need an appropriate basename; computed imports, fixed localhost, worker/SDK request stacks and cookie/storage-based app login are not universally transparent. See the [English](dev-preview.md) and [Chinese](dev-preview.zh-CN.md) guides.
 - A Content-Type allowlist is not proof of a side-effect-free GET; the registered development server can itself proxy other services. These are security boundaries documented by the Issue, not solved by process ancestry.
-- Missing or failed checks must remain visible when deciding whether the stack is ready to merge.
+- The user confirmed no isolated authenticated entry is available and requested normal reviewable PRs, with these real-link checks deferred to the dev release after their review/merge. They remain uncompleted acceptance items, not passing results.
 
 Cloudflare documents the [Quick Tunnel SSE limitation](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
+
+## Review screenshots
+
+Uploaded through Browser Use and checked for successful image decoding on GitHub:
+
+- [Vite two-project pages](https://github.com/yuzheng14/covro/pull/344#issuecomment-6785831677).
+- [UI default-off, high-risk, withdrawn and multi-project states](https://github.com/yuzheng14/covro/pull/346#issuecomment-6786071989).
+- [Four languages, desktop and narrow viewports](https://github.com/yuzheng14/covro/pull/346#issuecomment-6786094451).
