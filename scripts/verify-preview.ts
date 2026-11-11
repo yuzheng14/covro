@@ -18,6 +18,7 @@ import { attachPreviewWebSockets } from '../src/server/preview/websockets.js';
 import { parseConfig } from '../src/server/config.js';
 import { createAuthenticator } from '../src/server/auth.js';
 import type { CodexClient, CodexEvent } from '../src/codex/types.js';
+import { captureLogger } from '../tests/fixtures/logging.js';
 
 const directory = realpathSync(await mkdtemp(join(tmpdir(), 'covro-preview-browser-')));
 const children: ChildProcess[] = [];
@@ -34,10 +35,15 @@ const codex = {
   },
 } as CodexClient;
 const projects = new Map<string, string>();
-const discovery = new PreviewDiscovery(codex, (thread, cwd) =>
-  projects.get(thread) === cwd
-    ? { projectId: thread, projectName: thread, canonicalCwd: cwd }
-    : undefined,
+const logging = captureLogger();
+const discovery = new PreviewDiscovery(
+  codex,
+  (thread, cwd) =>
+    projects.get(thread) === cwd
+      ? { projectId: thread, projectName: thread, canonicalCwd: cwd }
+      : undefined,
+  undefined,
+  logging.logger,
 );
 const childrenInfo: { child: ChildProcess; cwd: string; thread: string; port: number }[] = [];
 const report: Record<string, unknown> = {
@@ -148,6 +154,7 @@ try {
   const paths = [];
   const failures: string[] = [];
   const pageErrors: string[] = [];
+  let phase = 'strict-resources';
   const hmrConnections = [0, 0];
   for (const info of childrenInfo) {
     const services = (await discovery.snapshot(info.thread)).services;
@@ -170,7 +177,7 @@ try {
         failures.push(message.text() + ' [' + message.location().url + ']');
     });
     page.on('pageerror', (error) => {
-      pageErrors.push(error.message);
+      pageErrors.push(`${phase}: ${error.message}`);
       console.error('Preview page error:', error.message);
     });
     await page.goto(config.publicOrigin[0] + url);
@@ -284,11 +291,14 @@ try {
   await writeFile(join(childrenInfo[0]!.cwd, 'value.js'), "export const value='alpha-reconnected'");
   await expect(pages[0]!.locator('#state')).toContainText('alpha-reconnected', { timeout: 15_000 });
   report.hmrReconnect = 'passed';
+  for (const current of pages) await expect(current.locator('#dynamic')).toContainText('-dynamic');
+  phase = 'enable-full';
   await proxy.configure({ enabled: true, fullRequests: true });
   const service = (await discovery.snapshot('alpha')).services.find((s) => s.status === 'running')!;
   const full = await proxy.open(service.id, {});
   const page = pages[0]!;
   await page.goto(config.publicOrigin[0] + full.url);
+  await expect(page.locator('#dynamic')).toHaveText('alpha-dynamic');
   const business = await page.evaluate(async () => {
     const result = await (
       await fetch('/api', {
@@ -315,7 +325,8 @@ try {
   assert.equal(business.result.applicationAuthorization, 'Bearer application-fixture');
   assert.equal(business.result.method, 'POST');
   assert.equal(business.echo, 'business-fixture');
-  await page.evaluate(async () => {
+  const skipSse = process.env.PREVIEW_SKIP_SSE;
+  await page.evaluate(async (skipSse) => {
     const probe = window as unknown as {
       probeSocket: WebSocket;
       probeEvents: EventSource;
@@ -326,6 +337,7 @@ try {
     await new Promise<void>((resolve) => {
       probe.probeSocket.onopen = () => resolve();
     });
+    if (skipSse) return;
     probe.probeEvents = new EventSource('/events');
     probe.probeCount = 0;
     probe.probeFailed = false;
@@ -334,19 +346,22 @@ try {
       probe.probeFailed = true;
       probe.probeEvents.close();
     };
-  });
-  await expect
-    .poll(() => page.evaluate(() => (window as unknown as { probeCount: number }).probeCount))
-    .toBeGreaterThan(1);
+  }, skipSse);
+  if (!skipSse)
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { probeCount: number }).probeCount))
+      .toBeGreaterThan(1);
   await proxy.configure({ enabled: true, fullRequests: false });
   await expect
     .poll(() =>
       page.evaluate(() => (window as unknown as { probeSocket: WebSocket }).probeSocket.readyState),
     )
     .toBe(3);
-  await expect
-    .poll(() => page.evaluate(() => (window as unknown as { probeFailed: boolean }).probeFailed))
-    .toBe(true);
+  if (!skipSse)
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { probeFailed: boolean }).probeFailed))
+      .toBe(true);
+  report.sse = skipSse ? `not exercised: ${skipSse}` : 'stream and revocation passed';
   assert.equal((await fetch(config.publicOrigin[0] + full.url)).status, 410);
   await proxy.configure({ enabled: false, fullRequests: true });
   assert.equal(proxy.configuration().fullRequests, false);
@@ -360,6 +375,9 @@ try {
   report.expectedDenialsAndRevocations = failures.length;
   report.unexpectedBrowserErrors = pageErrors.length + unexpected.length;
   console.log(JSON.stringify(report, null, 2));
+} catch (error) {
+  console.error(JSON.stringify({ phase: 'probe-failed', discovery: logging.records }, null, 2));
+  throw error;
 } finally {
   await browser?.close();
   proxy?.close();
