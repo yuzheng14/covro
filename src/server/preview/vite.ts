@@ -87,6 +87,9 @@ function edits(body: string, edits: Edit[]) {
 /** Syntax-aware resource adaptation, bounded to the registered target. No project writes. */
 export class VitePreviewAdapter implements PreviewAdapter {
   private readonly clients = new Map<string, Hmr>();
+  forget(prefix: string) {
+    this.clients.delete(prefix);
+  }
   async transform(
     body: string,
     type: string,
