@@ -26,12 +26,38 @@ export interface SavedOperation {
   status: Operation['status'];
   operation?: Operation;
   error?: string;
+  recoveryError?: string;
   lookupError?: { message: string; missing: boolean; details?: string };
   projectId?: string;
   navigateToResult?: boolean;
   mutation?: ThreadMutation;
   /** Navigation when Fork was clicked, which can differ from its source row and project. */
   navigationSource?: { projectId: string; threadId: string | null };
+  /** Human-readable ownership only; never store the submitted message or approval answer. */
+  context?: { threadId: string; projectId: string | null; title: string };
+}
+
+function readContext(value: SavedOperation['context']): SavedOperation['context'] {
+  if (
+    value &&
+    typeof value.threadId === 'string' &&
+    (value.projectId === null || typeof value.projectId === 'string') &&
+    typeof value.title === 'string'
+  )
+    return { threadId: value.threadId, projectId: value.projectId, title: value.title };
+}
+
+/** Action IDs and project IDs must never be interpreted as thread IDs. */
+export function operationThreadId(entry: SavedOperation): string | undefined {
+  return (
+    entry.operation?.execution?.threadId ??
+    entry.context?.threadId ??
+    (!['create', 'resolve', 'reconcile', 'confirmCompatibility', 'saveModelDefaults'].includes(
+      entry.kind,
+    )
+      ? entry.target
+      : undefined)
+  );
 }
 
 export function operationLookupError(problem: unknown): NonNullable<SavedOperation['lookupError']> {
@@ -84,12 +110,14 @@ export function readOperations(storage?: Pick<Storage, 'getItem'>): SavedOperati
           navigateToResult,
           navigationSource,
           mutation,
+          context,
         }) => ({
           clientOperationId,
           kind,
           target,
           createdAt,
           status: 'unknown',
+          ...(readContext(context) ? { context: readContext(context) } : {}),
           ...(readMutation(kind, mutation) ? { mutation: readMutation(kind, mutation) } : {}),
           ...((kind === 'fork' || kind === 'create') && typeof projectId === 'string'
             ? { projectId, navigateToResult: navigateToResult === true }
@@ -126,11 +154,13 @@ export function saveOperations(operations: SavedOperation[], storage?: Pick<Stor
             navigateToResult,
             navigationSource,
             mutation,
+            context,
           }) => ({
             clientOperationId,
             kind,
             target,
             createdAt,
+            ...(readContext(context) ? { context: readContext(context) } : {}),
             ...(kind === 'fork' || kind === 'create' ? { projectId, navigateToResult } : {}),
             ...(readMutation(kind, mutation) ? { mutation: readMutation(kind, mutation) } : {}),
             ...(kind === 'fork' && navigationSource ? { navigationSource } : {}),
@@ -145,6 +175,7 @@ export function saveOperations(operations: SavedOperation[], storage?: Pick<Stor
 }
 
 export function needsReconciliation(operation: SavedOperation) {
+  if (operation.operation && isSettled(operation.operation)) return false;
   return (
     operation.status === 'unknown' ||
     (operation.operation?.execution !== undefined && !operation.operation.execution.ended)
@@ -153,6 +184,8 @@ export function needsReconciliation(operation: SavedOperation) {
 
 export function isSettled(operation: Operation) {
   return (
+    Boolean(operation.reconciliation) ||
+    (operation.status === 'unknown' && Boolean(operation.execution?.ended)) ||
     operation.status === 'failed' ||
     (operation.status === 'acknowledged' && (!operation.execution || operation.execution.ended))
   );

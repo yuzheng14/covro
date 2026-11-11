@@ -3,6 +3,9 @@ import {
   blocksTarget,
   canDiscardMissingOperation,
   operationLookupError,
+  operationThreadId,
+  isSettled,
+  needsReconciliation,
   readOperations,
   saveOperations,
   type SavedOperation,
@@ -250,4 +253,62 @@ it('restores a pending rename with only its validated display name and identity'
   expect(readOperations(storage)[0]?.mutation).toEqual({ projectId: 'project', title: '新名称' });
   data = data.replace('新名称', '名'.repeat(101));
   expect(readOperations(storage)[0]?.mutation).toBeUndefined();
+});
+
+it('preserves approval ownership across reload without persisting response content', () => {
+  let saved = '';
+  const entry: SavedOperation = {
+    clientOperationId: 'approval-submission',
+    kind: 'resolve',
+    target: 'action',
+    createdAt: 1,
+    status: 'unknown',
+    context: { threadId: 'thread', projectId: 'project', title: 'Review the change' },
+  };
+  saveOperations([entry], {
+    setItem: (_key, value) => {
+      saved = value;
+    },
+  });
+  const restored = readOperations({ getItem: () => saved })[0]!;
+  expect(restored.context).toEqual(entry.context);
+  expect(operationThreadId(restored)).toBe('thread');
+  expect(operationThreadId({ ...restored, context: undefined })).toBeUndefined();
+  expect(
+    operationThreadId({ ...restored, kind: 'create', target: 'project', context: undefined }),
+  ).toBeUndefined();
+  expect(
+    readOperations({ getItem: () => JSON.stringify([{ ...entry, context: { threadId: 42 } }]) })[0]
+      ?.context,
+  ).toBeUndefined();
+});
+
+it('removes a terminal execution from pending work while leaving its original receipt unknown', () => {
+  const entry: SavedOperation = {
+    clientOperationId: 'old',
+    kind: 'send',
+    target: 'thread',
+    createdAt: 1,
+    status: 'unknown',
+    operation: {
+      clientOperationId: 'old',
+      kind: 'turn.start',
+      target: 'thread',
+      status: 'unknown',
+      createdAt: 1,
+      updatedAt: 2,
+      execution: {
+        operationId: 'old',
+        threadId: 'thread',
+        turnId: 'turn',
+        workspaceKey: 'workspace',
+        codexEpoch: 'epoch',
+        ended: true,
+      },
+    },
+  };
+  expect(isSettled(entry.operation!)).toBe(true);
+  expect(needsReconciliation(entry)).toBe(false);
+  expect(blocksTarget(entry, 'thread')).toBe(false);
+  expect(entry.operation!.status).toBe('unknown');
 });

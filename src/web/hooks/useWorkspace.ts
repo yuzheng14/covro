@@ -28,6 +28,7 @@ import {
   canDiscardMissingOperation,
   isSettled,
   operationLookupError,
+  operationThreadId,
   readOperations,
   saveOperations,
   type SavedOperation,
@@ -99,6 +100,8 @@ export function useWorkspace() {
   const systemSnapshotGuard = useRef(new SystemSnapshotGuard());
   const [connection, setConnection] = useState<ConnectionState>('connecting');
   const [error, setError] = useState<string>();
+  const [errorThreadId, setErrorThreadId] = useState<string>();
+  const errorOperation = useRef<string | undefined>(undefined);
   const [errorDetails, setErrorDetails] = useState<unknown>();
   const [authRequired, setAuthRequired] = useState(false);
   const cacheScope = useDeviceCacheScope(
@@ -207,8 +210,10 @@ export function useWorkspace() {
     setSettingsByScope(settingsRef.current);
   }, []);
 
-  const report = useCallback((problem: unknown) => {
+  const report = useCallback((problem: unknown, threadId?: string, operationId?: string) => {
+    errorOperation.current = operationId;
     setError(readableError(problem));
+    setErrorThreadId(threadId);
     setErrorDetails(problem instanceof HttpError ? problem.problem.details : undefined);
     if (problem instanceof HttpError && problem.authenticationRequired) setAuthRequired(true);
   }, []);
@@ -380,6 +385,31 @@ export function useWorkspace() {
           }
         }
       }
+      const actionRecords = operationsRef.current.filter(
+        (entry) =>
+          entry.kind === 'resolve' &&
+          next.actions.some((action) => action.actionId === entry.target),
+      );
+      if (actionRecords.length)
+        track((previous) =>
+          previous.flatMap((entry) => {
+            if (!actionRecords.includes(entry)) return [entry];
+            const action = next.actions.find((candidate) => candidate.actionId === entry.target)!;
+            if (
+              ['responded', 'expired'].includes(action.status) &&
+              !busyRef.current.has(`${entry.kind}:${entry.target}`)
+            ) {
+              if (errorOperation.current === entry.clientOperationId) setError(undefined);
+              return [];
+            }
+            return [
+              {
+                ...entry,
+                context: { threadId: next.id, projectId: next.projectId, title: next.title },
+              },
+            ];
+          }),
+        );
       const scope = `thread:${next.id}`;
       const draft = settingsRef.current[scope];
       if (draft && next.runtimeSettings) {
@@ -404,6 +434,7 @@ export function useWorkspace() {
             clientOperationId: execution.operationId,
             kind: 'send',
             target: next.id,
+            context: { threadId: next.id, projectId: next.projectId, title: next.title },
             createdAt: Date.now(),
             status: 'unknown',
           },
@@ -675,6 +706,14 @@ export function useWorkspace() {
         (entry) => entry.clientOperationId === operation.clientOperationId,
       );
       if (!known) return;
+      // HTTP reads and live receipts can finish out of order. Terminal evidence is monotonic.
+      if (
+        known.operation &&
+        (known.operation.updatedAt > operation.updatedAt ||
+          (known.operation.execution?.ended && !operation.execution?.ended) ||
+          (known.operation.reconciliation && !operation.reconciliation))
+      )
+        return;
       const turnId = (operation.result as { turnId?: string } | undefined)?.turnId;
       settleSubmission(
         operation.clientOperationId,
@@ -723,7 +762,13 @@ export function useWorkspace() {
             : entry,
         ),
       );
-      if (operation.status === 'failed' && operation.error?.code !== 'THREAD_IN_USE') {
+      if (
+        operation.status === 'failed' &&
+        operation.error?.code !== 'THREAD_IN_USE' &&
+        known.kind !== 'reconcile'
+      ) {
+        errorOperation.current = operation.clientOperationId;
+        setErrorThreadId(operationThreadId(known));
         setError(
           (operation.error ? errorMessage(operation.error) : undefined) ??
             message('workspace:operation_failed_check_details'),
@@ -776,10 +821,13 @@ export function useWorkspace() {
           }
         }
       }
-      if (isSettled(operation))
+      if (isSettled(operation)) {
+        if (operation.status !== 'failed' && errorOperation.current === operation.clientOperationId)
+          setError(undefined);
         track((previous) =>
           previous.filter((entry) => entry.clientOperationId !== operation.clientOperationId),
         );
+      }
     },
     [refreshSystem, selectThread, track, loadProjectThreads, settleMutation, settleSubmission],
   );
@@ -825,32 +873,60 @@ export function useWorkspace() {
     },
     [track],
   );
+  const operationRefresh = useRef<Promise<void> | undefined>(undefined);
+  const executionChecks = useRef(new Map<string, number>());
   const refreshOperations = useCallback(
-    async (reportErrors = false) => {
-      const failures: string[] = [];
-      await Promise.all(
-        operationsRef.current.map(async (entry) => {
-          // A browser identity is saved before POST; it may not have reached the gateway yet.
-          if (busyRef.current.has(`${entry.kind}:${entry.target}`)) return;
-          try {
-            applyOperation(await api.operation(entry.clientOperationId));
-          } catch (problem) {
-            if (problem instanceof HttpError && problem.authenticationRequired) {
-              report(problem);
-              return;
+    async (force = false): Promise<void> => {
+      if (operationRefresh.current) {
+        await operationRefresh.current;
+        if (force) return refreshOperations(true);
+        return;
+      }
+      const refreshing = (async () => {
+        const threads = new Map<string, Promise<void>>();
+        await Promise.all(
+          operationsRef.current.map(async (entry) => {
+            // A browser identity is saved before POST; it may not have reached the gateway yet.
+            if (busyRef.current.has(`${entry.kind}:${entry.target}`)) return;
+            try {
+              let receipt = await api.operation(entry.clientOperationId);
+              applyOperation(receipt);
+              const threadId = operationThreadId({ ...entry, operation: receipt });
+              if (
+                threadId &&
+                receipt.execution &&
+                !receipt.execution.ended &&
+                (force || Date.now() - (executionChecks.current.get(threadId) ?? 0) > 15_000)
+              ) {
+                let checking = threads.get(threadId);
+                if (!checking) {
+                  executionChecks.current.set(threadId, Date.now());
+                  checking = api.thread(threadId).then(updateThread);
+                  threads.set(threadId, checking);
+                }
+                // History may confirm the original execution ended. Fetch its updated receipt afterwards.
+                await checking;
+                receipt = await api.operation(entry.clientOperationId);
+                applyOperation(receipt);
+              }
+            } catch (problem) {
+              if (problem instanceof HttpError && problem.authenticationRequired) {
+                report(problem);
+                return;
+              }
+              recordLookupError(entry, problem);
             }
-            const message = recordLookupError(entry, problem);
-            if (message) failures.push(message);
-          }
-        }),
-      );
-      const currentFailures = failures.filter((message) =>
-        operationsRef.current.some((entry) => entry.lookupError?.message === message),
-      );
-      if (reportErrors && currentFailures.length)
-        report(new Error([...new Set(currentFailures)].join('\n')));
+          }),
+        );
+      })();
+      operationRefresh.current = refreshing;
+      try {
+        await refreshing;
+      } finally {
+        if (operationRefresh.current === refreshing) operationRefresh.current = undefined;
+      }
     },
-    [applyOperation, report, recordLookupError],
+    [applyOperation, report, recordLookupError, updateThread],
   );
   const refreshThread = useCallback(async () => {
     const id = selectedRef.current;
@@ -906,6 +982,7 @@ export function useWorkspace() {
         if (state === 'connected') {
           void refreshSystem();
           void refreshProjects().then(refreshProjectsThreads);
+          void refreshOperations(true);
         }
       },
       thread: updateThread,
@@ -918,8 +995,7 @@ export function useWorkspace() {
       },
       refresh: () => {
         void refreshProjects().then(refreshProjectsThreads);
-        void refreshThread();
-        void refreshOperations();
+        void refreshThread().then(() => refreshOperations(true));
         void refreshSystem();
       },
       system: (next) => {
@@ -977,6 +1053,17 @@ export function useWorkspace() {
     };
   }, [authRequired, refreshOperations, refreshSystem]);
 
+  // A notLoaded notification can outlive the last receipt: recover the selected
+  // projection even when there are no saved operations left to drive polling.
+  useEffect(() => {
+    if (authRequired || !thread?.managed || thread.status !== 'unknown') return;
+    void refreshThread();
+    const timer = setInterval(() => {
+      void refreshThread();
+    }, 15_000);
+    return () => clearInterval(timer);
+  }, [authRequired, thread?.id, thread?.managed, thread?.status, refreshThread]);
+
   const run = useCallback(
     async (
       kind: string,
@@ -1019,6 +1106,7 @@ export function useWorkspace() {
       busyRef.current.add(key);
       setBusy([...busyRef.current]);
       setError(undefined);
+      setErrorThreadId(undefined);
       setErrorDetails(undefined);
       const clientOperationId =
         draft?.kind === 'create' && draft.creationId ? draft.creationId : crypto.randomUUID();
@@ -1046,6 +1134,28 @@ export function useWorkspace() {
           : Object.values(projectStore.current.snapshot)
               .flatMap((page) => page.data)
               .find((row) => row.id === target);
+      const parent =
+        kind === 'reconcile'
+          ? operationsRef.current.find((entry) => entry.clientOperationId === target)
+          : undefined;
+      const actionOwner =
+        kind === 'resolve' &&
+        selectedThreadRef.current?.actions.some((action) => action.actionId === target)
+          ? selectedThreadRef.current
+          : undefined;
+      const parentThreadId = parent && operationThreadId(parent);
+      const parentOwner = parentThreadId
+        ? selectedThreadRef.current?.id === parentThreadId
+          ? selectedThreadRef.current
+          : Object.values(projectStore.current.snapshot)
+              .flatMap((page) => page.data)
+              .find((row) => row.id === parentThreadId)
+        : undefined;
+      const owner = actionOwner ?? source ?? parentOwner;
+      const context = owner
+        ? { threadId: owner.id, projectId: owner.projectId, title: owner.title }
+        : parent?.context;
+      const errorOwner = context?.threadId ?? (parent && operationThreadId(parent));
       const mutation: ThreadMutation | undefined =
         kind === 'archive' &&
         source &&
@@ -1080,6 +1190,7 @@ export function useWorkspace() {
           target,
           createdAt: Date.now(),
           status: 'accepted',
+          ...(context ? { context } : {}),
           ...(mutation ? { mutation } : {}),
           ...(kind === 'fork' || kind === 'create'
             ? {
@@ -1105,8 +1216,25 @@ export function useWorkspace() {
         applyOperation(operation);
         return operation;
       } catch (problem) {
-        if (!(problem instanceof HttpError && problem.problem.code === 'THREAD_IN_USE'))
-          report(problem);
+        const definiteFailure =
+          problem instanceof HttpError &&
+          problem.status >= 400 &&
+          problem.status < 500 &&
+          problem.status !== 408 &&
+          problem.problem.code !== 'RESULT_UNKNOWN';
+        if (
+          (!errorOwner || (definiteFailure && kind !== 'reconcile')) &&
+          !(problem instanceof HttpError && problem.problem.code === 'THREAD_IN_USE')
+        )
+          report(problem, errorOwner, kind === 'reconcile' ? target : clientOperationId);
+        if (kind === 'reconcile')
+          track((previous) =>
+            previous.map((entry) =>
+              entry.clientOperationId === target
+                ? { ...entry, recoveryError: readableError(problem) }
+                : entry,
+            ),
+          );
         if (
           problem instanceof HttpError &&
           problem.status >= 400 &&
@@ -1145,8 +1273,7 @@ export function useWorkspace() {
           if (lookupProblem instanceof HttpError && lookupProblem.authenticationRequired)
             report(lookupProblem);
           else if (entry) {
-            const message = recordLookupError(entry, lookupProblem);
-            if (message) report(new Error(message));
+            recordLookupError(entry, lookupProblem);
           }
         }
         return undefined;
@@ -1341,7 +1468,7 @@ export function useWorkspace() {
     },
     system,
     connection,
-    error,
+    error: !errorThreadId || errorThreadId === selectedId ? error : undefined,
     errorDetails,
     clearError: () => {
       setError(undefined);

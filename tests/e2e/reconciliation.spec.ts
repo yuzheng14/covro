@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import type { Operation, ServerMessage, ThreadView } from '../../src/shared/types';
+import type { Operation, ServerMessage } from '../../src/shared/types';
 import {
   confirmCompatibility,
   controlRuntime,
@@ -95,7 +95,7 @@ test('checking refreshes unknown history even with no saved browser operations',
 });
 
 for (const mobile of [false, true]) {
-  test(`checking unloaded managed history recovers through Codex and the real gateway (${mobile ? 'mobile' : 'desktop'})`, async ({
+  test(`unloaded managed history recovers automatically through Codex and the real gateway (${mobile ? 'mobile' : 'desktop'})`, async ({
     page,
   }, testInfo) => {
     const operation = await completedThread(page, '[unload] 已完成后卸载的会话');
@@ -104,29 +104,14 @@ for (const mobile of [false, true]) {
     await expect
       .poll(() => page.evaluate(() => localStorage.getItem('codex-web.operations.v1')))
       .toBe('[]');
-    await expect(page.locator('.topbar .status')).toHaveText('状态待核对');
-    await expect(checkButton(page)).toBeVisible();
     await page.setViewportSize(
       mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
     );
     await input(page).fill('恢复后继续的草稿');
-    await expect(send(page)).toBeDisabled();
     const posts: string[] = [];
     page.on('request', (request) => {
       if (request.method() === 'POST') posts.push(request.url());
     });
-    const response = page.waitForResponse(
-      (entry) =>
-        entry.request().method() === 'GET' &&
-        entry.url().endsWith(`/api/threads/${operation.target}`),
-    );
-    await checkButton(page).click();
-    const received = await response;
-    expect(received.ok()).toBe(true);
-    const recovered = (await received.json()) as ThreadView;
-    expect(recovered).toMatchObject({ id: operation.target, status: 'completed', managed: true });
-    expect(recovered.execution).toBeUndefined();
-    await expect(panel(page).getByText('没有待核对的提交。')).toBeVisible();
     await expect(page.locator('.pending-notice')).toHaveCount(0);
     await expect(page.locator('.topbar .status')).toHaveText('已完成');
     await expect(send(page)).toBeEnabled();
@@ -139,7 +124,6 @@ for (const mobile of [false, true]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
-    await page.locator('.diagnostics > summary').click();
     await send(page).click();
     await expect(page.locator('.turn')).toHaveCount(2);
     await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
@@ -192,11 +176,8 @@ for (const mobile of [false, true]) {
     await checkButton(page).click();
     await expect(panel(page)).toBeVisible();
     await expect(panel(page).getByRole('button', { name: '刷新状态' })).toBeEnabled();
-    const confirm = panel(page).getByRole('checkbox', { name: '我已核实对应旧运行已经结束' });
-    const reconcile = panel(page).getByRole('button', { name: '核对并解除旧占用' });
-    await expect(confirm).toBeVisible();
-    await expect(confirm).not.toBeChecked();
-    await expect(reconcile).toBeDisabled();
+    const reconcile = panel(page).getByRole('button', { name: '恢复此会话的操作…' });
+    await expect(reconcile).toBeEnabled();
     expect(submissions).toHaveLength(0);
     await page.screenshot({
       path: testInfo.outputPath(`reconciliation-${mobile ? 'mobile' : 'desktop'}.png`),
@@ -205,11 +186,12 @@ for (const mobile of [false, true]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
-    await confirm.check();
     await reconcile.click();
+    const recovery = page.getByRole('dialog', { name: '恢复此会话的操作' });
+    await expect(recovery).toContainText('不会停止任务或重新发送');
+    await recovery.getByRole('button', { name: '确认旧任务已结束并恢复' }).click();
     await expect(page.locator('.pending-notice')).toHaveCount(0);
-    await expect(panel(page).getByText(/人工核对旧运行结束/)).toBeVisible();
-    await expect(panel(page).getByText('提交结果待核对', { exact: true })).toBeVisible();
+    await expect(panel(page).locator('.operation-card')).toHaveCount(0);
     await expect(send(page)).toBeEnabled();
     await expect(input(page)).toHaveValue('核对期间保留的草稿');
     expect(submissions).toHaveLength(1);
@@ -243,13 +225,11 @@ test('a failed receipt lookup is visible and retry does not resubmit the task', 
   await input(page).fill('回执丢失时保留的草稿');
   await send(page).click();
   await checkButton(page).click();
-  await expect(panel(page).getByText(/无法确认提交：.*服务暂时不可用/)).toBeVisible();
-  await expect(page.locator('.error-banner.dismissible')).toContainText(
-    /无法确认提交：.*服务暂时不可用/,
-  );
-  await expect(panel(page).getByRole('button', { name: '清除此浏览器的待核对记录' })).toHaveCount(
-    0,
-  );
+  await expect(
+    panel(page).getByText('暂时无法查询这次提交的结果，请恢复连接后重试。'),
+  ).toBeVisible();
+  await expect(page.locator('.pending-notice')).toContainText('暂时无法查询这次提交的结果');
+  await expect(panel(page).getByRole('button', { name: '解除本页限制…' })).toHaveCount(0);
   await expect(panel(page).getByRole('button', { name: '刷新状态' })).toBeEnabled();
   await panel(page).getByRole('button', { name: '刷新状态' }).click();
   await expect(panel(page).getByRole('button', { name: '刷新状态' })).toBeEnabled();
@@ -285,9 +265,7 @@ for (const mobile of [false, true]) {
     expect(await (await missing).json()).toEqual({
       error: { code: 'OPERATION_NOT_FOUND', message: '未找到该操作' },
     });
-    await expect(page.locator('.error-banner.dismissible')).toContainText(
-      '当前服务未找到这笔提交记录',
-    );
+    await expect(page.locator('.pending-notice')).toContainText('服务端找不到这次提交记录');
     await expect(send(page)).toBeDisabled();
     // A reload must preserve the uncertain identity and query it again, never assume failure.
     await page.screenshot({
@@ -299,11 +277,13 @@ for (const mobile of [false, true]) {
     await input(page).fill('核对后仍保留的草稿');
     await checkButton(page).click();
     await expect(panel(page)).toBeVisible();
-    await expect(panel(page).getByRole('alert')).toContainText('404 / OPERATION_NOT_FOUND');
-    await expect(page.locator('.error-banner.dismissible')).toContainText('不能证明任务没有执行');
+    await expect(
+      panel(page).getByText('服务端找不到这次提交记录，暂时无法确认结果。'),
+    ).toBeVisible();
+    await expect(page.locator('.error-banner.dismissible')).toHaveCount(0);
     await expect(panel(page).getByRole('button', { name: '核对并解除旧占用' })).toHaveCount(0);
-    const discard = panel(page).getByRole('button', { name: '清除此浏览器的待核对记录' });
-    await expect(discard).toBeDisabled();
+    const discard = panel(page).getByRole('button', { name: '解除本页限制…' });
+    await expect(discard).toBeEnabled();
     await expect(send(page)).toBeDisabled();
     await page.screenshot({
       path: testInfo.outputPath(`missing-receipt-${mobile ? 'mobile' : 'desktop'}.png`),
@@ -312,10 +292,10 @@ for (const mobile of [false, true]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
-    await panel(page)
-      .getByRole('checkbox', { name: '我已检查历史和原执行环境，确认无需继续核对这笔提交' })
-      .check();
     await discard.click();
+    const clear = page.getByRole('dialog', { name: '解除本页限制' });
+    await expect(clear).toContainText('再次提交可能重复执行');
+    await clear.getByRole('button', { name: '解除本页限制', exact: true }).click();
     await expect(panel(page).getByText('没有待核对的提交。')).toBeVisible();
     await expect(page.locator('.pending-notice')).toHaveCount(0);
     await expect(page.locator('.error-banner.dismissible')).toHaveCount(0);
@@ -350,13 +330,13 @@ test('an in-flight submission is not polled as a missing receipt', async ({ page
   });
   await input(page).fill('正在发送中的任务');
   await send(page).click();
-  await checkButton(page).click();
+  await expect(page.locator('.pending-notice')).toHaveCount(0);
+  await page.locator('.diagnostics > summary').click();
+  await panel(page).getByRole('button', { name: '刷新状态' }).click();
   await expect(panel(page).getByRole('button', { name: '刷新状态' })).toBeEnabled();
   expect(lookups).toHaveLength(0);
   await expect(panel(page).getByRole('alert')).toHaveCount(0);
-  await expect(panel(page).getByRole('button', { name: '清除此浏览器的待核对记录' })).toHaveCount(
-    0,
-  );
+  await expect(panel(page).getByRole('button', { name: '解除本页限制…' })).toHaveCount(0);
   release();
   await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
   await expect(page.locator('.pending-notice')).toHaveCount(0);
@@ -374,7 +354,7 @@ test('a late 404 cannot replace a receipt delivered through the live stream', as
   });
   await input(page).fill('稍后才到达网关的任务');
   await send(page).click();
-  await expect(page.locator('.error-banner.dismissible')).toContainText('OPERATION_NOT_FOUND');
+  await expect(page.locator('.pending-notice')).toContainText('服务端找不到这次提交记录');
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -397,12 +377,12 @@ test('a late 404 cannot replace a receipt delivered through the live stream', as
     data: { clientOperationId: missingId, text: '[approval] 等待人工处理' },
   });
   expect(delivered.ok()).toBe(true);
-  await expect(panel(page).getByText('上游已确认提交', { exact: true })).toBeVisible();
+  await expect(
+    panel(page).getByText('这个会话的任务仍在运行，请前往会话查看或停止任务。'),
+  ).toBeVisible();
   release();
   await expect(panel(page).getByRole('button', { name: '刷新状态' })).toBeEnabled();
   await expect(panel(page).getByRole('alert')).toHaveCount(0);
   await expect(page.locator('.error-banner.dismissible')).toHaveCount(0);
-  await expect(panel(page).getByRole('button', { name: '清除此浏览器的待核对记录' })).toHaveCount(
-    0,
-  );
+  await expect(panel(page).getByRole('button', { name: '解除本页限制…' })).toHaveCount(0);
 });

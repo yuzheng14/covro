@@ -119,6 +119,7 @@ it.each([
     // An uncertain dispatch with no known turn must never match an arbitrary completed turn.
     ctx.db.database.run(`UPDATE execution_markers SET turn_id = NULL`);
     ctx.finishSilently();
+    delete ctx.actual.turns[0]!.items[0]!.clientId;
   }
   if (kind === 'read-failure')
     vi.spyOn(ctx.codex, 'readThread').mockRejectedValue(new Error('offline'));

@@ -41,6 +41,13 @@ async function seed(request: APIRequestContext) {
   return threadId;
 }
 
+async function openDiagnostics(page: Page) {
+  await page.locator('.diagnostics > summary').click();
+  const technical = info(page).locator('details.raw-details');
+  if ((await info(page).isVisible()) && (await technical.getAttribute('open')) === null)
+    await technical.getByText('技术详情', { exact: true }).click();
+}
+
 test.use({ viewport: { width: 1280, height: 900 } });
 test.beforeEach(async ({ page, context, request }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -53,7 +60,7 @@ test('draft, first message and saved conversation show the real ID with selectab
   page,
   request,
 }) => {
-  await page.locator('.diagnostics > summary').click();
+  await openDiagnostics(page);
   await expect(info(page)).toContainText('会话尚未创建');
   await expect(copyButton(page)).toHaveCount(0);
   const id = await send(page);
@@ -67,7 +74,7 @@ test('draft, first message and saved conversation show the real ID with selectab
   await expect(info(page).getByRole('status')).toBeEmpty();
 
   await page.reload();
-  await page.locator('.diagnostics > summary').click();
+  await openDiagnostics(page);
   await expect(info(page).locator('code')).toHaveText(id);
   await row(page, id)
     .getByRole('button', { name: /^会话详情：/ })
@@ -94,7 +101,7 @@ test('Fork shows the new server ID and returning restores the source ID', async 
   request,
 }) => {
   const source = await send(page);
-  await page.locator('.diagnostics > summary').click();
+  await openDiagnostics(page);
   await copyButton(page).click();
   await expect(info(page).getByRole('status')).toHaveText('已复制');
   await row(page, source).getByRole('button', { name: 'Fork 会话', exact: true }).click();
@@ -146,7 +153,7 @@ test('late details and clipboard completion never replace the current session or
   });
   // Reload with interception installed and no detail cache for the other sessions.
   await page.reload();
-  await page.locator('.diagnostics > summary').click();
+  await openDiagnostics(page);
   await expect(info(page).locator('code')).toHaveText(source);
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', {
@@ -199,7 +206,7 @@ test('failed detail loading clears the old ID and disables copying', async ({ pa
     }),
   );
   await page.reload();
-  await page.locator('.diagnostics > summary').click();
+  await openDiagnostics(page);
   await expect(info(page).locator('code')).toHaveText(source);
   await page.locator(`[data-thread-id="${target}"]`).click();
   await expect(info(page)).toContainText('会话详情加载失败');
@@ -210,7 +217,7 @@ test('failed detail loading clears the old ID and disables copying', async ({ pa
 for (const failure of ['denied', 'unavailable']) {
   test(`clipboard ${failure} offers manual copy and can retry`, async ({ page }) => {
     const id = await send(page);
-    await page.locator('.diagnostics > summary').click();
+    await openDiagnostics(page);
     await page.evaluate((failure) => {
       const clipboard = navigator.clipboard;
       Reflect.set(window, 'restoreClipboard', () =>
@@ -238,7 +245,7 @@ for (const failure of ['denied', 'unavailable']) {
 
 test('full IDs wrap in both information areas at 320px and 390px', async ({ page }) => {
   const id = await send(page);
-  await page.locator('.diagnostics > summary').click();
+  await openDiagnostics(page);
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await expect(info(page).locator('code')).toHaveText(id);

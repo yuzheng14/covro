@@ -5674,3 +5674,49 @@ dd {
   fill: currentColor;
   font-size: 10px;
 }
+
+.operation-owner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.operation-owner > span {
+  font-size: 10px;
+  color: #8d978d;
+}
+.operation-owner > strong {
+  color: #586b5d;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.operation-explanation {
+  color: #6a7b70;
+  font-size: 11px;
+  line-height: 1.7;
+  margin: 10px 0;
+}
+.operation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.operation-card-focused {
+  outline: 2px solid #b8c7af;
+  outline-offset: 2px;
+}
+.recovery-dialog-owner {
+  color: #586b5d;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.recovery-notice {
+  flex-wrap: wrap;
+  margin: 6px 0 0;
+}
+.recovery-notice > span {
+  flex: 1;
+  min-width: 160px;
+}
