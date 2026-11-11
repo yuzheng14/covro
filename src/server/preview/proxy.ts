@@ -61,6 +61,7 @@ interface Grant {
   stop: Set<() => void>;
 }
 export interface PreviewAdapter {
+  forget?(prefix: string): void;
   transform(
     body: string,
     type: string,
@@ -178,6 +179,7 @@ export class PreviewProxy {
   private revoke(grant: Grant) {
     this.logger.debug('preview.revoked', { reason: 'capability_withdrawn' });
     this.grants.delete(grant.id);
+    this.adapter.forget?.(`/preview/${grant.id}/`);
     for (const stop of grant.stop) {
       try {
         stop();
