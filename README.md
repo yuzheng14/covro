@@ -31,7 +31,7 @@
 
 - 📱 **Follow tasks from any device.** Review changes, handle approvals, answer questions, and check [account quotas](docs/account-usage.md) and [session context usage](docs/runtime-settings.md#会话上下文与-token266) on desktop or mobile. Tasks keep running when you close the page; adjust session settings while work continues.
 - 🗂️ **Keep projects and conversations together.** Start without a project, track parallel tasks, resume or fork your Codex CLI conversations, and reference server workspace files with [@](docs/file-references.md) or skills with [$](docs/skills.md). Agents in managed sessions can start a new task in a registered project through Covro.
-- 📖 **Read results while you chat.** Preview documents, diagrams, and code changes beside the conversation on desktop, or full-screen on mobile. Submitted messages stay visible during context compaction, and loaded history stays complete as new responses stream in.
+- 📖 **Read results while you chat.** Preview documents, diagrams, and code changes beside the conversation on desktop, or full-screen on mobile. Open session development services in isolated tabs with the opt-in [development preview proxy](docs/dev-preview.md). Submitted messages stay visible during context compaction, and loaded history stays complete as new responses stream in.
 - 🔔 **Know when your attention is needed.** Enable browser notifications for completed work, questions, and approvals in a supported desktop or Android browser. Keep the page online; notifications are not pushed while it is frozen or closed.
 
 Find controls, shortcuts, and supported commands in the [usage guide · 中文](docs/usage.zh-CN.md), [command guide](docs/slash-commands.md), and [setting timing](docs/session-live-settings.md).
@@ -95,7 +95,7 @@ The host computer must stay awake and online. When adding projects remotely, ent
 
 ## Updates and release channels
 
-Choose stable, beta, or dev in the update panel or with `covro update`. Managed upgrades support **macOS and Linux npm global installations**; other installations use their original update method. Updates can also switch to a supported default Node environment with an existing global Covro installation, including the same Covro version. Compatibility checks use the Codex launch source for the target restart environment, while the panel keeps the running Codex version separate. Automatic installation is off by default and requires verified Codex compatibility; unverified combinations need explicit confirmation. While waiting for idle, automatic updates follow the latest eligible channel candidate and can be cancelled from the panel. Covro does not upgrade Codex CLI. See [updates and recovery](docs/distribution.md).
+Choose stable, beta, or dev in the update panel or with `covro update`. Managed upgrades support **macOS and Linux npm global installations**; other installations use their original update method. Updates can also switch to a supported default Node environment with an existing global Covro installation, including the same Covro version. Automatic installation is off by default and requires verified Codex compatibility; unverified combinations need explicit confirmation. Covro does not upgrade Codex CLI. See [updates and recovery](docs/distribution.md).
 
 ## Your computer, your workspace
 

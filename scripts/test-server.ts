@@ -1,6 +1,9 @@
 /** Explicit fixture-backed browser test entry. Production never imports this module. */
 import { mkdtemp, rm, mkdir, writeFile, rename, realpath } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { fork, type ChildProcess } from 'node:child_process';
+import { once } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { CodexAdapter } from '../src/codex/adapter.js';
@@ -8,6 +11,7 @@ import type { CodexClient, CodexDiagnostics, CodexEvent } from '../src/codex/typ
 import { parseConfig } from '../src/server/config.js';
 import { startGateway } from '../src/server/main.js';
 import { AppError } from '../src/shared/errors.js';
+import { systemInspector } from '../src/server/preview/processes.js';
 
 /** Test-only diagnostics controls; the production adapter has no hook. */
 class ControlledFixture implements CodexClient {
@@ -143,6 +147,16 @@ class ControlledFixture implements CodexClient {
   private publish(event: CodexEvent) {
     for (const listener of this.listeners) listener(event);
   }
+  previewExecution(threadId: string, cwd: string, itemId: string) {
+    this.publish({
+      type: 'previewExecution',
+      threadId,
+      cwd,
+      itemId,
+      command: 'pnpm dev',
+      source: 'agent',
+    });
+  }
 }
 
 // External fixture sessions must use the same canonical cwd as the project registry.
@@ -192,7 +206,55 @@ const codex = new ControlledFixture(
   }),
   historyPath,
 );
-let runtime = await startGateway(config, { codex, staticDir: resolve('dist/web') });
+const nativeInspector = systemInspector();
+// Fixtures run under this host process rather than a native Codex executor.
+const overrides = {
+  codex,
+  staticDir: resolve('dist/web'),
+  previewInspector: nativeInspector
+    ? {
+        snapshot: () => nativeInspector.snapshot(process.pid),
+        connected: nativeInspector.connected.bind(nativeInspector),
+      }
+    : undefined,
+};
+let runtime = await startGateway(config, overrides);
+const previewChildren = new Map<string, ChildProcess>();
+async function seedPreview(threadId: string, projectId: string) {
+  const target = runtime.service.listProjects().find((p) => p.id === projectId && p.available);
+  if (!target || !runtime.service.previewContext(threadId, target.canonicalRoot))
+    throw new Error('Invalid fixture preview ownership');
+  const cwd = target.canonicalRoot;
+  const tag = projectId === 'fixture' ? 'Atlas' : 'Beacon';
+  await mkdir(join(cwd, 'public'), { recursive: true });
+  await writeFile(
+    join(cwd, 'public', 'logo.svg'),
+    `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="12" fill="${tag === 'Atlas' ? '#06b6d4' : '#a855f7'}"/></svg>`,
+  );
+  await writeFile(
+    join(cwd, 'index.html'),
+    `<html><head><title>${tag}</title><link rel="icon" href="/logo.svg"></head><body style="font-family:system-ui;padding:40px;background:#111827;color:#fff"><img src="/logo.svg" width="64" height="64"><h1>${tag}</h1><p id="state"></p><a style="color:#67e8f9" href="/deep/route">Open a route</a><script type="module" src="/main.js"></script></body></html>`,
+  );
+  await writeFile(
+    join(cwd, 'main.js'),
+    `document.querySelector('#state').textContent='Isolated Vite fixture · '+location.pathname.slice(import.meta.env.BASE_URL.length);if(import.meta.hot)import.meta.hot.accept();`,
+  );
+  const itemId = `fixture-preview-${randomUUID()}`;
+  const child = fork(resolve('scripts/preview-probes/vite-child.ts'), [cwd, tag], {
+    cwd,
+    execArgv: ['--import', import.meta.resolve('tsx')],
+    env: { ...process.env, CODEX_THREAD_ID: threadId, CODEX_TOOL_CALL_ID: itemId },
+    stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
+  });
+  await Promise.race([
+    once(child, 'message'),
+    once(child, 'exit').then(() => {
+      throw new Error('Preview fixture exited');
+    }),
+  ]);
+  previewChildren.set(threadId, child);
+  codex.previewExecution(threadId, cwd, itemId);
+}
 
 // Separate loopback control listener exists only in this explicit test entry. Requests from a
 // browser Origin are refused. It never adds a route or bypass to the production gateway.
@@ -224,6 +286,8 @@ const control = createServer((request, response) => {
       external?: 'free' | 'occupied' | 'error';
       releaseThreadId?: string;
       accountUsage?: object;
+      preview?: { threadId: string; projectId: string };
+      stopPreview?: string;
     };
     if (
       input.version !== undefined &&
@@ -238,6 +302,10 @@ const control = createServer((request, response) => {
     }
     let externalThreadId: string | undefined;
     const work = controlling.then(async () => {
+      if (input.reset === true) {
+        for (const child of previewChildren.values()) child.kill();
+        previewChildren.clear();
+      }
       if (input.reset === true) await rm(accountUsagePath, { force: true });
       if (input.accountUsage) {
         await writeFile(`${accountUsagePath}.tmp`, JSON.stringify(input.accountUsage));
@@ -245,17 +313,23 @@ const control = createServer((request, response) => {
       }
       if (input.restart === true) {
         await runtime.close();
-        runtime = await startGateway(config, { codex, staticDir: resolve('dist/web') });
+        runtime = await startGateway(config, overrides);
       } else if (input.reset === true) {
         // A test reset must clear durable gateway intent as well as upstream history.
         // Restart above deliberately preserves that data for recovery tests.
         await runtime.close();
         await rm(join(root, 'data'), { recursive: true, force: true });
         await codex.reset(input.version);
-        runtime = await startGateway(config, { codex, staticDir: resolve('dist/web') });
+        runtime = await startGateway(config, overrides);
       } else codex.update(input.version, input.unavailable);
       if (input.releaseThreadId) codex.releaseExternal(input.releaseThreadId);
       if (input.external) externalThreadId = await codex.seedExternal(project, input.external);
+      if (input.preview) await seedPreview(input.preview.threadId, input.preview.projectId);
+      if (input.stopPreview) {
+        const child = previewChildren.get(input.stopPreview);
+        child?.kill();
+        if (child) previewChildren.delete(input.stopPreview);
+      }
     });
     controlling = work.catch(() => {});
     await work;
@@ -277,6 +351,7 @@ const close = () => {
   closing = true;
   control.close();
   control.closeAllConnections();
+  for (const child of previewChildren.values()) child.kill();
   void runtime.close().finally(async () => {
     await rm(root, { recursive: true, force: true });
   });

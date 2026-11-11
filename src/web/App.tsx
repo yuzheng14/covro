@@ -43,6 +43,7 @@ import { useShell } from './hooks/useShell';
 import { useMobileInputViewport } from './hooks/useMobileInputViewport';
 import { usesMobileInput } from './lib/mobile-input';
 import { ShellPanel } from './components/ShellPanel';
+import { DevPreview } from './components/DevPreview';
 import { shellActive } from '../shared/shell';
 import { updateActive } from '../shared/updates';
 import {
@@ -614,6 +615,7 @@ export function App() {
           </div>
           <div className="topbar-status">
             <div className="topbar-tools">
+              <DevPreview threadId={workspace.selectedId} />
               <Button
                 type="button"
                 variant="ghost"

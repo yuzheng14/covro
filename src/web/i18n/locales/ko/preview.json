@@ -111,5 +111,19 @@
   "new_mermaid_diagram": "Mermaid 다이어그램",
   "new_this_file_has_lines_exceeding_300_collapsed": "이 파일은 {{v0}}줄로 300줄을 초과하여 기본적으로 접혀 있습니다.",
   "new_this_file_exceeds_50_000_characters_collapsed": "이 파일은 50,000자를 초과하여 기본적으로 접혀 있습니다.",
-  "empty_file": "빈 파일입니다."
+  "empty_file": "빈 파일입니다.",
+  "dev_title": "개발 미리 보기",
+  "dev_preview": "미리 보기",
+  "dev_enable": "개발 미리 보기 프록시 사용",
+  "dev_full": "전체 요청 허용 · 고위험",
+  "dev_risk": "등록된 서비스의 업무 API, 쓰기 요청, 모든 응답 형식 및 업무 WebSocket을 허용합니다. 인증, 프로세스 확인 및 브라우저 격리는 유지됩니다.",
+  "dev_open": "미리 보기 열기",
+  "dev_empty": "이 세션에서 소유권이 확인된 개발 서비스가 없습니다.",
+  "dev_running": "실행 중",
+  "dev_withdrawn": "사용 불가",
+  "dev_failed": "미리 보기 요청에 실패했습니다. 연결을 확인하고 다시 시도하세요. 미리 보기를 열려면 새 탭을 허용해야 합니다.",
+  "dev_reopen": "설정이 적용되었습니다. 새 정책을 사용하려면 미리 보기를 다시 여세요.",
+  "dev_inspection_failed": "프로세스 확인에 실패하여 미리 보기 권한이 취소되었습니다.",
+  "dev_unavailable": "이 플랫폼에서는 서비스 검색을 사용할 수 없습니다.",
+  "dev_workspace": "세션 작업 공간"
 }

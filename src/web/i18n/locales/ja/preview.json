@@ -111,5 +111,19 @@
   "new_mermaid_diagram": "Mermaid 図",
   "new_this_file_has_lines_exceeding_300_collapsed": "このファイルは {{v0}} 行あり、300 行を超えるため初期状態では折りたたまれます。",
   "new_this_file_exceeds_50_000_characters_collapsed": "このファイルは 50,000 文字を超えるため初期状態では折りたたまれます。",
-  "empty_file": "このファイルは空です。"
+  "empty_file": "このファイルは空です。",
+  "dev_title": "開発プレビュー",
+  "dev_preview": "プレビュー",
+  "dev_enable": "開発プレビュープロキシを有効にする",
+  "dev_full": "すべてのリクエストを許可 · 高リスク",
+  "dev_risk": "登録済みサービスの業務 API、書き込み、任意の応答形式、業務 WebSocket を許可します。認証、プロセス確認、ブラウザーの隔離は維持されます。",
+  "dev_open": "プレビューを開く",
+  "dev_empty": "このセッションに所有者を確認できた開発サービスはありません。",
+  "dev_running": "実行中",
+  "dev_withdrawn": "利用不可",
+  "dev_failed": "プレビューのリクエストに失敗しました。接続を確認して再試行し、新しいタブを許可してください。",
+  "dev_reopen": "設定を適用しました。新しいポリシーでプレビューを開き直してください。",
+  "dev_inspection_failed": "プロセスの確認に失敗したため、プレビューへのアクセスを取り消しました。",
+  "dev_unavailable": "このプラットフォームではサービス検出を利用できません。",
+  "dev_workspace": "セッションのワークスペース"
 }

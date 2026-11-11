@@ -111,5 +111,19 @@
   "new_mermaid_diagram": "Mermaid 图表",
   "new_this_file_has_lines_exceeding_300_collapsed": "此文件共 {{v0}} 行，超过 300 行，默认折叠。",
   "new_this_file_exceeds_50_000_characters_collapsed": "此文件超过 50,000 字符，默认折叠。",
-  "empty_file": "此文件为空。"
+  "empty_file": "此文件为空。",
+  "dev_title": "开发预览",
+  "dev_preview": "预览",
+  "dev_enable": "启用开发预览代理",
+  "dev_full": "允许完整请求 · 高危",
+  "dev_risk": "开放已登记服务的业务 API、写请求、任意响应类型和业务 WebSocket；身份、进程核验和浏览器隔离仍然生效。",
+  "dev_open": "打开预览",
+  "dev_empty": "当前会话暂无确认归属的开发服务。",
+  "dev_running": "运行中",
+  "dev_withdrawn": "不可用",
+  "dev_failed": "预览请求失败，请检查连接后重试；打开预览需要允许新标签页。",
+  "dev_reopen": "设置已生效，请重新打开预览以使用新策略。",
+  "dev_inspection_failed": "进程核验失败，已撤回预览权限。",
+  "dev_unavailable": "当前平台无法进行服务发现。",
+  "dev_workspace": "会话工作区"
 }
