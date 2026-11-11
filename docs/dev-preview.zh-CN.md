@@ -8,7 +8,7 @@
 
 ## 归属与生命周期
 
-支持 Linux procfs 和 macOS 13+；安装包内含只读的 arm64/x86_64 通用系统辅助程序，不使用 Python、提权或运行时编译器。其他平台、元数据不可读、标记缺失、网络 namespace 不一致或归属无法证明时拒绝开放。辅助程序被修改或与校验清单不符也会拒绝。
+支持 Linux procfs 和 macOS 13+ 的系统 JavaScript for Automation（JXA）运行环境。仍然只发布一个 npm 包，随包提供 JS 源码，不分发自有原生辅助二进制，也不拆分平台包。Node 调用系统自带的 `/usr/bin/osascript`，通过系统 API 读取内核进程元数据，不控制应用、不发送 Apple Events。不需要 Python、Node 原生扩展、编译器、额外下载运行时或升级 Node 主版本。Windows 主机尚未支持；系统工具缺失或被禁用、元数据不可读、标记缺失、网络 namespace 不一致或归属无法证明时拒绝开放。
 
 localhost 日志不是授权依据。发现需要当前受管 Codex epoch 的实时执行事件、会话工作目录、实际子进程链、精确的 `CODEX_THREAD_ID` / `CODEX_TOOL_CALL_ID` 环境标记、内核进程 birth identity 及真实监听 socket。Codex 执行 ID 和工具进程句柄都不等于 OS PID。多个会话共享 app-server，仅靠子进程链不能确定当前会话归属；项目级 Shell 和无关本机服务不会因此进入当前会话。
 

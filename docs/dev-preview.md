@@ -8,7 +8,7 @@ Both **Enable development preview proxy** and **Allow full requests · High risk
 
 ## Discovery and lifetime
 
-Supported collectors are Linux procfs and macOS 13+ (the package includes a small read-only universal arm64/x86_64 system helper). Other platforms, unreadable process metadata, missing markers, different network namespaces and unprovable ownership fail closed. No Python, privilege elevation or runtime compiler is used. A modified or mismatched helper is rejected.
+Supported collectors are Linux procfs and macOS 13+ using the system JavaScript for Automation (JXA) runtime. Covro remains a single npm package: it ships JavaScript source, not a custom native helper binary or platform-specific package. Node invokes the built-in `/usr/bin/osascript` to read kernel process metadata through system APIs; this does not control applications or send Apple Events. No Python, Node addon, compiler, downloaded runtime or Node major-version upgrade is needed. Windows hosts are not supported yet. Missing/disabled system tools, unreadable metadata, missing markers, different network namespaces and unprovable ownership fail closed.
 
 A localhost log line is not authorization. Covro combines a live command execution event in its current managed Codex epoch, the registered session workspace, actual descendant processes, exact `CODEX_THREAD_ID` / `CODEX_TOOL_CALL_ID` environment markers, kernel process birth identity, and a real listening socket. Codex execution IDs and tool process handles are not OS PIDs. Descending from a shared app-server alone does not establish which session owns a service. Project-level Shell and unrelated local listeners do not qualify.
 
