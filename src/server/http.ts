@@ -193,6 +193,14 @@ export function createApp({
     app.post('/api/updates/settings', async (c) =>
       c.json(await updates.configure(settingsSchema.parse(await c.req.json()))),
     );
+    if (updates.cancel)
+      app.post('/api/updates/cancel', async (c) => {
+        const { id } = z
+          .object({ id: z.uuid() })
+          .strict()
+          .parse(await c.req.json());
+        return c.json(await updates.cancel!(id));
+      });
     app.post('/api/updates/run', async (c) =>
       c.json(await updates.start(updateRequestSchema.parse(await c.req.json())), 202),
     );
