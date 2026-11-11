@@ -158,11 +158,13 @@ export async function exerciseDevPreview(page: Page, captureDirectory?: string) 
   expect((await page.request.get(atlas.url())).status()).toBe(410);
   await controlRuntime(page.request, { restart: true });
   await page.keyboard.press('Escape');
-  await select('fixture', first);
+  // Reload/acknowledge the new epoch before selecting. A reload must not race
+  // and discard an in-flight notification destination.
   await page.reload();
   await expect(page.locator('.compatibility-dialog')).toBeVisible();
   await page.locator('.compatibility-dialog button').last().click();
   await expect(page.locator('.compatibility-dialog')).not.toBeVisible();
+  await select('fixture', first);
   await page.locator('.dev-preview-entry').click();
   await expect(page.locator('.dev-preview-services li')).toHaveCount(0);
   expect((await page.request.get(atlas.url())).status()).toBe(410);

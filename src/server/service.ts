@@ -190,15 +190,21 @@ export class GatewayService {
       if (!this.codex.ready) return;
       const link = this.store.getThreadLink(threadId);
       if (!link || link.managedEpoch !== this.codex.epoch) return;
-      const canonical = realpathSync(cwd);
-      if (!containsPath(link.cwd, canonical)) return;
+      // Windows 8.3 aliases must use the same physical form as the kernel
+      // directory handle. Keep persisted project/session paths unchanged.
+      const physical = process.platform === 'win32' ? realpathSync.native : realpathSync;
+      const canonical = physical(cwd);
+      const linked = process.platform === 'win32' ? physical(link.cwd) : link.cwd;
+      if (!containsPath(linked, canonical)) return;
       const ownership = this.workspaces.assertOwnership(
         link.projectId,
-        link.projectId === null ? link.cwd : cwd,
+        process.platform === 'win32' || link.projectId === null ? link.cwd : cwd,
         threadId,
       );
-      const canonicalCwd = link.projectId === null ? canonical : ownership.cwd;
-      if (!containsPath(link.cwd, canonicalCwd)) return;
+      const canonicalCwd =
+        process.platform === 'win32' || link.projectId === null ? canonical : ownership.cwd;
+      if (!containsPath(physical(ownership.cwd), canonicalCwd)) return;
+      if (!containsPath(linked, canonicalCwd)) return;
       if (link.projectId === null) return { projectId: null, projectName: link.cwd, canonicalCwd };
       const project = this.projects.get(link.projectId);
       return { projectId: project.id, projectName: project.name, canonicalCwd };

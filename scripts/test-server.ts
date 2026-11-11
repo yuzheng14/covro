@@ -191,8 +191,13 @@ const config = parseConfig(
 config.demo = true;
 const codex = new ControlledFixture(
   new CodexAdapter({
-    binary: resolve('tests/fixtures/codex.mjs'),
+    // Windows cannot execute a POSIX shebang launcher. Run the same explicit
+    // protocol fixture with Node; this never invokes the installed Codex CLI.
+    binary: process.platform === 'win32' ? process.execPath : resolve('tests/fixtures/codex.mjs'),
     args: [
+      ...(process.platform === 'win32'
+        ? ['--import', import.meta.resolve('tsx'), resolve('tests/fixtures/app-server.ts')]
+        : []),
       '--options',
       JSON.stringify({
         fragmentBytes: 7,
@@ -353,8 +358,12 @@ const close = () => {
   control.closeAllConnections();
   for (const child of previewChildren.values()) child.kill();
   void runtime.close().finally(async () => {
+    nativeInspector?.close?.();
     await rm(root, { recursive: true, force: true });
   });
 };
 process.once('SIGINT', close);
 process.once('SIGTERM', close);
+process.on('message', (message) => {
+  if (message === 'close') close();
+});

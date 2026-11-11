@@ -12,8 +12,9 @@ concurrency:
 jobs:
   ownership:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-2022, windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
@@ -25,3 +26,28 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: node --import tsx scripts/verify-preview-native.ts
+      - name: Verify Windows ownership boundaries and transport resets
+        if: runner.os == 'Windows'
+        run: pnpm exec vitest run tests/integration/preview-windows-worker.test.ts tests/integration/preview-context.test.ts tests/integration/preview-upgrade-reset.test.ts
+      - name: Verify two real Vite projects with preinstalled Edge
+        if: runner.os == 'Windows'
+        env:
+          PREVIEW_BROWSER_CHANNEL: msedge
+          PREVIEW_TEST_FONT: C:\Windows\Fonts\arial.ttf
+          PREVIEW_SCREENSHOTS: .local/preview-windows-pages
+        run: node --import tsx scripts/verify-preview.ts
+      - name: Build the Windows UI fixture
+        if: runner.os == 'Windows'
+        run: pnpm build
+      - name: Verify Windows Edge UI and capture all locales
+        if: runner.os == 'Windows'
+        run: node --import tsx scripts/verify-preview-windows-ui.ts
+      - name: Upload Windows browser screenshots
+        if: ${{ always() && runner.os == 'Windows' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: preview-${{ matrix.os }}-attempt-${{ github.run_attempt }}
+          path: .local/preview-*/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7

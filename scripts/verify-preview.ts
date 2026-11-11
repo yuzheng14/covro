@@ -1,4 +1,4 @@
-/** Real Chromium + real Vite/OS sockets; execution events and identities are fixtures.
+/** Real Chromium/Edge + real Vite/OS sockets; execution events are fixtures.
  * Does not start a Codex app-server, touch installed Covro, or configure any tunnel. */
 import { fork, type ChildProcess } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm, copyFile } from 'node:fs/promises';
@@ -14,13 +14,14 @@ import { chromium, expect } from '@playwright/test';
 import { PreviewDiscovery } from '../src/server/preview/discovery.js';
 import { PreviewProxy } from '../src/server/preview/proxy.js';
 import { VitePreviewAdapter } from '../src/server/preview/vite.js';
-import { attachPreviewWebSockets } from '../src/server/preview/websockets.js';
+import { attachPreviewWebSockets, guardPreviewUpgrades } from '../src/server/preview/websockets.js';
 import { parseConfig } from '../src/server/config.js';
 import { createAuthenticator } from '../src/server/auth.js';
 import type { CodexClient, CodexEvent } from '../src/codex/types.js';
 import { captureLogger } from '../tests/fixtures/logging.js';
 
-const directory = realpathSync(await mkdtemp(join(tmpdir(), 'covro-preview-browser-')));
+const canonical = process.platform === 'win32' ? realpathSync.native : realpathSync;
+const directory = canonical(await mkdtemp(join(tmpdir(), 'covro-preview-browser-')));
 const children: ChildProcess[] = [];
 const events = new Set<(event: CodexEvent) => void>();
 const codex = {
@@ -54,6 +55,9 @@ const serverCleanup: (() => void)[] = [];
 let proxy: PreviewProxy | undefined;
 let server: ReturnType<typeof serve> | undefined;
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+const failures: string[] = [];
+const pageErrors: string[] = [];
+let phase = 'strict-resources';
 try {
   for (const tag of ['alpha', 'beta']) {
     const cwd = join(directory, tag);
@@ -144,17 +148,16 @@ try {
     port: config.port,
     websocket: { server: wss },
   });
+  guardPreviewUpgrades(server, logging.logger);
   await once(server, 'listening');
-  browser = await chromium.launch();
+  browser = await chromium.launch({ channel: process.env.PREVIEW_BROWSER_CHANNEL });
+  report.browser = process.env.PREVIEW_BROWSER_CHANNEL ?? 'chromium';
   const context = await browser.newContext();
   await context.addCookies([
     { name: 'management_dummy', value: 'never-upstream', url: config.publicOrigin[0]! },
   ]);
   const pages = [];
   const paths = [];
-  const failures: string[] = [];
-  const pageErrors: string[] = [];
-  let phase = 'strict-resources';
   const hmrConnections = [0, 0];
   for (const info of childrenInfo) {
     const services = (await discovery.snapshot(info.thread)).services;
@@ -377,6 +380,14 @@ try {
   console.log(JSON.stringify(report, null, 2));
 } catch (error) {
   console.error(JSON.stringify({ phase: 'probe-failed', discovery: logging.records }, null, 2));
+  console.error(
+    JSON.stringify({
+      phase,
+      completed: report,
+      browserErrors: pageErrors.length,
+      failedRequests: failures.length,
+    }),
+  );
   throw error;
 } finally {
   await browser?.close();

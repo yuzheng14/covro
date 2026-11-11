@@ -7,6 +7,8 @@ import { harness, DomainCodex, operationId } from './domain-helpers.js';
 import { databaseHarness } from './domain-db-helpers.js';
 
 const cleanups: (() => Promise<void>)[] = [];
+const physical = process.platform === 'win32' ? realpathSync.native : realpathSync;
+const linkType = process.platform === 'win32' ? 'junction' : 'dir';
 afterEach(async () => {
   for (const close of cleanups.splice(0)) await close();
 });
@@ -24,11 +26,18 @@ it('authorizes canonical session directories and descendants, excludes outside c
   mkdirSync(outside);
   expect(h.service.previewContext(id, nested)).toMatchObject({
     projectId: 'project',
-    canonicalCwd: realpathSync(nested),
+    canonicalCwd: physical(nested),
   });
+  if (process.platform === 'win32') {
+    const saved = (await h.service.getThread(id)).cwd;
+    expect(h.service.previewContext(id, physical(nested))).toMatchObject({
+      canonicalCwd: physical(nested),
+    });
+    expect((await h.service.getThread(id)).cwd).toBe(saved);
+  }
   expect(h.service.previewContext(id, outside)).toBeUndefined();
   expect(h.service.previewContext(operationId(), h.project)).toBeUndefined();
-  symlinkSync(outside, join(h.project, 'alias'));
+  symlinkSync(outside, join(h.project, 'alias'), linkType);
   expect(h.service.previewContext(id, join(h.project, 'alias'))).toBeUndefined();
   h.codex.reset();
   expect(h.service.previewContext(id, h.project)).toBeUndefined();
@@ -56,9 +65,9 @@ it('isolates unassigned session workspaces, including symlinks to a sibling sess
   mkdirSync(nested);
   expect(service.previewContext(first.id, nested)).toMatchObject({
     projectId: null,
-    canonicalCwd: realpathSync(nested),
+    canonicalCwd: physical(nested),
   });
   expect(service.previewContext(first.id, second.cwd)).toBeUndefined();
-  symlinkSync(second.cwd, join(first.cwd, 'other'));
+  symlinkSync(second.cwd, join(first.cwd, 'other'), linkType);
   expect(service.previewContext(first.id, join(first.cwd, 'other'))).toBeUndefined();
 });

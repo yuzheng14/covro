@@ -2881,6 +2881,9 @@ input.on('line', (line) => {
     return;
   }
   receive(message);
+  // Windows termination is forcible and cannot run the POSIX SIGTERM saver.
+  // Persist fixture history as RPC mutations occur, like durable upstream history.
+  if (process.platform === 'win32') saveHistory();
 });
 function saveHistory() {
   if (options.historyPath)

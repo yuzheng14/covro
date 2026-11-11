@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { readFile, readdir, readlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { WindowsInspector } from './windows.js';
 
 const execute = promisify(execFile);
 const options = { encoding: 'utf8' as const, timeout: 3000, maxBuffer: 8 * 1024 * 1024 };
@@ -25,7 +26,13 @@ export interface ProcessSnapshot {
 }
 export interface ProcessInspector {
   snapshot(root: number): Promise<ProcessSnapshot>;
-  connected(pid: number, port: number, clientPort: number): Promise<boolean>;
+  connected(
+    pid: number,
+    port: number,
+    clientPort: number,
+    host: Listener['host'],
+  ): Promise<boolean>;
+  close?(): void;
 }
 const descendant = (pid: number, root: number, parents: Map<number, { parent: number }>) => {
   const visited = new Set<number>();
@@ -117,7 +124,7 @@ class DarwinInspector implements ProcessInspector {
       throw new Error('App-server identity changed');
     return { processes, listeners: listeners.filter((l) => processes.has(l.pid)) };
   }
-  async connected(pid: number, port: number, clientPort: number) {
+  async connected(pid: number, port: number, clientPort: number, host: Listener['host']) {
     const { stdout } = await execute(
       '/usr/sbin/lsof',
       ['-nP', '-a', '-p', String(pid), '-iTCP', '-sTCP:ESTABLISHED', '-Fn'],
@@ -127,8 +134,10 @@ class DarwinInspector implements ProcessInspector {
       .split('\n')
       .some(
         (line) =>
-          line === `n127.0.0.1:${port}->127.0.0.1:${clientPort}` ||
-          line === `n[::1]:${port}->[::1]:${clientPort}`,
+          line ===
+          (host === '::1'
+            ? `n[::1]:${port}->[::1]:${clientPort}`
+            : `n127.0.0.1:${port}->127.0.0.1:${clientPort}`),
       );
   }
 }
@@ -236,9 +245,14 @@ class LinuxInspector implements ProcessInspector {
       throw new Error('App-server identity changed');
     return { processes, listeners };
   }
-  async connected(pid: number, port: number, clientPort: number) {
+  async connected(pid: number, port: number, clientPort: number, host: Listener['host']) {
     return (await this.sockets(pid)).some(
-      (s) => s.state === '01' && s.port === port && s.remote === clientPort && s.remoteLoopback,
+      (s) =>
+        s.state === '01' &&
+        s.port === port &&
+        s.remote === clientPort &&
+        s.remoteLoopback &&
+        s.host === host,
     );
   }
 }
@@ -246,5 +260,6 @@ export function systemInspector(): ProcessInspector | undefined {
   if (process.platform === 'darwin' && existsSync('/usr/bin/osascript') && existsSync(darwinProbe))
     return new DarwinInspector();
   if (process.platform === 'linux') return new LinuxInspector();
+  if (process.platform === 'win32' && process.arch === 'x64') return new WindowsInspector();
   return undefined;
 }
