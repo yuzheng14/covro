@@ -49,13 +49,50 @@ export async function exerciseDevPreview(page: Page, captureDirectory?: string) 
   };
   const first = await create('fixture');
   await open();
-  const checks = page.locator('.dev-preview-settings input');
+  const checks = page.locator('.dev-preview-settings').getByRole('switch');
+  await expect(checks.nth(0)).toHaveAccessibleName('启用开发预览代理');
+  await expect(checks.nth(1)).toHaveAccessibleName('允许完整请求 · 高危');
   await expect(checks.nth(0)).not.toBeChecked();
   await expect(checks.nth(1)).not.toBeChecked();
+  await expect(checks.nth(1)).toBeDisabled();
   await expect(page.locator('.dev-preview-services button')).toBeDisabled();
   await capture('default-off');
-  await checks.nth(0).click();
+  await checks.nth(0).focus();
+  await expect(checks.nth(0)).toBeFocused();
+  let releaseSave!: () => void;
+  let startedSave!: () => void;
+  let saveRequests = 0;
+  const saving = new Promise<void>((resolve) => {
+    startedSave = resolve;
+  });
+  const saveGate = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
+  // Delay the real settings request to exercise pending UI, then let it reach
+  // the fixture server. No policy response or service identity is mocked.
+  await page.route('**/api/preview/settings', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    saveRequests++;
+    startedSave();
+    await saveGate;
+    await route.continue();
+  });
+  try {
+    await checks.nth(0).press('Space');
+    await saving;
+    await expect(checks.nth(0)).toBeDisabled();
+    await expect(checks.nth(1)).toBeDisabled();
+    await expect(checks.nth(0)).toBeFocused();
+    await checks.nth(0).press('Space');
+    expect(saveRequests).toBe(1);
+    await capture('saving');
+  } finally {
+    releaseSave();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
   await expect(checks.nth(0)).toBeChecked();
+  await expect(checks.nth(0)).toBeFocused();
+  await capture('enabled-keyboard');
   await expect(page.locator('.dev-preview-services button')).toBeEnabled();
   const launch = async (title: string) => {
     const popup = page.waitForEvent('popup');
@@ -85,7 +122,7 @@ export async function exerciseDevPreview(page: Page, captureDirectory?: string) 
       screenshots.push(path);
     }
   }
-  await checks.nth(1).click();
+  await page.getByText('允许完整请求 · 高危', { exact: true }).click();
   await expect(checks.nth(1)).toBeChecked();
   await capture('full-risk');
   expect((await page.request.get(beacon.url())).status()).toBe(410);
@@ -114,7 +151,7 @@ export async function exerciseDevPreview(page: Page, captureDirectory?: string) 
   await controlRuntime(page.request, { stopPreview: second });
   await expect(page.locator('.dev-preview-services button')).toBeDisabled();
   await capture('withdrawn');
-  await checks.nth(0).click();
+  await checks.nth(0).press('Enter');
   await expect(checks.nth(0)).not.toBeChecked();
   await expect(checks.nth(1)).not.toBeChecked();
   await expect(checks.nth(1)).toBeDisabled();

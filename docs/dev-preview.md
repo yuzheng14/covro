@@ -4,7 +4,7 @@
 
 Open **Preview** in the conversation toolbar. Covro lists confirmed development services for that session, including their project, command, port and current status. Enable the preview proxy, then choose **Open preview** to open just that project in a new tab. Different projects use separate `/preview/<run capability>/` paths on the Covro address you already use.
 
-Both **Enable development preview proxy** and **Allow full requests · High risk** default to off, including configurations created before this feature. Discovery continues while the proxy is off. Enabling the high risk option requires the main switch. Changing either setting withdraws existing preview links and connections; reopen the preview. Turning the proxy off also clears the high risk option. Settings apply to the Covro instance, not just the selected session.
+Both **Enable development preview proxy** and **Allow full requests · High risk** default to off, including configurations created before this feature. Switch changes save immediately; controls are disabled while saving. Discovery continues while the proxy is off. Enabling the high risk option requires the main switch. Changing either setting withdraws existing preview links and connections; reopen the preview. Turning the proxy off also clears the high risk option. Settings apply to the Covro instance, not just the selected session.
 
 ## Discovery and lifetime
 

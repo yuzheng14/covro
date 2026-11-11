@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ExternalLink, Monitor } from 'lucide-react';
 import type { PreviewSettings, PreviewSnapshot } from '../../shared/dev-preview';
 import { request } from '../lib/api';
 import { t } from '../i18n';
 import { Button } from './ui/button';
+import { Switch } from './ui/switch';
 import { CommandDialog } from './CommandDialog';
 import './dev-preview.css';
 
 export function DevPreview({ threadId }: { threadId?: string }) {
+  const enableId = useId();
+  const fullId = useId();
+  const riskId = useId();
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<PreviewSnapshot>();
   const [busy, setBusy] = useState(false);
@@ -54,6 +58,7 @@ export function DevPreview({ threadId }: { threadId?: string }) {
   }, [threadId, open]);
   const running = snapshot?.services.filter((service) => service.status === 'running').length ?? 0;
   const configure = async (settings: PreviewSettings) => {
+    if (saving.current) return;
     revision.current++;
     saving.current = true;
     setBusy(true);
@@ -116,33 +121,37 @@ export function DevPreview({ threadId }: { threadId?: string }) {
           className="dev-preview-dialog"
         >
           <div className="dev-preview-settings">
-            <label>
-              <input
-                type="checkbox"
+            <label htmlFor={enableId}>
+              <span>{t('preview:dev_enable')}</span>
+              <Switch
+                id={enableId}
                 checked={snapshot?.settings.enabled ?? false}
-                disabled={!snapshot || busy}
-                onChange={(event) =>
+                disabled={!snapshot}
+                aria-disabled={busy || undefined}
+                onCheckedChange={(checked) =>
                   void configure({
-                    enabled: event.target.checked,
-                    fullRequests:
-                      event.target.checked && (snapshot?.settings.fullRequests ?? false),
+                    enabled: checked,
+                    fullRequests: checked && (snapshot?.settings.fullRequests ?? false),
                   })
                 }
               />
-              <span>{t('preview:dev_enable')}</span>
             </label>
-            <label>
-              <input
-                type="checkbox"
+            <label htmlFor={fullId}>
+              <span>{t('preview:dev_full')}</span>
+              <Switch
+                id={fullId}
+                aria-describedby={riskId}
                 checked={snapshot?.settings.fullRequests ?? false}
-                disabled={!snapshot?.settings.enabled || busy}
-                onChange={(event) =>
-                  void configure({ enabled: true, fullRequests: event.target.checked })
+                disabled={!snapshot?.settings.enabled}
+                aria-disabled={busy || undefined}
+                onCheckedChange={(checked) =>
+                  void configure({ enabled: true, fullRequests: checked })
                 }
               />
-              <span>{t('preview:dev_full')}</span>
             </label>
-            <p className="dev-preview-risk">{t('preview:dev_risk')}</p>
+            <p className="dev-preview-risk" id={riskId}>
+              {t('preview:dev_risk')}
+            </p>
           </div>
           {error && <p role="alert">{t('preview:dev_failed')}</p>}
           {changed && (
