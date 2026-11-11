@@ -183,11 +183,11 @@ test('after explicitly resolving a lost resume receipt, recovery can be retried 
   await input(page).fill('核对后继续');
   await page.locator('.pending-notice').getByRole('button', { name: '核对提交' }).click();
   const panel = page.getByRole('region', { name: '状态诊断详情' });
-  await panel
-    .getByRole('checkbox', { name: '我已检查历史和原执行环境，确认无需继续核对这笔提交' })
-    .check();
+  await panel.getByRole('button', { name: '解除本页限制…' }).click();
   await page.unroute('**/api/threads/*/resume');
-  await panel.getByRole('button', { name: '清除此浏览器的待核对记录' }).click();
+  const recovery = page.getByRole('dialog', { name: '解除本页限制' });
+  await expect(recovery).toContainText('不会停止任务或重新发送');
+  await recovery.getByRole('button', { name: '解除本页限制', exact: true }).click();
   await page.getByRole('button', { name: '重试恢复', exact: true }).click();
   await expect(send(page)).toBeEnabled();
   await expect(input(page)).toHaveValue('核对后继续');
