@@ -58,6 +58,10 @@ for (const viewport of [
       await page.reload();
       await expect(card).toBeVisible();
       await expect(card.getByRole('button')).toHaveCount(3);
+      // An operation refresh can show the card before selection restoration finishes.
+      // Wait for the restored session, so offline checks do not interrupt that read.
+      await expect(page.getByRole('button', { name: '模型设置', exact: true })).toBeEnabled();
+      await expect(page.locator('.connection-badge')).toHaveText('实时连接正常');
       await context.setOffline(true);
       await expect(card.getByRole('button', { name: '允许本次', exact: true })).toBeDisabled();
       await context.setOffline(false);
