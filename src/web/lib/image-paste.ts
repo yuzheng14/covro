@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import { IMAGE_TYPES, MAX_IMAGES } from '../../shared/images';
+import { IMAGE_TYPES } from '../../shared/images';
 
 export interface DraftImage {
   id: string;
@@ -17,13 +17,11 @@ export interface MessageDraft {
 }
 export const emptyDraft: MessageDraft = { text: '', images: [] };
 
-export function imagePasteError(files: File[], images: DraftImage[]): string | undefined {
+export function imagePasteError(files: File[]): string | undefined {
   if (files.some((file) => !IMAGE_TYPES.includes(file.type)))
     return t('composer:paste_a_png_jpeg_webp_or_gif_image');
   if (files.some((file) => file.size === 0))
     return t('composer:the_image_is_empty_copy_and_paste_it');
-  if (files.length + images.length > MAX_IMAGES)
-    return t('composer:up_to_images_per_message', { count: MAX_IMAGES, v0: MAX_IMAGES });
 }
 
 export function readImage(file: File): Promise<string> {

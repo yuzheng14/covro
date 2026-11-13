@@ -93,26 +93,32 @@ describe('Codex JSONL and bidirectional RPC', () => {
       output.destroy();
     },
   );
-  it('writes messages above 4 MiB while preserving configured queue limits', async () => {
-    const output = new PassThrough();
-    let written = 0;
-    const input = new Writable({
-      write(chunk: Buffer, _encoding, callback) {
-        written += chunk.length;
-        callback();
-      },
-    });
-    const rpc = new RpcTransport(input, output);
-    await rpc.notify('turn/start', { image: 'x'.repeat(5 * 1024 * 1024) });
-    expect(written).toBeGreaterThan(5 * 1024 * 1024);
-    const bounded = new RpcTransport(input, output, { maxWriteBytes: 16 });
-    await expect(bounded.notify('turn/start', {})).rejects.toMatchObject({
-      code: 'CODEX_BUSY',
-      uncertain: false,
-    });
-    input.destroy();
-    output.destroy();
-  });
+  it.each([undefined, 16])(
+    'accepts large individual messages and bounds only queued writes (budget %s)',
+    async (maxWriteBytes) => {
+      const output = new PassThrough();
+      let finishWrite = () => {};
+      const input = new Writable({
+        write(_chunk, _encoding, callback) {
+          finishWrite = callback;
+        },
+      });
+      const rpc = new RpcTransport(input, output, { maxWriteBytes });
+      const pending = rpc.notify('turn/start', { image: 'x'.repeat(5 * 1024 * 1024) });
+      expect(input.writableLength).toBeGreaterThan(5 * 1024 * 1024);
+      await expect(rpc.notify('turn/steer', {})).rejects.toMatchObject({
+        code: 'CODEX_BUSY',
+        uncertain: false,
+      });
+      finishWrite();
+      await pending;
+      const next = rpc.notify('turn/steer', {});
+      finishWrite();
+      await next;
+      input.destroy();
+      output.destroy();
+    },
+  );
   it('bounds messages before assembling unlimited input and rejects invalid UTF-8', () => {
     expect(() => new JsonLineReader(() => {}, 16).push(Buffer.alloc(17))).toThrow(
       'configured limit',

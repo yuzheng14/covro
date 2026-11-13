@@ -214,10 +214,8 @@ export class RpcTransport extends EventEmitter {
     const data = JSON.stringify(message) + '\n';
     if (this.input.destroyed || !this.input.writable)
       throw new CodexError('CODEX_UNAVAILABLE', 'Codex stdin is closed', true);
-    if (
-      this.input.writableLength + Buffer.byteLength(data) >
-      (this.options.maxWriteBytes ?? DEFAULT_MAX_LINE_BYTES)
-    ) {
+    // Backpressure bounds queued writes, not the size of an individual image message.
+    if (this.input.writableLength > (this.options.maxWriteBytes ?? 4 * 1024 * 1024)) {
       throw new CodexError('CODEX_BUSY', 'Codex stdin buffer limit reached');
     }
     await new Promise<void>((resolve, reject) => {

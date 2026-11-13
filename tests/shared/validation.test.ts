@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_IMAGES } from '../../src/shared/images.js';
 import {
   createProjectSchema,
   removeProjectSchema,
@@ -74,6 +73,9 @@ describe.each([
   it('accepts inline images with or without text and rejects paths, URLs and invalid data', () => {
     const image = 'data:image/png;base64,iVBORw0KGgo=';
     expect(schema.parse({ ...input, text: '', images: [image] }).images).toEqual([image]);
+    expect(schema.parse({ ...input, text: '', images: Array(8).fill(image) }).images).toHaveLength(
+      8,
+    );
     expect(schema.parse({ ...input, text: '  看图\n', images: [image] }).text).toBe('  看图\n');
     for (const images of [
       [],
@@ -82,7 +84,6 @@ describe.each([
       ['data:image/svg+xml;base64,PHN2Zy8+'],
       ['data:image/png;base64,'],
       ['data:image/png;base64,a==='],
-      Array(MAX_IMAGES + 1).fill(image),
     ]) {
       expect(schema.safeParse({ ...input, text: '', images }).success).toBe(false);
     }

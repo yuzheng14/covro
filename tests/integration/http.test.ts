@@ -583,13 +583,45 @@ it('rejects unconfigured hosts, origins and ports for HTTP pages, APIs and WebSo
   expect(create).not.toHaveBeenCalled();
 });
 
+it('does not impose a message body cap on turn starts or steering, while other APIs stay bounded', async () => {
+  const { runtime, origin } = await setup();
+  const headers = {
+    origin,
+    'content-type': 'application/json',
+    'content-length': String(65 * 1024 * 1024),
+  };
+  for (const action of ['turns', 'steer']) {
+    const response = await runtime.app.request(`${origin}/api/threads/missing/${action}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        clientOperationId: randomUUID(),
+        text: 'image request',
+        ...(action === 'steer' ? { expectedTurnId: 'missing-turn' } : {}),
+      }),
+    });
+    expect(response.status).toBe(404);
+    expect((await response.json()).error.code).toBe('THREAD_NOT_FOUND');
+  }
+  const bounded = await runtime.app.request(`${origin}/api/projects/test/threads`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ clientOperationId: randomUUID() }),
+  });
+  expect(bounded.status).toBe(413);
+  expect((await bounded.json()).error.code).toBe('BODY_TOO_LARGE');
+});
+
 it('accepts image bodies above the former image and request limits and includes images in operation identity', async () => {
   const { post, runtime } = await setup();
   const created = (await (
     await post('/api/projects/test/threads', { clientOperationId: randomUUID() })
   ).json()) as Operation;
   const threadId = (created.result as { threadId: string }).threadId;
-  const images = [`data:image/png;base64,${Buffer.alloc(4 * 1024 * 1024).toString('base64')}`];
+  const images = [
+    `data:image/png;base64,${Buffer.alloc(4 * 1024 * 1024).toString('base64')}`,
+    ...Array<string>(4).fill('data:image/png;base64,aGVsbG8='),
+  ];
   const input = { clientOperationId: randomUUID(), text: '', images };
   const spy = vi.spyOn(runtime.codex, 'startTurn');
   const response = await post(`/api/threads/${threadId}/turns`, input);

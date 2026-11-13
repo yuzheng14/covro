@@ -1,6 +1,3 @@
-export const MAX_IMAGES = 4;
-/** Overall JSON request budget, including base64 images and task text. */
-export const IMAGE_REQUEST_BYTES = 64 * 1024 * 1024;
 export const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 /** Accept only inline raster images; never fetch URLs or read server paths. */

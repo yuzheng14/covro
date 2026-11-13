@@ -446,8 +446,7 @@ export function Composer(props: Props) {
     pasted?: { text: string; start: number; end: number },
   ) {
     if (!files.length) return;
-    const current = draftsRef.current[draftKey] ?? emptyDraft;
-    const error = imagePasteError(files, current.images);
+    const error = imagePasteError(files);
     if (error) {
       updateDraft(draftKey, (previous) => ({ ...previous, error }));
       return;
