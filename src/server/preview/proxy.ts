@@ -256,6 +256,7 @@ export class PreviewProxy {
           run.process.pid,
           run.port,
           socket.localPort!,
+          run.host,
         );
         if (!confirmed) await new Promise((resolve) => setTimeout(resolve, 25));
       }

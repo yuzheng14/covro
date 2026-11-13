@@ -8,7 +8,17 @@ Both **Enable development preview proxy** and **Allow full requests · High risk
 
 ## Discovery and lifetime
 
-Supported collectors are Linux procfs and macOS 13+ using the system JavaScript for Automation (JXA) runtime. Covro remains a single npm package: it ships JavaScript source, not a custom native helper binary or platform-specific package. Node invokes the built-in `/usr/bin/osascript` to read kernel process metadata through system APIs; this does not control applications or send Apple Events. No Python, Node addon, compiler, downloaded runtime or Node major-version upgrade is needed. Windows hosts are not supported yet. Missing/disabled system tools, unreadable metadata, missing markers, different network namespaces and unprovable ownership fail closed.
+Covro remains a single npm package. Collectors use Node and system runtimes with source files; no custom executable/DLL, Node addon, compiler, downloaded runtime or platform-specific distribution package is added.
+
+| Host        | Requirements                                                                                                                                                                                                           |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Linux       | Readable procfs and the same network namespace as the service.                                                                                                                                                         |
+| macOS 13+   | Built-in JavaScript for Automation (JXA), invoked through `/usr/bin/osascript`. It reads system process APIs without controlling applications or sending Apple Events.                                                 |
+| Windows x64 | Native x64 Node and built-in Windows PowerShell 5.1 in FullLanguage mode. In-memory .NET bindings read Windows APIs; no C# compilation, saved assembly, elevation, debug privilege or execution-policy change is used. |
+
+Windows services must be native x64 processes with readable metadata and an intact live ancestor chain, on local drive-letter directories. Directory junctions and 8.3 aliases are resolved for ownership checks without rewriting stored project paths. ARM64/WOW64 processes, UNC/mapped network directories and discovery across Windows/WSL are unsupported. A Covro instance running inside WSL uses the Linux collector for services inside that environment. Restricted sandbox accounts or organizational PowerShell controls may prevent inspection; Covro refuses preview instead of changing permissions. Windows Server 2022/2025 are the automated verification hosts; native Windows Codex sandbox and desktop Windows 10/11 end-to-end checks remain separately recorded in the [validation record](dev-preview-validation.md).
+
+On every platform, missing/disabled system tools, unreadable metadata, missing markers, different network namespaces and unprovable ownership fail closed.
 
 A localhost log line is not authorization. Covro combines a live command execution event in its current managed Codex epoch, the registered session workspace, actual descendant processes, exact `CODEX_THREAD_ID` / `CODEX_TOOL_CALL_ID` environment markers, kernel process birth identity, and a real listening socket. Codex execution IDs and tool process handles are not OS PIDs. Descending from a shared app-server alone does not establish which session owns a service. Project-level Shell and unrelated local listeners do not qualify.
 

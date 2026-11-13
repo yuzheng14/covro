@@ -14,7 +14,9 @@ const files = artifact.files.map((entry) => entry.path);
 for (const required of [
   'bin/covro.mjs',
   'bin/process-darwin.js',
+  'bin/process-windows.ps1',
   'dist/server/preview/processes.js',
+  'dist/server/preview/windows.js',
   'dist/cli/main.js',
   'dist/cli/codex-probe.js',
   'dist/codex/identity.js',
@@ -40,7 +42,7 @@ if (
       filename.startsWith('tests/') ||
       filename.startsWith('src/') ||
       (filename.startsWith('bin/') &&
-        !['bin/covro.mjs', 'bin/process-darwin.js'].includes(filename)),
+        !['bin/covro.mjs', 'bin/process-darwin.js', 'bin/process-windows.ps1'].includes(filename)),
   )
 )
   throw new Error('Package contains local state or development source');

@@ -197,10 +197,12 @@ export class PreviewDiscovery {
     return run;
   }
   close() {
+    if (this.closed) return;
     this.closed = true;
     clearInterval(this.timer);
     this.removeListener();
     for (const run of this.runs.values()) this.withdraw(run);
     this.executions.clear();
+    this.inspector?.close?.();
   }
 }

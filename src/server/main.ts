@@ -31,7 +31,7 @@ import { PreviewDiscovery } from './preview/discovery.js';
 import { PreviewProxy } from './preview/proxy.js';
 import { createAuthenticator } from './auth.js';
 import { VitePreviewAdapter } from './preview/vite.js';
-import { attachPreviewWebSockets } from './preview/websockets.js';
+import { attachPreviewWebSockets, guardPreviewUpgrades } from './preview/websockets.js';
 import type { ProcessInspector } from './preview/processes.js';
 export async function startGateway(
   config: AppConfig,
@@ -144,6 +144,7 @@ export async function startGateway(
       port: config.port,
       websocket: { server: wss },
     });
+    guardPreviewUpgrades(server, logger.child({ component: 'preview' }));
     await new Promise<void>((resolveListening, reject) => {
       server.once('listening', resolveListening);
       server.once('error', reject);
