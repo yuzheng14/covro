@@ -200,7 +200,9 @@ const codex = new ControlledFixture(
         : []),
       '--options',
       JSON.stringify({
-        fragmentBytes: 7,
+        // Browser tests exercise user flows with realistic pipe chunks. Bytewise UTF-8
+        // and JSONL fragmentation are covered by codex-transport.test.ts.
+        fragmentBytes: 16 * 1024,
         turnDelayMs: 800,
         titleDelayMs: 1500,
         historyPath,

@@ -69,9 +69,36 @@ for (const mobile of [false, true]) {
   });
 }
 
-test('invalid types, empty images and shared count/size limits keep the draft intact', async ({
+test('images above the former count, size and HTTP limits can be selected and sent', async ({
   page,
-}) => {
+}, info) => {
+  const files = [4, 1, 1, 1, 1].map((size, index) => ({
+    ...image,
+    name: `screenshot-${index + 1}-${size}MiB.png`,
+    buffer: Buffer.concat([png, Buffer.alloc(size * 1024 * 1024 - png.length)]),
+  }));
+  await page.goto('/');
+  await confirmCompatibility(page);
+  await input(page).fill('请检查这 5 张截图，最大单张 4 MiB，合计 8 MiB。');
+  await choose(page, files);
+  await expect(previews(page)).toHaveCount(5);
+  for (const preview of await previews(page).all())
+    await expect(preview).toHaveJSProperty('naturalWidth', 1);
+  await expect(page.locator('.composer-image-error')).toHaveCount(0);
+  await expect(send(page)).toBeEnabled();
+  await page.screenshot({ path: info.outputPath('large-images-draft.png') });
+  const outgoing = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/turns'));
+  await send(page).click();
+  expect((await outgoing).postDataJSON().images).toEqual(
+    files.map((file) => `data:image/png;base64,${file.buffer.toString('base64')}`),
+  );
+  await expect(previews(page)).toHaveCount(0);
+  await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
+  await expect(input(page)).toHaveValue('');
+  await page.screenshot({ path: info.outputPath('large-images-sent.png') });
+});
+
+test('invalid types and empty images keep the draft intact', async ({ page }) => {
   await page.goto('/');
   await confirmCompatibility(page);
   await input(page).fill('保留草稿');
@@ -81,11 +108,6 @@ test('invalid types, empty images and shared count/size limits keep the draft in
       error: 'PNG、JPEG、WebP 或 GIF',
     },
     { files: [{ ...image, buffer: Buffer.alloc(0) }], error: '图片为空' },
-    { files: Array(5).fill(image), error: '最多添加 4 张' },
-    {
-      files: [{ ...image, buffer: Buffer.alloc(2 * 1024 * 1024 + 1) }],
-      error: '总大小不能超过 2 MiB',
-    },
   ]) {
     await picker(page).setInputFiles(entry.files);
     await expect(page.locator('.composer-image-error')).toContainText(entry.error);
@@ -95,8 +117,8 @@ test('invalid types, empty images and shared count/size limits keep the draft in
   await choose(page, Array(4).fill(image));
   await expect(previews(page)).toHaveCount(4);
   await choose(page);
-  await expect(page.locator('.composer-image-error')).toContainText('最多添加 4 张');
-  await expect(previews(page)).toHaveCount(4);
+  await expect(previews(page)).toHaveCount(5);
+  await expect(page.locator('.composer-image-error')).toHaveCount(0);
 });
 
 test('a read failure preserves the selected image for retry and blocks sending until ready', async ({

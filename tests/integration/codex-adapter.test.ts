@@ -572,32 +572,33 @@ describe('verified protocol adapter with a real subprocess', () => {
 
   it('sends image-only turns and text-plus-image steering as native image input, and restores history', async () => {
     const { adapter, requests } = await fixture({ turnDelayMs: 2000 });
-    const image = 'data:image/png;base64,iVBORw0KGgo=';
+    const image = `data:image/png;base64,${Buffer.alloc(4 * 1024 * 1024).toString('base64')}`;
+    const images = [image, ...Array<string>(4).fill('data:image/png;base64,aGVsbG8=')];
     const thread = await adapter.createThread('/tmp');
     const turn = await adapter.startTurn(
       thread.id,
       thread.cwd,
       '',
       undefined,
-      [image],
+      images,
       undefined,
       'first-client',
     );
-    await adapter.steerTurn(thread.id, turn.id, '  看第二张图\n', [image], 'steer-client');
+    await adapter.steerTurn(thread.id, turn.id, '  看第二张图\n', images, 'steer-client');
     const calls = (await requests()).filter((entry) =>
       ['turn/start', 'turn/steer'].includes(entry.method),
     );
     expect(calls[0]?.params.clientUserMessageId).toBe('first-client');
     expect(calls[1]?.params.clientUserMessageId).toBe('steer-client');
-    expect(calls[0]?.params.input).toEqual([{ type: 'image', url: image }]);
+    expect(calls[0]?.params.input).toEqual(images.map((url) => ({ type: 'image', url })));
     expect(calls[1]?.params.input).toEqual([
       { type: 'text', text: '  看第二张图\n', text_elements: [] },
-      { type: 'image', url: image },
+      ...images.map((url) => ({ type: 'image', url })),
     ]);
     const history = await adapter.readThread(thread.id);
     expect(history.turns[0]?.items.filter((item) => item.type === 'userMessage')).toMatchObject([
-      { clientId: 'first-client', text: '', images: [image], imageCount: 1 },
-      { clientId: 'steer-client', text: '  看第二张图\n', images: [image], imageCount: 1 },
+      { clientId: 'first-client', text: '', images, imageCount: 5 },
+      { clientId: 'steer-client', text: '  看第二张图\n', images, imageCount: 5 },
     ]);
     const hidden = mapItem({
       id: 'external',

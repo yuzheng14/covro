@@ -27,10 +27,9 @@ async function pasteFiles(page: Page, count = 1, type = 'image/png', size?: numb
   await input(page).evaluate(
     (element, args) => {
       const data = new DataTransfer();
-      const bytes =
-        args.size === undefined
-          ? Uint8Array.from(atob(args.png), (c) => c.charCodeAt(0))
-          : new Uint8Array(args.size);
+      const pngBytes = Uint8Array.from(atob(args.png), (c) => c.charCodeAt(0));
+      const bytes = args.size === undefined ? pngBytes : new Uint8Array(args.size);
+      if (args.size && args.size >= pngBytes.length) bytes.set(pngBytes);
       for (let i = 0; i < args.count; i++)
         data.items.add(new File([bytes], `image-${i + 1}.png`, { type: args.type }));
       if (args.text) data.setData('text/plain', args.text);
@@ -128,20 +127,20 @@ test('multiple images can be removed, remain isolated by thread and retain accom
   await saveConversationHistory(page);
   await input(page).fill('before after');
   await input(page).evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(7, 7));
-  await pasteFiles(page, 2, 'image/png', undefined, '粘贴文字 ');
-  await expect(previews(page)).toHaveCount(2);
+  await pasteFiles(page, 6, 'image/png', undefined, '粘贴文字 ');
+  await expect(previews(page)).toHaveCount(6);
   await expect(input(page)).toHaveValue('before 粘贴文字 after');
   await page.getByRole('button', { name: '移除图片 1', exact: true }).click();
-  await expect(previews(page)).toHaveCount(1);
+  await expect(previews(page)).toHaveCount(5);
   await createEmptyThread(page);
   await expect(input(page)).toHaveValue('');
   await expect(previews(page)).toHaveCount(0);
   await page.locator(`[data-thread-id="${first}"]`).click();
-  await expect(previews(page)).toHaveCount(1);
+  await expect(previews(page)).toHaveCount(5);
   await expect(input(page)).toHaveValue('before 粘贴文字 after');
 });
 
-test('unsupported, empty, oversized and excess images leave the draft intact', async ({ page }) => {
+test('unsupported and empty images leave the draft intact', async ({ page }) => {
   await openThread(page);
   await input(page).fill('原有文字');
   await pasteFiles(page);
@@ -149,8 +148,6 @@ test('unsupported, empty, oversized and excess images leave the draft intact', a
   for (const sample of [
     { count: 1, type: 'image/svg+xml', size: 20, error: 'PNG、JPEG' },
     { count: 1, type: 'image/png', size: 0, error: '图片为空' },
-    { count: 1, type: 'image/png', size: 2 * 1024 * 1024, error: '2 MiB' },
-    { count: 4, type: 'image/png', size: undefined, error: '最多添加 4 张' },
   ]) {
     await pasteFiles(page, sample.count, sample.type, sample.size);
     await expect(page.locator('.composer-image-error')).toContainText(sample.error);
@@ -234,19 +231,26 @@ test('pending reads block Enter and finish in the originating draft after switch
   await expect(page.locator('.turn')).toHaveCount(1);
 });
 
-test('an image-only follow-up steers the current turn', async ({ page }) => {
+test('an image-only follow-up above the former size limits steers the current turn', async ({
+  page,
+}) => {
   await openThread(page);
   await input(page).fill('[approval] 等待追加图片');
   await input(page).press('Enter');
   await expect(page.locator('.action-card')).toBeVisible();
-  await pasteFiles(page);
+  await expect(input(page)).toHaveValue('');
+  // The selected detail must contain the active turn ID before steering can be dispatched.
+  await expect(page.getByRole('button', { name: '中断', exact: true })).toBeEnabled();
+  await pasteFiles(page, 1, 'image/png', 4 * 1024 * 1024);
+  await expect(previews(page)).toHaveJSProperty('naturalWidth', 1);
+  await expect(page.getByRole('button', { name: '追加要求', exact: true })).toBeEnabled();
   const outgoing = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/steer'));
   await input(page).press('Enter');
   const body = (await outgoing).postDataJSON();
   expect(body.text).toBe('');
   expect(body.images).toHaveLength(1);
   await expect(previews(page)).toHaveCount(0);
-  await expect(page.locator('.message-images img')).toHaveCount(1);
+  expect(Buffer.from(body.images[0].split(',')[1], 'base64')).toHaveLength(4 * 1024 * 1024);
   await expect(page.locator('.turn')).toHaveCount(1);
   await page.getByRole('button', { name: '中断', exact: true }).click();
   await expect(page.locator('.turn-heading .status')).toHaveText('已中断');

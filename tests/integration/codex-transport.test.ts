@@ -1,4 +1,4 @@
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { JsonLineReader, RpcTransport } from '../../src/codex/transport.js';
 
@@ -89,6 +89,32 @@ describe('Codex JSONL and bidirectional RPC', () => {
       const failure = rpc.request('method', {});
       output.write(line);
       await expect(failure).rejects.toMatchObject({ code: 'PROTOCOL_ERROR', uncertain: true });
+      input.destroy();
+      output.destroy();
+    },
+  );
+  it.each([undefined, 16])(
+    'accepts large individual messages and bounds only queued writes (budget %s)',
+    async (maxWriteBytes) => {
+      const output = new PassThrough();
+      let finishWrite = () => {};
+      const input = new Writable({
+        write(_chunk, _encoding, callback) {
+          finishWrite = callback;
+        },
+      });
+      const rpc = new RpcTransport(input, output, { maxWriteBytes });
+      const pending = rpc.notify('turn/start', { image: 'x'.repeat(5 * 1024 * 1024) });
+      expect(input.writableLength).toBeGreaterThan(5 * 1024 * 1024);
+      await expect(rpc.notify('turn/steer', {})).rejects.toMatchObject({
+        code: 'CODEX_BUSY',
+        uncertain: false,
+      });
+      finishWrite();
+      await pending;
+      const next = rpc.notify('turn/steer', {});
+      finishWrite();
+      await next;
       input.destroy();
       output.destroy();
     },
