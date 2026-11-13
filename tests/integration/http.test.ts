@@ -583,13 +583,13 @@ it('rejects unconfigured hosts, origins and ports for HTTP pages, APIs and WebSo
   expect(create).not.toHaveBeenCalled();
 });
 
-it('accepts image bodies above the old text limit and includes images in operation identity', async () => {
+it('accepts image bodies above the former image and request limits and includes images in operation identity', async () => {
   const { post, runtime } = await setup();
   const created = (await (
     await post('/api/projects/test/threads', { clientOperationId: randomUUID() })
   ).json()) as Operation;
   const threadId = (created.result as { threadId: string }).threadId;
-  const images = [`data:image/png;base64,${Buffer.alloc(400 * 1024).toString('base64')}`];
+  const images = [`data:image/png;base64,${Buffer.alloc(4 * 1024 * 1024).toString('base64')}`];
   const input = { clientOperationId: randomUUID(), text: '', images };
   const spy = vi.spyOn(runtime.codex, 'startTurn');
   const response = await post(`/api/threads/${threadId}/turns`, input);

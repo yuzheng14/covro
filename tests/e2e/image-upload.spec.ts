@@ -69,7 +69,37 @@ for (const mobile of [false, true]) {
   });
 }
 
-test('invalid types, empty images and shared count/size limits keep the draft intact', async ({
+test('images above the former per-image, total and HTTP limits can be selected and sent', async ({
+  page,
+}, info) => {
+  const buffer = Buffer.concat([png, Buffer.alloc(4 * 1024 * 1024 - png.length)]);
+  const files = ['screenshot-1-4MiB.png', 'screenshot-2-4MiB.png'].map((name) => ({
+    ...image,
+    name,
+    buffer,
+  }));
+  await page.goto('/');
+  await confirmCompatibility(page);
+  await input(page).fill('请检查这两张截图，每张 4 MiB，合计 8 MiB。');
+  await choose(page, files);
+  await expect(previews(page)).toHaveCount(2);
+  for (const preview of await previews(page).all())
+    await expect(preview).toHaveJSProperty('naturalWidth', 1);
+  await expect(page.locator('.composer-image-error')).toHaveCount(0);
+  await expect(send(page)).toBeEnabled();
+  await page.screenshot({ path: info.outputPath('large-images-draft.png') });
+  const outgoing = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/turns'));
+  await send(page).click();
+  expect((await outgoing).postDataJSON().images).toEqual(
+    files.map(() => `data:image/png;base64,${buffer.toString('base64')}`),
+  );
+  await expect(previews(page)).toHaveCount(0);
+  await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
+  await expect(input(page)).toHaveValue('');
+  await page.screenshot({ path: info.outputPath('large-images-sent.png') });
+});
+
+test('invalid types, empty images and the shared count limit keep the draft intact', async ({
   page,
 }) => {
   await page.goto('/');
@@ -82,10 +112,6 @@ test('invalid types, empty images and shared count/size limits keep the draft in
     },
     { files: [{ ...image, buffer: Buffer.alloc(0) }], error: '图片为空' },
     { files: Array(5).fill(image), error: '最多添加 4 张' },
-    {
-      files: [{ ...image, buffer: Buffer.alloc(2 * 1024 * 1024 + 1) }],
-      error: '总大小不能超过 2 MiB',
-    },
   ]) {
     await picker(page).setInputFiles(entry.files);
     await expect(page.locator('.composer-image-error')).toContainText(entry.error);

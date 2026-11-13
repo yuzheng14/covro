@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { imageDataBytes, MAX_IMAGE_BYTES, MAX_IMAGES } from './images.js';
+import { imageDataBytes, MAX_IMAGES } from './images.js';
 import type { TaskMessage } from './types.js';
 import { threadNameError } from './thread-name.js';
 export const cursorSchema = z.string().min(1).max(4096);
@@ -145,12 +145,6 @@ const taskFields = {
   images: z
     .array(z.string().refine((value) => imageDataBytes(value) !== undefined, 'Invalid image'))
     .max(MAX_IMAGES)
-    .refine(
-      (images) =>
-        images.reduce((sum, image) => sum + (imageDataBytes(image) ?? Infinity), 0) <=
-        MAX_IMAGE_BYTES,
-      'Images exceed size limit',
-    )
     .optional(),
 };
 const hasContent = (input: TaskMessage) => Boolean(input.text.trim() || input.images?.length);

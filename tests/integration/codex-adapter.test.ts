@@ -572,7 +572,7 @@ describe('verified protocol adapter with a real subprocess', () => {
 
   it('sends image-only turns and text-plus-image steering as native image input, and restores history', async () => {
     const { adapter, requests } = await fixture({ turnDelayMs: 2000 });
-    const image = 'data:image/png;base64,iVBORw0KGgo=';
+    const image = `data:image/png;base64,${Buffer.alloc(4 * 1024 * 1024).toString('base64')}`;
     const thread = await adapter.createThread('/tmp');
     const turn = await adapter.startTurn(
       thread.id,

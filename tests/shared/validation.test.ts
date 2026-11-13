@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_IMAGE_BYTES, MAX_IMAGES } from '../../src/shared/images.js';
+import { MAX_IMAGES } from '../../src/shared/images.js';
 import {
   createProjectSchema,
   removeProjectSchema,
@@ -86,10 +86,10 @@ describe.each([
     ]) {
       expect(schema.safeParse({ ...input, text: '', images }).success).toBe(false);
     }
-    const large = `data:image/png;base64,${Buffer.alloc(MAX_IMAGE_BYTES).toString('base64')}`;
+    const large = `data:image/png;base64,${Buffer.alloc(3 * 1024 * 1024).toString('base64')}`;
     expect(schema.safeParse({ ...input, text: '', images: [large] }).success).toBe(true);
-    expect(schema.safeParse({ ...input, text: '', images: [large, image] }).success).toBe(false);
-    expect(schema.safeParse({ ...input, text: 'text', images: [`${large}AAAA`] }).success).toBe(
+    expect(schema.safeParse({ ...input, text: '', images: [large, large] }).success).toBe(true);
+    expect(schema.safeParse({ ...input, text: 'text', images: [`${large}AA=A`] }).success).toBe(
       false,
     );
   });

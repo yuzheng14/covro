@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import { IMAGE_TYPES, MAX_IMAGE_BYTES, MAX_IMAGES } from '../../shared/images';
+import { IMAGE_TYPES, MAX_IMAGES } from '../../shared/images';
 
 export interface DraftImage {
   id: string;
@@ -24,8 +24,6 @@ export function imagePasteError(files: File[], images: DraftImage[]): string | u
     return t('composer:the_image_is_empty_copy_and_paste_it');
   if (files.length + images.length > MAX_IMAGES)
     return t('composer:up_to_images_per_message', { count: MAX_IMAGES, v0: MAX_IMAGES });
-  if ([...files, ...images].reduce((sum, file) => sum + file.size, 0) > MAX_IMAGE_BYTES)
-    return t('composer:images_per_message_cannot_exceed_2_mib_in');
 }
 
 export function readImage(file: File): Promise<string> {

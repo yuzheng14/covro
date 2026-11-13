@@ -34,7 +34,6 @@
   "paste_a_png_jpeg_webp_or_gif_image": "PNG、JPEG、WebP、GIF の画像を選択または貼り付けてください。",
   "the_image_is_empty_copy_and_paste_it": "画像が空です。選択または貼り付けをやり直してください。",
   "up_to_images_per_message": "1 メッセージにつき {{v0}} 枚まで添付できます。",
-  "images_per_message_cannot_exceed_2_mib_in": "1 メッセージの画像合計は 2 MiB 以下にしてください。縮小して再試行してください。",
   "pixels_other": "{{v0}} ピクセル",
   "pixels_one": "{{v0}} ピクセル",
   "up_to_images_per_message_other": "1 メッセージにつき {{v0}} 枚まで添付できます。",

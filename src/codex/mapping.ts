@@ -18,7 +18,7 @@ import type { TurnStartParams } from './generated/v2/TurnStartParams.js';
 import type { ReasoningEffort } from './generated/ReasoningEffort.js';
 import type { UserInput } from './generated/v2/UserInput.js';
 import { parseQuestionReplies } from '../shared/async-questions.js';
-import { imageDataBytes, MAX_IMAGES, MAX_IMAGE_BYTES } from '../shared/images.js';
+import { imageDataBytes, MAX_IMAGES } from '../shared/images.js';
 import { CodexError, isRecord } from './transport.js';
 
 /** Keep public diagnostics bounded and independent of upstream protocol types. */
@@ -136,12 +136,10 @@ export function mapItem(item: ThreadItem): ItemView {
       const imageInputs = item.content.filter(
         (input) => input.type === 'image' || input.type === 'localImage',
       );
-      let bytes = 0;
       const images = imageInputs.slice(0, MAX_IMAGES).flatMap((input) => {
         if (input.type !== 'image' || !('url' in input)) return [];
         const size = imageDataBytes(input.url);
-        if (size === undefined || bytes + size > MAX_IMAGE_BYTES) return [];
-        bytes += size;
+        if (size === undefined) return [];
         return [input.url];
       });
       return {

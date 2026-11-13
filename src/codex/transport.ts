@@ -216,7 +216,7 @@ export class RpcTransport extends EventEmitter {
       throw new CodexError('CODEX_UNAVAILABLE', 'Codex stdin is closed', true);
     if (
       this.input.writableLength + Buffer.byteLength(data) >
-      (this.options.maxWriteBytes ?? 4 * 1024 * 1024)
+      (this.options.maxWriteBytes ?? DEFAULT_MAX_LINE_BYTES)
     ) {
       throw new CodexError('CODEX_BUSY', 'Codex stdin buffer limit reached');
     }
