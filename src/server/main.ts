@@ -30,6 +30,7 @@ import { startManagedMcp } from './mcp/server.js';
 import { PreviewDiscovery } from './preview/discovery.js';
 import { PreviewProxy } from './preview/proxy.js';
 import { createAuthenticator } from './auth.js';
+import { VitePreviewAdapter } from './preview/vite.js';
 import { attachPreviewWebSockets } from './preview/websockets.js';
 import type { ProcessInspector } from './preview/processes.js';
 export async function startGateway(
@@ -112,7 +113,7 @@ export async function startGateway(
       ),
       config,
       authenticate,
-      undefined,
+      new VitePreviewAdapter(),
       logger.child({ component: 'preview_proxy' }),
     );
     await preview.load();

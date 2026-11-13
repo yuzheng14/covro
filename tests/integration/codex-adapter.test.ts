@@ -490,7 +490,10 @@ describe('verified protocol adapter with a real subprocess', () => {
         pendingRequests: [expect.objectContaining({ method: 'turn/start' })],
       },
     });
-    await waitFor(() => (adapter.ready && adapter.epoch !== epoch ? true : undefined));
+    // Recovery includes the one-second restart backoff and a real subprocess handshake.
+    await expect
+      .poll(() => adapter.ready && adapter.epoch !== epoch, { timeout: 10_000 })
+      .toBe(true);
     expect(await adapter.createThread('/tmp')).toHaveProperty('id');
     expect((await requests()).filter((call) => call.method === 'turn/start')).toHaveLength(1);
   });
