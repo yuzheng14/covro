@@ -27,6 +27,7 @@ import { releaseChannels, type UpdateController } from '../shared/updates.js';
 import { settingsSchema, updateRequestSchema } from '../updates/manager.js';
 import { createReleaseNotesLookup, releaseNotesQuery } from '../updates/release-notes.js';
 import { startShellSchema } from '../shared/shell.js';
+import type { PreviewProxy } from './preview/proxy.js';
 export interface HttpDependencies {
   logger?: Logger;
   config: AppConfig;
@@ -35,6 +36,7 @@ export interface HttpDependencies {
   authenticate?: Authenticator;
   updates?: UpdateController;
   backups?: BackupController;
+  preview?: PreviewProxy;
 }
 export function createApp({
   config,
@@ -43,6 +45,7 @@ export function createApp({
   authenticate = createAuthenticator(config),
   updates,
   backups,
+  preview,
   logger = nullLogger,
 }: HttpDependencies) {
   const app = new Hono<{
@@ -106,6 +109,15 @@ export function createApp({
     return c.json({ error: failure.toJSON(c.get('operationId')) }, failure.status as 400);
   });
   app.get('/api/health', (c) => c.json({ ok: true }));
+  app.all('/preview/*', async (c, next) => {
+    if (!preview)
+      throw new AppError('PREVIEW_DISABLED', 'Development preview proxy is disabled', 403);
+    if (c.req.header('upgrade')?.toLowerCase() === 'websocket') {
+      const events = await preview.websocket(c.req.raw, c.env.incoming);
+      return upgradeWebSocket(() => events)(c, next);
+    }
+    return preview.handle(c.req.raw);
+  });
   app.use('*', async (c, next) => {
     c.set('identity', await authenticate(c.req.raw, c.req.path === '/ws'));
     await next();
@@ -131,6 +143,27 @@ export function createApp({
       throw service.maintenanceError();
     await next();
   });
+  if (preview) {
+    app.get('/api/preview/settings', (c) => c.json(preview.configuration()));
+    app.post('/api/preview/settings', async (c) =>
+      c.json(await preview.configure(await c.req.json())),
+    );
+    app.get('/api/threads/:id/preview', async (c) =>
+      c.json({
+        settings: preview.configuration(),
+        ...(await preview.discovery.snapshot(schemas.idSchema.parse(c.req.param('id')))),
+      }),
+    );
+    app.post('/api/preview/services/:id/open', async (c) =>
+      c.json(
+        await preview.open(
+          schemas.idSchema.parse(c.req.param('id')),
+          c.get('identity'),
+          c.req.header('origin'),
+        ),
+      ),
+    );
+  }
   if (backups) {
     app.get('/api/backups', async (c) => c.json(await backups.status()));
     app.post('/api/backups', async (c) =>

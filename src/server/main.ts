@@ -27,6 +27,11 @@ import { startHeartbeat } from './websocket.js';
 import { UpdateManager } from '../updates/manager.js';
 import type { UpdateController } from '../shared/updates.js';
 import { startManagedMcp } from './mcp/server.js';
+import { PreviewDiscovery } from './preview/discovery.js';
+import { PreviewProxy } from './preview/proxy.js';
+import { createAuthenticator } from './auth.js';
+import { attachPreviewWebSockets } from './preview/websockets.js';
+import type { ProcessInspector } from './preview/processes.js';
 export async function startGateway(
   config: AppConfig,
   overrides: {
@@ -37,6 +42,7 @@ export async function startGateway(
     updates?: UpdateController;
     backups?: BackupController;
     maintenance?: boolean;
+    previewInspector?: ProcessInspector;
   } = {},
 ) {
   const logger = overrides.logger ?? nullLogger;
@@ -46,6 +52,8 @@ export async function startGateway(
   let closeDatabase: (() => void) | undefined;
   let codex: CodexClient | undefined;
   let mcp: Awaited<ReturnType<typeof startManagedMcp>> | undefined;
+  let preview: PreviewProxy | undefined;
+  const socketServers: WebSocketServer[] = [];
   let backups: BackupController | undefined = overrides.backups;
   const updates =
     overrides.updates ??
@@ -94,6 +102,20 @@ export async function startGateway(
       demo: config.demo,
     });
     gateway = service;
+    const authenticate = createAuthenticator(config);
+    preview = new PreviewProxy(
+      new PreviewDiscovery(
+        codex,
+        (thread, cwd) => service.previewContext(thread, cwd),
+        overrides.previewInspector,
+        logger.child({ component: 'preview_discovery' }),
+      ),
+      config,
+      authenticate,
+      undefined,
+      logger.child({ component: 'preview_proxy' }),
+    );
+    await preview.load();
     service.setMaintenance(overrides.maintenance ?? false);
     backups ??= backupStore
       ? new BackupManager(backupStore, service, { logger: logger.child({ component: 'backups' }) })
@@ -104,9 +126,12 @@ export async function startGateway(
       /* Diagnostics remain available; never substitute a fixture. */
     }
     const wss = new WebSocketServer({ noServer: true, maxPayload: 8192 });
+    socketServers.push(wss, ...attachPreviewWebSockets(wss, preview));
     const app = createApp({
       config,
       service,
+      authenticate,
+      preview,
       staticDir: overrides.staticDir ?? fileURLToPath(new URL('../web', import.meta.url)),
       updates,
       backups,
@@ -122,20 +147,21 @@ export async function startGateway(
       server.once('listening', resolveListening);
       server.once('error', reject);
     });
-    const stopHeartbeat = startHeartbeat(wss);
+    const stopHeartbeats = socketServers.map(startHeartbeat);
     let closing: Promise<void> | undefined;
     const close = (): Promise<void> =>
       (closing ??= (async () => {
         logger.info('gateway.stopping');
-        stopHeartbeat();
+        for (const stop of stopHeartbeats) stop();
+        preview?.close();
         gateway = undefined;
         updates.close();
         const closed = new Promise<void>((resolveClosed) => server.close(() => resolveClosed()));
-        for (const ws of wss.clients) {
+        for (const ws of socketServers.flatMap((server) => [...server.clients])) {
           ws.close(1001, 'Gateway stopping');
           ws.terminate();
         }
-        wss.close();
+        for (const sockets of socketServers) sockets.close();
         try {
           await mcp?.close();
           await backups?.close();
@@ -155,8 +181,13 @@ export async function startGateway(
       durationMs: Math.round(performance.now() - started),
       port: config.port,
     });
-    return { app, server, service, codex, close, updates, backups, mcp };
+    return { app, server, service, codex, close, updates, backups, mcp, preview };
   } catch (error) {
+    preview?.close();
+    for (const sockets of socketServers) {
+      for (const client of sockets.clients) client.terminate();
+      sockets.close();
+    }
     logger.error('gateway.start_failed', errorFields(error));
     await mcp?.close();
     updates.close();
