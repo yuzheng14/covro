@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.10.0](https://github.com/yuzheng14/covro/compare/v0.9.0...v0.10.0) (2026-11-13)
+
+
+### Features
+
+* **preview:** adapt Vite resources and controlled HMR paths ([#344](https://github.com/yuzheng14/covro/issues/344)) ([0071e04](https://github.com/yuzheng14/covro/commit/0071e0457de5ebb01c7471d4c2a773f1ad765811))
+* **preview:** add session controls and isolated preview guides ([#346](https://github.com/yuzheng14/covro/issues/346)) ([7ca04a0](https://github.com/yuzheng14/covro/commit/7ca04a048a435696e3393f74d15037f214ad9614)), closes [#334](https://github.com/yuzheng14/covro/issues/334)
+* **preview:** authorize and isolate registered service traffic ([#343](https://github.com/yuzheng14/covro/issues/343)) ([61c1e7e](https://github.com/yuzheng14/covro/commit/61c1e7eafed0b912c8ca679e9eab736eff53803d))
+* **preview:** discover session-owned development services ([#341](https://github.com/yuzheng14/covro/issues/341)) ([c9aa817](https://github.com/yuzheng14/covro/commit/c9aa817fa00d4421784f2fb521ad8a63b602c72e))
+* **preview:** support Windows service discovery and safe previews ([#348](https://github.com/yuzheng14/covro/issues/348)) ([08fba1f](https://github.com/yuzheng14/covro/commit/08fba1f9ec74a7ec6cf2e6ced6740217fd8cfc6e)), closes [#334](https://github.com/yuzheng14/covro/issues/334)
+
+
+### Bug Fixes
+
+* **codex:** preserve MCP transports in temporary threads ([#337](https://github.com/yuzheng14/covro/issues/337)) ([0ce65cc](https://github.com/yuzheng14/covro/commit/0ce65cc254df93c80ce470033551bf6a39a9651d))
+* **images:** remove attachment count and size limits ([#350](https://github.com/yuzheng14/covro/issues/350)) ([ae75d0f](https://github.com/yuzheng14/covro/commit/ae75d0f91ce7bd67d8e4ebd4e121174a73c7052f))
+* **session:** make submission recovery actionable ([#342](https://github.com/yuzheng14/covro/issues/342)) ([1ab7435](https://github.com/yuzheng14/covro/commit/1ab74353ce186199b25791816bcbdd12ebca6570)), closes [#326](https://github.com/yuzheng14/covro/issues/326)
+* **updates:** refresh automatic update targets while waiting for idle ([#339](https://github.com/yuzheng14/covro/issues/339)) ([7114f5f](https://github.com/yuzheng14/covro/commit/7114f5f7a97272c7f73a08afcd71101aa299cbb2)), closes [#325](https://github.com/yuzheng14/covro/issues/325)
+* **updates:** validate Codex from the restart environment ([#340](https://github.com/yuzheng14/covro/issues/340)) ([76b502d](https://github.com/yuzheng14/covro/commit/76b502d2f29b1f4133150789481a00e06fe241bc)), closes [#335](https://github.com/yuzheng14/covro/issues/335)
+
 ## [0.9.0](https://github.com/yuzheng14/covro/compare/v0.8.0...v0.9.0) (2026-11-10)
 
 
