@@ -1,0 +1,38 @@
+.switch-control {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 24px;
+  padding: 3px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--border);
+  box-shadow: inset 0 0 0 1px #c8ceca;
+  transition: background-color 150ms;
+}
+.switch-control[data-state='checked'] {
+  background: var(--accent);
+  box-shadow: none;
+}
+.switch-control[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.switch-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 16%);
+  transition: transform 150ms;
+}
+.switch-control[data-state='checked'] .switch-thumb {
+  transform: translateX(16px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .switch-control,
+  .switch-thumb {
+    transition: none;
+  }
+}

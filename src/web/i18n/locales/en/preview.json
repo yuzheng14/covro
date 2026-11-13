@@ -111,5 +111,19 @@
   "new_mermaid_diagram": "Mermaid diagram",
   "new_this_file_has_lines_exceeding_300_collapsed": "This file has {{v0}} lines, exceeding 300; collapsed by default.",
   "new_this_file_exceeds_50_000_characters_collapsed": "This file exceeds 50,000 characters; collapsed by default.",
-  "empty_file": "This file is empty."
+  "empty_file": "This file is empty.",
+  "dev_title": "Development previews",
+  "dev_preview": "Preview",
+  "dev_enable": "Enable development preview proxy",
+  "dev_full": "Allow full requests · High risk",
+  "dev_risk": "Opens business APIs, writes, any response type and business WebSockets for registered services. Identity, process checks and browser isolation remain enforced.",
+  "dev_open": "Open preview",
+  "dev_empty": "No confirmed development services in this session.",
+  "dev_running": "Running",
+  "dev_withdrawn": "Unavailable",
+  "dev_failed": "Preview request failed. Check the connection and retry; allow new tabs to open previews.",
+  "dev_reopen": "Settings applied. Reopen previews to use the new policy.",
+  "dev_inspection_failed": "Process inspection failed. Preview access has been withdrawn.",
+  "dev_unavailable": "Service discovery is unavailable on this platform.",
+  "dev_workspace": "Session workspace"
 }
