@@ -185,6 +185,28 @@ export class GatewayService {
     return this.projects.list();
   }
 
+  previewContext(threadId: string, cwd: string) {
+    try {
+      if (!this.codex.ready) return;
+      const link = this.store.getThreadLink(threadId);
+      if (!link || link.managedEpoch !== this.codex.epoch) return;
+      const canonical = realpathSync(cwd);
+      if (!containsPath(link.cwd, canonical)) return;
+      const ownership = this.workspaces.assertOwnership(
+        link.projectId,
+        link.projectId === null ? link.cwd : cwd,
+        threadId,
+      );
+      const canonicalCwd = link.projectId === null ? canonical : ownership.cwd;
+      if (!containsPath(link.cwd, canonicalCwd)) return;
+      if (link.projectId === null) return { projectId: null, projectName: link.cwd, canonicalCwd };
+      const project = this.projects.get(link.projectId);
+      return { projectId: project.id, projectName: project.name, canonicalCwd };
+    } catch {
+      return;
+    }
+  }
+
   async getProjectGithubRepository(projectId: string) {
     const project = this.projects.get(projectId);
     const url = await readGithubRepository(project.canonicalRoot);
@@ -2502,6 +2524,7 @@ export class GatewayService {
   }
 
   private consume(event: CodexEvent): void {
+    if (event.type === 'previewExecution') return;
     if (
       event.type === 'runtime' &&
       (!event.diagnostics.ready || event.diagnostics.codexEpoch !== this.currentEpoch)
