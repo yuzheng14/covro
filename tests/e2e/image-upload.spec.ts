@@ -72,8 +72,6 @@ for (const mobile of [false, true]) {
 test('images above the former count, size and HTTP limits can be selected and sent', async ({
   page,
 }, info) => {
-  // The fixture deliberately emits JSONL in 7-byte chunks, even for multi-MiB images.
-  test.setTimeout(60_000);
   const files = [4, 1, 1, 1, 1].map((size, index) => ({
     ...image,
     name: `screenshot-${index + 1}-${size}MiB.png`,
@@ -94,7 +92,7 @@ test('images above the former count, size and HTTP limits can be selected and se
   expect((await outgoing).postDataJSON().images).toEqual(
     files.map((file) => `data:image/png;base64,${file.buffer.toString('base64')}`),
   );
-  await expect(previews(page)).toHaveCount(0, { timeout: 30_000 });
+  await expect(previews(page)).toHaveCount(0);
   await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
   await expect(input(page)).toHaveValue('');
   await page.screenshot({ path: info.outputPath('large-images-sent.png') });

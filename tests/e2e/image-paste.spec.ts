@@ -239,6 +239,8 @@ test('an image-only follow-up above the former size limits steers the current tu
   await input(page).press('Enter');
   await expect(page.locator('.action-card')).toBeVisible();
   await expect(input(page)).toHaveValue('');
+  // The selected detail must contain the active turn ID before steering can be dispatched.
+  await expect(page.getByRole('button', { name: '中断', exact: true })).toBeEnabled();
   await pasteFiles(page, 1, 'image/png', 4 * 1024 * 1024);
   await expect(previews(page)).toHaveJSProperty('naturalWidth', 1);
   await expect(page.getByRole('button', { name: '追加要求', exact: true })).toBeEnabled();
