@@ -297,6 +297,7 @@ export class ThreadTitles {
       'skills.include_instructions': false,
       'tools.experimental_request_user_input.enabled': false,
       'tools.update_plan.enabled': false,
+      'agents.enabled': false,
       mcp_servers: Object.fromEntries(
         Object.entries(isRecord(config.mcp_servers) ? config.mcp_servers : {}).map(
           ([name, server]) => [
@@ -318,7 +319,6 @@ export class ThreadTitles {
       'apps',
       'plugins',
       'hooks',
-      'multi_agent',
       'goals',
       'memories',
       'browser_use',

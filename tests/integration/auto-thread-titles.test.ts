@@ -91,7 +91,7 @@ it('generates once outside the user history, persists the title, and hides tempo
       'features.apps': false,
       'features.plugins': false,
       'features.hooks': false,
-      'features.multi_agent': false,
+      'agents.enabled': false,
       'features.unified_exec': false,
       'features.view_image': false,
       'skills.include_instructions': false,
@@ -392,6 +392,8 @@ it('isolates an explicit recap and cleans up its temporary thread without renami
       'features.goals': false,
       'features.apps': false,
       'features.plugins': false,
+      'agents.enabled': false,
+      'features.multi_agent_v2': false,
     },
   });
   const internalTurn = calls.find((call) => call.method === 'turn/start');
