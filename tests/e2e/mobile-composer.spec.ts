@@ -164,7 +164,11 @@ test.describe('mobile keyboard viewport', () => {
         return bounds.y + bounds.height;
       })
       .toBeLessThanOrEqual(285);
-    await expect(send(page)).toBeInViewport();
+    await expect(send(page)).toBeInViewport({ ratio: 1 });
+    await page.screenshot({
+      path: testInfo.outputPath('mobile-viewport-short.png'),
+      fullPage: true,
+    });
     await input(page).evaluate((element) => element.blur());
     await expect(page.locator('.app-shell')).toHaveCSS('height', '844px');
     await input(page).focus();
