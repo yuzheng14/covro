@@ -60,7 +60,14 @@ export function StickyPrompt({ thread, onJump }: { thread?: ThreadView; onJump: 
   return (
     <div className="sticky-prompt-slot" ref={slotRef}>
       {activePrompt && (
-        <ControlHint asChild content={t('conversation:back_to_original_prompt')}>
+        // Keep the hint in the conversation, below any workspace error banner.
+        // Centering on this full-width trigger also lets Radix keep its arrow visible.
+        <ControlHint
+          asChild
+          content={t('conversation:back_to_original_prompt')}
+          side="bottom"
+          align="center"
+        >
           <Button
             variant="ghost"
             className="sticky-prompt"
