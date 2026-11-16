@@ -15,7 +15,11 @@ export function isModelCapacityError(message: string, code?: string): boolean {
 export function capacityRetryNotice(error: TurnErrorMetadata & { message: string }): boolean {
   return (
     isModelCapacityError(error.message, error.errorCode) ||
-    error.errorDetails?.trim() === MODEL_CAPACITY_MESSAGE
+    ((!error.errorCode ||
+      error.errorCode === 'other' ||
+      // Native reconnects retain the stream code and put capacity advice in details.
+      error.errorCode === 'responseStreamDisconnected') &&
+      error.errorDetails?.trim() === MODEL_CAPACITY_MESSAGE)
   );
 }
 

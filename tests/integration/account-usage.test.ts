@@ -51,6 +51,39 @@ async function fixture(options: SimulatorOptions) {
 }
 
 describe('account quota snapshots', () => {
+  it('uses canonical user identity from the same account snapshot without exposing it or accepting a stale quota result', async () => {
+    const first = { ...chatgpt, userId: 'private-user-one' };
+    const second = { ...chatgpt, userId: 'private-user-two' };
+    const { source, reader: usage } = reader(first);
+    await usage.refresh();
+    const previousScope = usage.snapshot().scope;
+    let finish!: (value: unknown) => void;
+    source.limits.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const stale = usage.refresh();
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    source.account.mockResolvedValue(second);
+    source.limits.mockRejectedValueOnce(new Error('Unavailable for the new user'));
+    expect(await usage.refresh()).toMatchObject({ status: 'error', groups: [], updatedAt: null });
+    expect(usage.snapshot().scope).not.toBe(previousScope);
+    finish(limits);
+    await stale;
+    expect(usage.snapshot()).toMatchObject({ groups: [], updatedAt: null });
+    expect(JSON.stringify(usage.snapshot())).not.toContain('private-user');
+  });
+  it('normalizes an absent canonical user ID and null to the same legacy identity', async () => {
+    const { source, reader: usage } = reader();
+    await usage.refresh();
+    const scope = usage.snapshot().scope;
+    const response = { ...chatgpt, userId: null };
+    source.account.mockResolvedValue(response);
+    await usage.refresh();
+    expect(usage.snapshot().scope).toBe(scope);
+  });
   it('keeps distinct buckets, avoids the legacy duplicate, strips private fields and preserves nulls', () => {
     const values = accountUsageValues({
       ...limits,

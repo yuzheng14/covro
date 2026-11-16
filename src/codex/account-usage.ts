@@ -115,7 +115,9 @@ export class AccountUsageReader {
         typeof result.requiresOpenaiAuth !== 'boolean'
       )
         throw new Error('Invalid account response');
-      const identity = JSON.stringify(result.account);
+      // 0.169.0 adds canonical identity outside account; older servers omit it.
+      const userId = 'userId' in result && typeof result.userId === 'string' ? result.userId : null;
+      const identity = JSON.stringify([result.account, userId]);
       if (this.identity !== undefined && identity !== this.identity) {
         this.value = this.empty('loading');
         this.source.changed();

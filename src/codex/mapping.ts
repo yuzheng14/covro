@@ -123,6 +123,29 @@ export function mapTurn(threadId: string, turn: Turn): TurnView {
 function validTiming(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
+function answerModeration(value: unknown): ItemView['moderation'] {
+  if (value === null) return null;
+  if (!isRecord(value) || typeof value.moderated !== 'boolean') return;
+  const display = value.display;
+  return {
+    moderated: value.moderated,
+    display:
+      isRecord(display) && typeof display.action === 'string'
+        ? {
+            action: display.action.slice(0, 128),
+            blockType:
+              typeof display.blockType === 'string' ? display.blockType.slice(0, 128) : null,
+            cyberTrustedAccess:
+              typeof display.cyberTrustedAccess === 'boolean' ? display.cyberTrustedAccess : null,
+            checkTrustedContacts:
+              typeof display.checkTrustedContacts === 'boolean'
+                ? display.checkTrustedContacts
+                : null,
+          }
+        : null,
+  };
+}
+
 export function mapItem(item: ThreadItem): ItemView {
   assertObjectId(item, 'item');
   if (typeof item.type !== 'string')
@@ -157,14 +180,17 @@ export function mapItem(item: ThreadItem): ItemView {
         ...(imageInputs.length ? { images, imageCount: imageInputs.length } : {}),
       };
     }
-    case 'agentMessage':
+    case 'agentMessage': {
+      const moderation = 'moderation' in item ? answerModeration(item.moderation) : undefined;
       return {
         id: item.id,
         type: item.type,
         text: item.text,
+        ...(moderation === undefined ? {} : { moderation }),
         ...(item.delivery ? { delivery: item.delivery } : {}),
         ...(item.questions?.length ? { questions: structuredClone(item.questions) } : {}),
       };
+    }
     case 'reasoning':
       return { id: item.id, type: item.type, text: [...item.summary, ...item.content].join('\n') };
     case 'plan':

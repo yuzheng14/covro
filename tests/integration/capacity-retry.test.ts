@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CodexError } from '../../src/codex/transport.js';
-import { MODEL_CAPACITY_MESSAGE } from '../../src/shared/turn-errors.js';
+import { MODEL_CAPACITY_MESSAGE, capacityRetryNotice } from '../../src/shared/turn-errors.js';
 import type { Settings, TurnView } from '../../src/shared/types.js';
 import { deferred, harness, operationId } from './domain-helpers.js';
 
@@ -191,17 +191,42 @@ describe('bounded capacity recovery', () => {
     expect(ctx.starts).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['modelNotFound', 'badRequest', 'cyberPolicy', 'unauthorized'])(
-    'does not retry %s even when its text resembles capacity advice',
-    async (code) => {
-      const ctx = await setup();
-      ctx.fail(MODEL_CAPACITY_MESSAGE, code);
-      await vi.advanceTimersByTimeAsync(120000);
-      expect(ctx.starts).toHaveBeenCalledTimes(1);
-      expect((await ctx.read()).capacityRetry).toBeUndefined();
-      expect((await ctx.read()).turns.at(-1)?.errorCode).toBe(code);
-    },
-  );
+  it.each([
+    'modelNotFound',
+    'badRequest',
+    'cyberPolicy',
+    'unauthorized',
+    'inferenceHookDenied',
+    'sessionBudgetExceeded',
+  ])('does not retry %s even when its text resembles capacity advice', async (code) => {
+    const ctx = await setup();
+    ctx.fail(MODEL_CAPACITY_MESSAGE, code);
+    await vi.advanceTimersByTimeAsync(120000);
+    expect(ctx.starts).toHaveBeenCalledTimes(1);
+    expect((await ctx.read()).capacityRetry).toBeUndefined();
+    expect((await ctx.read()).turns.at(-1)?.errorCode).toBe(code);
+    expect(
+      capacityRetryNotice({
+        message: MODEL_CAPACITY_MESSAGE,
+        errorCode: code,
+        errorDetails: MODEL_CAPACITY_MESSAGE,
+      }),
+    ).toBe(false);
+  });
+
+  it('retains the native stream reconnect capacity notice without scheduling a gateway retry', async () => {
+    expect(
+      capacityRetryNotice({
+        message: 'Reconnecting... 1/5 (stream disconnected before completion)',
+        errorCode: 'responseStreamDisconnected',
+        errorDetails: MODEL_CAPACITY_MESSAGE,
+      }),
+    ).toBe(true);
+    const ctx = await setup();
+    ctx.fail(MODEL_CAPACITY_MESSAGE, 'responseStreamDisconnected');
+    await vi.advanceTimersByTimeAsync(120000);
+    expect(ctx.starts).toHaveBeenCalledTimes(1);
+  });
 
   it('cancels a scheduled retry and accepts a user replacement without a race', async () => {
     const ctx = await setup();

@@ -172,6 +172,16 @@ export interface ItemView {
   error?: string;
   autoReview?: AutoReviewView;
   delivery?: 'async';
+  /** Answer-scoped upstream metadata. Display actions are not executable Web instructions. */
+  moderation?: {
+    moderated: boolean;
+    display: {
+      action: string;
+      blockType: string | null;
+      cyberTrustedAccess: boolean | null;
+      checkTrustedContacts: boolean | null;
+    } | null;
+  } | null;
   questions?: AsyncQuestion[];
   questionReplies?: AsyncQuestionReply[];
 }
