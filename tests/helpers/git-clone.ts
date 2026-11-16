@@ -35,5 +35,7 @@ export function gitCloneFixture(directory: string) {
     COVRO_TEST_REAL_GIT: binary,
     COVRO_TEST_GIT_SOURCE: source,
     COVRO_TEST_GIT_CALLS: join(directory, 'git-calls'),
+    COVRO_TEST_GIT_PIDS: join(directory, 'git-pids'),
+    COVRO_TEST_GIT_RELEASE: join(directory, 'release'),
   };
 }

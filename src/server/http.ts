@@ -355,6 +355,7 @@ export function createApp({
     const op = await service.createThread(null, await parse(c, schemas.createThreadSchema));
     return c.json(op, status(op));
   });
+  app.get('/api/project-clones', (c) => c.json({ data: service.projectClones.list() }));
   app.post('/api/project-clones', async (c) =>
     c.json(
       service.cloneProject(await parse(c, schemas.cloneProjectSchema), (path) =>
@@ -372,7 +373,7 @@ export function createApp({
   });
   app.post('/api/project-clones/:cloneId/register', async (c) => {
     await parse(c, schemas.removeProjectSchema);
-    return c.json(service.projectClones.retryRegistration(id(c.req.param('cloneId'))));
+    return c.json(service.registerProjectClone(id(c.req.param('cloneId'))));
   });
   app.post('/api/projects/reorder', async (c) =>
     c.json(service.reorderProjects(await parse(c, schemas.reorderProjectsSchema))),

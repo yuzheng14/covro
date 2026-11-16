@@ -77,10 +77,19 @@ export interface CloneProjectInput extends CreateProjectInput {
   repository: string;
 }
 export interface ProjectClone {
+  createdAt?: number;
+  finishedAt?: number;
   id: string;
   path: string;
   name?: string;
-  status: 'cloning' | 'cancelling' | 'cancelled' | 'failed' | 'registration-failed' | 'completed';
+  status:
+    | 'cloning'
+    | 'cancelling'
+    | 'cancelled'
+    | 'failed'
+    | 'registration-failed'
+    | 'completed'
+    | 'interrupted';
   progress: string;
   /** Stable presentation codes; legacy progress/error text remains available for diagnostics. */
   progressStage?:
@@ -94,6 +103,7 @@ export interface ProjectClone {
     | 'completed'
     | 'registration_failed'
     | 'timed_out'
+    | 'interrupted'
     | 'cancelled'
     | 'failed';
   errorCode?:
@@ -107,6 +117,7 @@ export interface ProjectClone {
     | 'CLONE_FAILED'
     | 'CLONE_REGISTRATION_FAILED'
     | 'CLONE_TIMED_OUT'
+    | 'CLONE_INTERRUPTED'
     | 'CLONE_CANCELLED';
   percent?: number;
   error?: string;

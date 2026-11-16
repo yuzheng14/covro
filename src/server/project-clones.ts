@@ -1,6 +1,7 @@
 import { nullLogger, type Logger } from '../logging/logger.js';
+import { errorFields } from '../logging/fields.js';
 import { logContext } from '../logging/context.js';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { fork, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { accessSync, constants, lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
@@ -13,12 +14,14 @@ import type {
 } from '../shared/types.js';
 import { cloneProjectSchema } from '../shared/validation.js';
 import { containsPath } from './projects.js';
+import type { BackgroundTasks } from './background-tasks.js';
 
 interface Job {
   view: ProjectClone;
   fingerprint: string;
   child?: ChildProcess;
   done: Promise<void>;
+  interrupted?: boolean;
 }
 const active = (job: Job) => ['cloning', 'cancelling'].includes(job.view.status);
 const hasControl = (value: string) =>
@@ -151,7 +154,7 @@ function failure(
   };
 }
 
-/** Transient jobs never persist repository URLs, credentials, or raw Git output. */
+/** Persist only safe snapshots and hashed identities; Git remains owned by this process. */
 export class ProjectClones {
   private readonly jobs = new Map<string, Job>();
   private closing = false;
@@ -159,7 +162,57 @@ export class ProjectClones {
     private readonly register: (input: CreateProjectInput) => Project,
     private readonly registered: (path: string) => boolean,
     private readonly logger: Logger = nullLogger,
-  ) {}
+    private readonly history?: BackgroundTasks<ProjectClone>,
+  ) {
+    for (const saved of history?.load() ?? []) {
+      const job: Job = { ...saved, done: Promise.resolve() };
+      this.jobs.set(job.view.id, job);
+      if (active(job)) {
+        this.interrupted(job);
+        this.save(job);
+        this.logger.warn('clone.recovered_interruption', {
+          cloneId: job.view.id,
+          outcome: 'interrupted',
+        });
+      }
+    }
+  }
+
+  private save(job: Job): void {
+    this.history?.save(job.view, job.fingerprint);
+  }
+
+  private checkpoint(job: Job): void {
+    try {
+      this.save(job);
+    } catch (error) {
+      this.logger.error('clone.snapshot_failed', {
+        cloneId: job.view.id,
+        outcome: job.view.status,
+        ...errorFields(error),
+      });
+    }
+  }
+
+  private interrupted(job: Job): void {
+    job.view.status = 'interrupted';
+    job.view.progressStage = 'interrupted';
+    job.view.progress = '服务中断，克隆结果未确认';
+    job.view.errorCode = 'CLONE_INTERRUPTED';
+    job.view.error =
+      '服务已停止或重启，无法确认克隆结果；不会自动重试或删除文件。请检查目标目录，确认完整后通过已有目录添加，否则使用新的空目录重试。';
+    job.view.finishedAt = Date.now();
+    delete job.view.percent;
+  }
+
+  list(): ProjectClone[] {
+    const jobs = [...this.jobs.values()].sort(
+      (a, b) =>
+        Number(active(b)) - Number(active(a)) ||
+        (b.view.finishedAt ?? b.view.createdAt ?? 0) - (a.view.finishedAt ?? a.view.createdAt ?? 0),
+    );
+    return structuredClone(jobs.slice(0, 100).map((job) => job.view));
+  }
 
   get hasActive(): boolean {
     return [...this.jobs.values()].some(active);
@@ -192,10 +245,11 @@ export class ProjectClones {
     validateRepository(parsed.repository);
     const fingerprint = createHash('sha256').update(JSON.stringify(parsed)).digest('hex');
     const previous = this.jobs.get(parsed.clientOperationId);
-    if (previous) {
-      if (previous.fingerprint !== fingerprint)
+    const identity = previous?.fingerprint ?? this.history?.identity(parsed.clientOperationId);
+    if (identity) {
+      if (identity !== fingerprint)
         throw new AppError('CLONE_ID_CONFLICT', '该操作 ID 已用于其他克隆请求', 409);
-      return this.get(previous.view.id);
+      return this.get(parsed.clientOperationId);
     }
     if (this.closing) throw new AppError('GATEWAY_STOPPING', '服务正在停止，请稍后重试', 503);
     const path = targetPath(resolvePath(parsed.path));
@@ -205,14 +259,19 @@ export class ProjectClones {
     checkEmpty(path);
     if ([...this.jobs.values()].filter(active).length >= 4)
       throw new AppError('CLONE_LIMIT', '已有多个仓库正在克隆，请等待完成后重试', 409);
-    // Bound transient history without evicting a running process.
     if (this.jobs.size >= 100) {
-      const oldest = [...this.jobs].find(([, job]) => !active(job));
-      if (oldest) this.jobs.delete(oldest[0]);
+      const oldest = [...this.jobs.values()]
+        .filter((job) => !active(job))
+        .sort((a, b) => (a.view.finishedAt ?? 0) - (b.view.finishedAt ?? 0))[0];
+      if (oldest) {
+        this.history?.forgetSnapshot(oldest.view.id);
+        this.jobs.delete(oldest.view.id);
+      }
     }
     const job: Job = {
       view: {
         id: parsed.clientOperationId,
+        createdAt: Date.now(),
         path,
         name: parsed.name,
         status: 'cloning',
@@ -222,6 +281,7 @@ export class ProjectClones {
       fingerprint,
       done: Promise.resolve(),
     };
+    this.save(job);
     this.jobs.set(job.view.id, job);
     job.done = this.run(job, parsed.repository);
     return this.get(job.view.id);
@@ -232,20 +292,22 @@ export class ProjectClones {
     if (!job)
       throw new AppError(
         'CLONE_NOT_FOUND',
-        '未找到克隆记录；服务重启后请检查目标目录，再添加已有目录或使用新的空目录重试',
+        '克隆记录不存在或已过期；请检查目标目录，再添加已有目录或使用新的空目录重试',
         404,
       );
     return structuredClone(job.view);
   }
 
-  cancel(id: string): ProjectClone {
+  cancel(id: string, reason: 'user' | 'timeout' = 'user'): ProjectClone {
     const job = this.jobs.get(id);
     this.get(id);
     if (job && active(job) && job.view.status !== 'cancelling') {
       job.view.status = 'cancelling';
       job.view.progress = '正在取消，等待 Git 退出…';
       job.view.progressStage = 'cancelling';
-      this.signal(job, 'SIGTERM');
+      this.checkpoint(job);
+      this.logger.info('clone.cancellation_requested', { cloneId: id, reason });
+      this.requestStop(job);
     }
     return this.get(id);
   }
@@ -253,7 +315,12 @@ export class ProjectClones {
   retryRegistration(id: string): ProjectClone {
     const job = this.jobs.get(id);
     this.get(id);
-    if (job?.view.status === 'registration-failed') this.finishRegistration(job);
+    if (job?.view.status === 'registration-failed') {
+      this.finishRegistration(job);
+      job.view.finishedAt = Date.now();
+      this.checkpoint(job);
+      this.logger.info('clone.registration_retried', { cloneId: id, outcome: job.view.status });
+    }
     return this.get(id);
   }
 
@@ -275,14 +342,8 @@ export class ProjectClones {
     }
   }
 
-  private signal(job: Job, signal: NodeJS.Signals): void {
-    if (!job.child?.pid) return;
-    try {
-      if (process.platform === 'win32') job.child.kill(signal);
-      else process.kill(-job.child.pid, signal);
-    } catch {
-      /* Process may have already exited. */
-    }
+  private requestStop(job: Job): void {
+    if (job.child?.connected) job.child.send({ type: 'cancel' }, () => {});
   }
 
   private async run(job: Job, repository: string): Promise<void> {
@@ -300,9 +361,17 @@ export class ProjectClones {
     const sshCommand =
       process.env.GIT_SSH_COMMAND ??
       (process.env.GIT_SSH ? `'${process.env.GIT_SSH.replaceAll("'", "'\\''")}'` : 'ssh');
-    const child = spawn(
-      'git',
-      [
+    const child = fork(
+      new URL(`./clone-process.${import.meta.url.endsWith('.ts') ? 'ts' : 'js'}`, import.meta.url),
+      [],
+      {
+        stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      },
+    );
+    job.child = child;
+    child.send({
+      type: 'start',
+      args: [
         '-c',
         'protocol.allow=never',
         '-c',
@@ -315,19 +384,14 @@ export class ProjectClones {
         repository,
         job.view.path,
       ],
-      {
-        detached: process.platform !== 'win32',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          GIT_TERMINAL_PROMPT: '0',
-          GCM_INTERACTIVE: 'never',
-          GIT_SSH_COMMAND: `${sshCommand} -oBatchMode=yes -oStrictHostKeyChecking=yes`,
-          LC_ALL: 'C',
-        },
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0',
+        GCM_INTERACTIVE: 'never',
+        GIT_SSH_COMMAND: `${sshCommand} -oBatchMode=yes -oStrictHostKeyChecking=yes`,
+        LC_ALL: 'C',
       },
-    );
-    job.child = child;
+    });
     const read = (chunk: Buffer) => {
       output = (output + chunk.toString()).slice(-16_384);
       pending = (pending + chunk.toString()).slice(-4096);
@@ -355,24 +419,28 @@ export class ProjectClones {
     child.stderr?.on('data', read);
     const timeout = setTimeout(() => {
       timedOut = true;
-      this.cancel(job.view.id);
+      this.cancel(job.view.id, 'timeout');
     }, 30 * 60_000);
     timeout.unref();
-    const escalation = setInterval(() => {
-      if (job.view.status === 'cancelling') this.signal(job, 'SIGKILL');
-    }, 3000);
-    escalation.unref();
     const code = await new Promise<number | null>((done) => {
+      let gitCode: number | null = null;
+      child.on(
+        'message',
+        (message: { type: string; code?: number | null; missingGit?: boolean }) => {
+          if (message.type === 'error') missingGit = message.missingGit ?? false;
+          if (message.type === 'exit') gitCode = message.code ?? null;
+        },
+      );
       child.once('error', (error: NodeJS.ErrnoException) => {
         missingGit = error.code === 'ENOENT';
       });
-      child.once('close', done);
+      child.once('close', () => done(gitCode));
     });
     clearTimeout(timeout);
-    clearInterval(escalation);
     job.child = undefined;
     delete job.view.percent;
-    if (job.view.status === 'cancelling') {
+    if (job.interrupted) this.interrupted(job);
+    else if (job.view.status === 'cancelling') {
       job.view.status = timedOut ? 'failed' : 'cancelled';
       job.view.progress = timedOut ? '克隆超时，已停止' : '已取消克隆';
       job.view.progressStage = timedOut ? 'timed_out' : 'cancelled';
@@ -386,6 +454,8 @@ export class ProjectClones {
       job.view.errorCode = problem.code;
       job.view.error = `${problem.message} 未添加项目；目标目录可能残留文件，请检查后使用新的空目录重试。`;
     } else this.finishRegistration(job);
+    job.view.finishedAt = Date.now();
+    this.checkpoint(job);
     logger[job.view.status === 'failed' ? 'warn' : 'info']('clone.finished', {
       outcome: job.view.status,
       stage: job.view.progressStage,
@@ -397,7 +467,14 @@ export class ProjectClones {
 
   async close(): Promise<void> {
     this.closing = true;
-    for (const job of this.jobs.values()) if (active(job)) this.cancel(job.view.id);
+    for (const job of this.jobs.values())
+      if (active(job)) {
+        job.interrupted = job.view.status !== 'cancelling';
+        if (job.interrupted) {
+          this.logger.info('clone.stopping', { cloneId: job.view.id, reason: 'service_stopping' });
+          this.requestStop(job);
+        }
+      }
     await Promise.all([...this.jobs.values()].map((job) => job.done));
   }
 }

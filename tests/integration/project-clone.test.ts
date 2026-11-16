@@ -198,6 +198,6 @@ describe('remote project cloning', () => {
     expect(readFileSync(h.env.COVRO_TEST_GIT_CALLS, 'utf8').trim().split('\n')).toHaveLength(1);
     const slow = h.manager.start(h.input('https://example.test/slow.git', join(directory, 'slow')));
     await h.manager.close();
-    expect(h.manager.get(slow.id).status).toBe('cancelled');
+    expect(h.manager.get(slow.id).status).toBe('interrupted');
   });
 });

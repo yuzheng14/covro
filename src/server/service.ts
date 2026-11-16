@@ -81,6 +81,7 @@ import { EventHub } from './events.js';
 import { TurnUsageStore } from './db/turn-usage.js';
 import { Projection, isActive, isTerminal } from './projection.js';
 import { ProjectRegistry } from './projects.js';
+import { BackgroundTasks } from './background-tasks.js';
 import { ProjectClones } from './project-clones.js';
 import { renderThreadExport } from './thread-export.js';
 import { readLocalImage } from './images.js';
@@ -166,6 +167,7 @@ export class GatewayService {
       },
       (path) => this.projects.list().some((project) => project.canonicalRoot === path),
       this.logger.child({ component: 'clones' }),
+      new BackgroundTasks(this.store.database, 'git-clone'),
     );
     this.codex = options.codex;
     this.shell = new ShellService(this.codex);
@@ -325,6 +327,10 @@ export class GatewayService {
       this.workspaces.assertProjectDirectory(resolved);
       return resolved;
     });
+  }
+  registerProjectClone(id: string) {
+    if (this.maintenance || !this.accepting) throw this.maintenanceError();
+    return this.projectClones.retryRegistration(id);
   }
   renameProject(projectId: string, input: RenameProjectInput) {
     const project = this.projects.rename(projectId, input);

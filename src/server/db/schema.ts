@@ -169,3 +169,11 @@ export const projectRegistrations = sqliteTable('project_registrations', {
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });
+
+/** Safe executor snapshots; never store repository URLs, raw output or credentials. */
+export const backgroundTasks = sqliteTable('background_tasks', {
+  id: text('id').primaryKey(),
+  kind: text('kind').notNull(),
+  fingerprint: text('fingerprint').notNull(),
+  snapshot: text('snapshot', { mode: 'json' }).$type<{ id: string }>(),
+});
