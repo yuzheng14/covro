@@ -1,8 +1,10 @@
+import type { MermaidTheme } from './mermaid-theme';
+
 let nextId = 0;
 let queue: Promise<unknown> = Promise.resolve();
 
 /** Serialize configuration and rendering: Mermaid's configuration is global. */
-export function renderMermaid(source: string, dark: boolean, signal: AbortSignal) {
+export function renderMermaid(source: string, theme: MermaidTheme, signal: AbortSignal) {
   const result = queue.then(async () => {
     signal.throwIfAborted();
     if (source.length > 50_000) throw new Error('Mermaid source exceeds the rendering limit');
@@ -14,8 +16,53 @@ export function renderMermaid(source: string, dark: boolean, signal: AbortSignal
       suppressErrorRendering: true,
       maxTextSize: 50_000,
       maxEdges: 500,
-      theme: dark ? 'dark' : 'neutral',
-      fontFamily: 'system-ui, sans-serif',
+      theme: 'base',
+      fontFamily: theme.fontFamily,
+      themeVariables: {
+        darkMode: theme.dark,
+        background: theme.background,
+        fontFamily: theme.fontFamily,
+        primaryColor: theme.accentSoft,
+        primaryTextColor: theme.text,
+        primaryBorderColor: theme.border,
+        secondaryColor: theme.panel,
+        secondaryTextColor: theme.text,
+        secondaryBorderColor: theme.border,
+        tertiaryColor: theme.panel,
+        tertiaryTextColor: theme.text,
+        tertiaryBorderColor: theme.border,
+        lineColor: theme.muted,
+        arrowheadColor: theme.muted,
+        edgeLabelBackground: theme.background,
+        clusterBkg: theme.panel,
+        clusterBorder: theme.border,
+        actorLineColor: theme.muted,
+        signalColor: theme.muted,
+        signalTextColor: theme.text,
+        activationBkgColor: theme.accentSoft,
+        activationBorderColor: theme.border,
+        noteBkgColor: theme.panel,
+        noteTextColor: theme.text,
+        noteBorderColor: theme.border,
+        attributeBackgroundColorOdd: theme.background,
+        attributeBackgroundColorEven: theme.panel,
+        gridColor: theme.border,
+        todayLineColor: theme.accent,
+        pie1: theme.accentSoft,
+        pie2: theme.border,
+        pie3: theme.panel,
+        pieStrokeColor: theme.border,
+        pieOuterStrokeColor: theme.border,
+        pieStrokeWidth: '1px',
+        pieOuterStrokeWidth: '1px',
+        pieOpacity: '1',
+        useGradient: false,
+        dropShadow: 'none',
+      },
+      themeCSS: `
+        * { filter: none !important; text-shadow: none !important; }
+        .grid .tick line { stroke: ${theme.border}; }
+      `,
       htmlLabels: false,
       flowchart: { htmlLabels: false },
       // Diagram directives/frontmatter cannot relax security or inject theme CSS.

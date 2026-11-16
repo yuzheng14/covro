@@ -2,12 +2,20 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ThreadView } from '../../src/shared/types';
-import { diagramDocument, flowchart, invalidDiagram, sequence } from '../fixtures/mermaid';
+import {
+  diagramDocument,
+  flowchart,
+  invalidDiagram,
+  sequence,
+  themeDiagrams,
+  themeDocument,
+} from '../fixtures/mermaid';
 import {
   confirmCompatibility,
   controlRuntime,
   createEmptyThread,
   expectThreadReady,
+  selectInterfaceLocale,
 } from './helpers';
 
 const reply = (page: Page) => page.getByRole('article', { name: 'Codex 的回复' });
@@ -159,7 +167,7 @@ for (const width of [320, 390]) {
   });
 }
 
-test('theme changes redraw diagrams and a denied clipboard reveals selectable source', async ({
+test('the application palette takes precedence over OS appearance and a denied clipboard reveals source', async ({
   page,
 }) => {
   await expect(status(page)).toHaveText('已完成');
@@ -167,10 +175,11 @@ test('theme changes redraw diagrams and a denied clipboard reveals selectable so
   await expectDiagram(block);
   const lightSource = await block.getByRole('img').getAttribute('src');
   await page.emulateMedia({ colorScheme: 'dark' });
-  await expect(block).toHaveAttribute('data-theme', 'dark');
+  // Covro currently has a light application palette, even when the OS uses dark mode.
+  await expect(block).toHaveAttribute('data-theme', 'light');
   await expectDiagram(block);
-  await expect(block.getByRole('img')).not.toHaveAttribute('src', lightSource!);
-  await block.screenshot({ path: '/tmp/covro-mermaid-dark.png', animations: 'disabled' });
+  await expect(block.getByRole('img')).toHaveAttribute('src', lightSource!);
+  await block.screenshot({ path: '/tmp/covro-mermaid-os-dark.png', animations: 'disabled' });
   await page.evaluate(() =>
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined }),
   );
@@ -182,6 +191,130 @@ test('theme changes redraw diagrams and a denied clipboard reveals selectable so
   await expectDiagram(block);
   await expect(block).toHaveAttribute('data-theme', 'light');
 });
+
+test('resolved application palette changes redraw both entries, including common Chinese diagrams (browser theme fixture)', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 1280, height: 1100 });
+  await expect(status(page)).toHaveText('已完成');
+  const messageBlock = blocks(page).first();
+  await expectDiagram(messageBlock);
+  const lightSource = await messageBlock.getByRole('img').getAttribute('src');
+  const svg = (source: string) => decodeURIComponent(source.slice(source.indexOf(',') + 1));
+  const normalize = (source: string) => svg(source).replaceAll(/mermaid-\d+/g, 'mermaid-ID');
+  expect(svg(lightSource!)).toContain('DM Sans');
+  expect(svg(lightSource!)).toContain('#eaf4ef');
+  expect(svg(lightSource!)).toContain('filter:none!important');
+  await messageBlock.screenshot({ path: testInfo.outputPath('message-light.png') });
+
+  await writeDocument(page, themeDocument);
+  await page.getByRole('link', { name: '阅读图表文档' }).click();
+  const documentBlocks = preview(page).locator('.mermaid-block');
+  await expect(documentBlocks).toHaveCount(themeDiagrams.length);
+  for (let i = 0; i < themeDiagrams.length; i++) {
+    await documentBlocks.nth(i).scrollIntoViewIfNeeded();
+    await expectDiagram(documentBlocks.nth(i));
+    expect(svg((await documentBlocks.nth(i).getByRole('img').getAttribute('src'))!)).toMatch(
+      /[\u4e00-\u9fff]/,
+    );
+    await documentBlocks.nth(i).screenshot({ path: testInfo.outputPath(`type-${i}-light.png`) });
+  }
+  expect(normalize((await documentBlocks.first().getByRole('img').getAttribute('src'))!)).toBe(
+    normalize(lightSource!),
+  );
+
+  // There is no global dark theme selector on main. Exercise the same resolved root
+  // styles/attribute changes a theme selector would produce, without adding one here.
+  await page.addStyleTag({
+    content: `:root.mermaid-test-dark {
+      background: #20252b; color: #e2e8ee;
+      --border: #46515b; --muted: #a5b0b9; --sidebar: #252c33;
+      --accent: #8ac9ae; --accent-soft: #2e443b; --destructive: #ffb5af;
+    }`,
+  });
+  await page.evaluate(() => document.documentElement.classList.add('mermaid-test-dark'));
+  for (let i = 0; i < themeDiagrams.length; i++) {
+    const block = documentBlocks.nth(i);
+    await block.scrollIntoViewIfNeeded();
+    await expect(block).toHaveAttribute('data-theme', 'dark');
+    await expectDiagram(block);
+    await expect(block).toHaveCSS('background-color', 'rgb(32, 37, 43)');
+    expect(svg((await block.getByRole('img').getAttribute('src'))!)).toContain('#e2e8ee');
+    await block.screenshot({ path: testInfo.outputPath(`type-${i}-dark.png`) });
+  }
+  await expect(messageBlock).toHaveAttribute('data-theme', 'dark');
+  const darkSource = await messageBlock.getByRole('img').getAttribute('src');
+  expect(normalize((await documentBlocks.first().getByRole('img').getAttribute('src'))!)).toBe(
+    normalize(darkSource!),
+  );
+
+  const sequenceBlock = documentBlocks.nth(1);
+  await sequenceBlock.getByRole('button', { name: '实际大小' }).click();
+  await documentBlocks.first().getByRole('button', { name: '查看源码' }).click();
+  // The OS changes while the explicit application palette stays dark.
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(sequenceBlock).toHaveAttribute('data-theme', 'dark');
+  await page.evaluate(() => document.documentElement.classList.remove('mermaid-test-dark'));
+  await expect(sequenceBlock).toHaveAttribute('data-theme', 'light');
+  await expectDiagram(sequenceBlock);
+  await expect(sequenceBlock.getByRole('button', { name: '适应宽度' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(documentBlocks.first().getByLabel('Mermaid 源码')).toHaveText(flowchart);
+  await documentBlocks.first().getByRole('button', { name: '查看图表' }).click();
+  await expectDiagram(documentBlocks.first());
+  expect(normalize((await documentBlocks.first().getByRole('img').getAttribute('src'))!)).toBe(
+    normalize(lightSource!),
+  );
+  // Inline root palette changes also update diagrams, without any OS change.
+  await page.evaluate(() => document.documentElement.style.setProperty('--accent-soft', '#e0eee7'));
+  await expect
+    .poll(async () =>
+      svg((await documentBlocks.first().getByRole('img').getAttribute('src')) ?? ''),
+    )
+    .toContain('#e0eee7');
+});
+
+for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
+  test(`${locale}: desktop and narrow Mermaid toolbars and previews retain their controls`, async ({
+    page,
+  }, testInfo) => {
+    await expect(status(page)).toHaveText('已完成');
+    await writeDocument(page, diagramDocument);
+    await selectInterfaceLocale(page, locale);
+    // Use shared structural selectors so the same behavior is checked in every locale.
+    const messageBlock = page.locator('.assistant-message .mermaid-block').first();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await messageBlock.scrollIntoViewIfNeeded();
+    await messageBlock.screenshot({ path: testInfo.outputPath(`${locale}-desktop-message.png`) });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await messageBlock.scrollIntoViewIfNeeded();
+    await expect(messageBlock.getByRole('img')).toBeVisible();
+    for (const button of await messageBlock.getByRole('button').all()) {
+      await expect(button).toBeInViewport();
+    }
+    await messageBlock.screenshot({ path: testInfo.outputPath(`${locale}-message.png`) });
+    await page.getByRole('link', { name: '阅读图表文档' }).click();
+    const dialog = page.locator('dialog.file-preview');
+    const documentBlock = dialog.locator('.mermaid-block').first();
+    await expect(documentBlock.getByRole('img')).toBeVisible();
+    await documentBlock.getByRole('button').first().click();
+    await expect(documentBlock.locator('.mermaid-source')).toHaveText(flowchart);
+    await documentBlock.getByRole('button').first().click();
+    for (const button of await documentBlock.getByRole('button').all()) {
+      await expect(button).toBeInViewport();
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await page.screenshot({ path: testInfo.outputPath(`${locale}-preview.png`) });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(documentBlock.getByRole('img')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`${locale}-desktop-preview.png`) });
+  });
+}
 
 test('diagram directives cannot enable scripts or inject page CSS; failed diagrams do not poison the rendering queue', async ({
   page,

@@ -1632,8 +1632,8 @@ svg {
   margin: 0 0 12px;
   border: 1px solid var(--border);
   border-radius: 7px;
-  background: #fff;
-  color: #48515b;
+  background: var(--mermaid-background);
+  color: var(--mermaid-text);
   overflow: hidden;
 }
 .mermaid-block:last-child {
@@ -1646,7 +1646,8 @@ svg {
   gap: 4px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
-  background: #f7f8f8;
+  background: var(--sidebar);
+  color: var(--muted);
 }
 .mermaid-label {
   margin-right: auto;
@@ -1658,6 +1659,11 @@ svg {
   min-height: 32px;
   color: inherit;
 }
+.mermaid-toolbar .button-ghost:hover:not(:disabled),
+.mermaid-toolbar .button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 .markdown .mermaid-notice,
 .markdown .mermaid-feedback {
   margin: 0;
@@ -1665,7 +1671,7 @@ svg {
   font-size: 12px;
 }
 .mermaid-error {
-  color: #ae3e39;
+  color: var(--destructive);
 }
 .mermaid-diagram {
   padding: 16px;
@@ -1691,23 +1697,7 @@ svg {
   overflow: auto;
   overflow-wrap: normal;
   outline-offset: -3px;
-}
-.mermaid-block[data-theme='dark'] {
-  background: #20252b;
-  color: #e2e8ee;
-  border-color: #46515b;
-}
-.mermaid-block[data-theme='dark'] .mermaid-toolbar,
-.mermaid-block[data-theme='dark'] .mermaid-source {
-  background: #252c33;
-  border-color: #46515b;
-}
-.mermaid-block[data-theme='dark'] .mermaid-error {
-  color: #ffb5af;
-}
-.mermaid-block[data-theme='dark'] .button-ghost:hover:not(:disabled),
-.mermaid-block[data-theme='dark'] .button[aria-pressed='true'] {
-  background: #36424d;
+  background: var(--sidebar);
 }
 .markdown blockquote {
   margin-left: 0;

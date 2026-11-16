@@ -1,28 +1,36 @@
 import { message, displayMessage } from '../i18n/messages';
 import { t } from '../i18n';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { renderMermaid } from '../lib/mermaid';
+import { readMermaidTheme, type MermaidTheme } from '../lib/mermaid-theme';
 import { Button } from './ui/button';
 
-function useDarkDiagram() {
-  const [dark, setDark] = useState(
-    () => typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches,
-  );
+function useDiagramTheme() {
+  const [theme, setTheme] = useState(readMermaidTheme);
   useEffect(() => {
     const query = matchMedia('(prefers-color-scheme: dark)');
-    const update = () => setDark(query.matches);
+    const update = () => {
+      const next = readMermaidTheme();
+      setTheme((previous) => (JSON.stringify(previous) === JSON.stringify(next) ? previous : next));
+    };
+    // App theme selectors change root attributes; media changes only trigger a style reread.
+    const observer = new MutationObserver(update);
+    observer.observe(document.documentElement, { attributes: true });
     update();
     query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
+    return () => {
+      observer.disconnect();
+      query.removeEventListener('change', update);
+    };
   }, []);
-  return dark;
+  return theme;
 }
 
 export function MermaidBlock({ source, pending }: { source: string; pending: boolean }) {
-  const dark = useDarkDiagram();
+  const theme = useDiagramTheme();
   const [result, setResult] = useState<{
     source: string;
-    dark: boolean;
+    theme: MermaidTheme;
     url?: string;
     failed?: boolean;
   }>();
@@ -36,19 +44,19 @@ export function MermaidBlock({ source, pending }: { source: string; pending: boo
   useEffect(() => {
     if (pending) return;
     const controller = new AbortController();
-    void renderMermaid(source, dark, controller.signal).then(
+    void renderMermaid(source, theme, controller.signal).then(
       (url) => {
-        if (!controller.signal.aborted) setResult({ source, dark, url });
+        if (!controller.signal.aborted) setResult({ source, theme, url });
       },
       () => {
-        if (!controller.signal.aborted) setResult({ source, dark, failed: true });
+        if (!controller.signal.aborted) setResult({ source, theme, failed: true });
       },
     );
     return () => controller.abort();
-  }, [source, dark, pending]);
+  }, [source, theme, pending]);
 
   const current =
-    !pending && result?.source === source && result.dark === dark ? result : undefined;
+    !pending && result?.source === source && result.theme === theme ? result : undefined;
   const showSource = pending || current?.failed || sourceView;
 
   async function copy() {
@@ -68,7 +76,16 @@ export function MermaidBlock({ source, pending }: { source: string; pending: boo
   }
 
   return (
-    <div className="mermaid-block" data-theme={dark ? 'dark' : 'light'}>
+    <div
+      className="mermaid-block"
+      data-theme={theme.dark ? 'dark' : 'light'}
+      style={
+        {
+          '--mermaid-background': theme.background,
+          '--mermaid-text': theme.text,
+        } as CSSProperties
+      }
+    >
       <div className="mermaid-toolbar">
         <span className="mermaid-label">Mermaid</span>
         <Button
@@ -125,7 +142,7 @@ export function MermaidBlock({ source, pending }: { source: string; pending: boo
           <img
             src={current.url}
             alt={t('preview:new_mermaid_diagram')}
-            onError={() => setResult({ source, dark, failed: true })}
+            onError={() => setResult({ source, theme, failed: true })}
           />
         </div>
       ) : null}
