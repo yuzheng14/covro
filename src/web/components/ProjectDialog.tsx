@@ -11,6 +11,8 @@ import { ProjectPathPreview } from './ProjectPathPreview';
 
 interface Props {
   project?: Project;
+  cloneId?: string;
+  tasks: import('../hooks/useBackgroundTasks').BackgroundTaskState;
   disabled: boolean;
   onAdd: (input: { path: string; name?: string }) => Promise<void>;
   onImported: (id: string) => Promise<void>;
@@ -25,7 +27,7 @@ export function ProjectDialog(props: Props) {
   const [name, setName] = useState(props.project?.name ?? '');
   const [removing, setRemoving] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [cloneMode, setCloneMode] = useState(false);
+  const [cloneMode, setCloneMode] = useState(Boolean(props.cloneId));
   const path = useProjectPath(!props.project && !cloneMode);
   const [error, setError] = useState<string>();
   const disabled = props.disabled || busy;
@@ -70,7 +72,7 @@ export function ProjectDialog(props: Props) {
       aria-describedby="project-dialog-description"
       onCancel={(event) => {
         event.preventDefault();
-        if (!busy) props.onClose();
+        if (!busy || cloneMode) props.onClose();
       }}
     >
       <div className="project-dialog-heading">
@@ -82,13 +84,13 @@ export function ProjectDialog(props: Props) {
           variant="ghost"
           size="icon"
           aria-label={t('sidebar:close_project_management')}
-          disabled={busy}
+          disabled={busy && !cloneMode}
           onClick={props.onClose}
         >
           <Icon name="close" size={17} />
         </Button>
       </div>
-      {!props.project && (
+      {!props.project && !props.cloneId && (
         <div className="project-import-modes" role="group" aria-label={t('sidebar:import_source')}>
           <Button
             variant={cloneMode ? 'ghost' : 'secondary'}
@@ -111,6 +113,8 @@ export function ProjectDialog(props: Props) {
       {cloneMode ? (
         <CloneProjectForm
           disabled={props.disabled}
+          cloneId={props.cloneId}
+          tasks={props.tasks}
           onBusyChange={setBusy}
           onImported={props.onImported}
           onClose={props.onClose}

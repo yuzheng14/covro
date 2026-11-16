@@ -166,5 +166,13 @@
   "order_save_failed": "{{v0}} Please try again.",
   "settings": "Settings",
   "browser_notifications": "Browser notifications",
-  "browser_notifications_status": "Browser notifications · {{v0}}"
+  "browser_notifications_status": "Browser notifications · {{v0}}",
+  "tasks": "Tasks",
+  "background_tasks": "Background tasks",
+  "clone_background": "Run in background",
+  "tasks_empty": "No background tasks yet",
+  "tasks_connection_lost": "Connection lost; checking task status again.",
+  "tasks_view": "View",
+  "tasks_checking": "Checking submission; close and check Tasks without submitting again.",
+  "clone_stage_interrupted": "Service interrupted; clone result unconfirmed"
 }

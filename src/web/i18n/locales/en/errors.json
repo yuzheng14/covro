@@ -204,5 +204,6 @@
   "recovery_confirm_ended": "Confirm previous task ended and restore",
   "recovery_other_threads": "Other conversations and operations",
   "recovery_handle_submission": "View recovery options",
-  "recovery_responding": "This approval or input response is still awaiting confirmation and cannot be submitted again yet."
+  "recovery_responding": "This approval or input response is still awaiting confirmation and cannot be submitted again yet.",
+  "CLONE_INTERRUPTED": "The service stopped or restarted before the clone result was confirmed. No automatic retry or file deletion occurs. Inspect the destination; add it as an existing directory only if complete, otherwise retry into a new empty directory."
 }

@@ -89,6 +89,8 @@ export const api = {
   reorderProjects: (projectIds: string[]) =>
     request<{ data: Project[] }>('/api/projects/reorder', { projectIds }),
   addProject: (input: { path: string; name?: string }) => request<Project>('/api/projects', input),
+  projectClones: (signal?: AbortSignal) =>
+    request<{ data: ProjectClone[] }>('/api/project-clones', undefined, signal),
   cloneProject: (input: CloneProjectInput) => request<ProjectClone>('/api/project-clones', input),
   projectClone: (id: string) =>
     request<ProjectClone>(`/api/project-clones/${encodeURIComponent(id)}`),

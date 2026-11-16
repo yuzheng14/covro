@@ -166,5 +166,13 @@
   "order_save_failed": "{{v0}} 请重试。",
   "settings": "设置",
   "browser_notifications": "浏览器通知",
-  "browser_notifications_status": "浏览器通知 · {{v0}}"
+  "browser_notifications_status": "浏览器通知 · {{v0}}",
+  "tasks": "任务",
+  "background_tasks": "后台任务",
+  "clone_background": "后台运行",
+  "tasks_empty": "暂无后台任务",
+  "tasks_connection_lost": "连接已中断，正在重新核对任务状态。",
+  "tasks_view": "查看",
+  "tasks_checking": "正在核对提交结果；可收起并从任务入口查看，请勿重复提交。",
+  "clone_stage_interrupted": "服务中断，克隆结果未确认"
 }

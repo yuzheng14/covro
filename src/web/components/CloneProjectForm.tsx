@@ -1,91 +1,76 @@
-import { t, formatNumber } from '../i18n';
+import { t } from '../i18n';
 import { displayMessage, messageDetails } from '../i18n/messages';
 import { errorMessage } from '../lib/error-message';
-import { cloneProgress } from '../lib/project-clone-labels';
+import { cloneRunning as running, cloneProgressLabel } from '../lib/project-clone-labels';
 import { useEffect, useRef, useState } from 'react';
-import type { ProjectClone } from '../../shared/types';
 import { api, HttpError } from '../lib/api';
 import { readableError } from '../lib/utils';
 import { Button } from './ui/button';
 import { useProjectPath } from '../hooks/useProjectPath';
 import { ProjectPathPreview } from './ProjectPathPreview';
 
-const storageKey = 'covro.project-clone';
-function savedClone(): string | undefined {
-  try {
-    return sessionStorage.getItem(storageKey) ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-function remember(id?: string) {
-  try {
-    if (id) sessionStorage.setItem(storageKey, id);
-    else sessionStorage.removeItem(storageKey);
-  } catch {
-    /* Cloning still works without browser storage. */
-  }
-}
-const running = (job?: ProjectClone) => job?.status === 'cloning' || job?.status === 'cancelling';
-
 export function CloneProjectForm(props: {
   disabled: boolean;
+  cloneId?: string;
+  tasks: import('../hooks/useBackgroundTasks').BackgroundTaskState;
   onBusyChange: (busy: boolean) => void;
   onImported: (id: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [repository, setRepository] = useState('');
   const [name, setName] = useState('');
-  const [jobId, setJobId] = useState(savedClone);
-  const [job, setJob] = useState<ProjectClone>();
+  const [jobId, setJobId] = useState(props.cloneId);
+  const job = props.tasks.jobs.find((entry) => entry.id === jobId);
   const path = useProjectPath(!job && !jobId, repository);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string>();
+  const [missing, setMissing] = useState(false);
   const submitting = useRef(false);
-  const busy = sending || Boolean(jobId && !job) || running(job);
+  const busy = sending;
   const { onBusyChange } = props;
   useEffect(() => {
     onBusyChange(busy);
   }, [busy, onBusyChange]);
 
   useEffect(() => {
-    if (!jobId) return;
+    if (job) {
+      path.setValue(job.path);
+      setName(job.name ?? '');
+      setError(undefined);
+      setMissing(false);
+    }
+  }, [job, path.setValue]);
+
+  const { accept } = props.tasks;
+  useEffect(() => {
+    if (!jobId || job) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
+    const reconcile = async () => {
       try {
-        const next = await api.projectClone(jobId);
-        if (stopped) return;
-        setJob(next);
-        path.setValue(next.path);
-        setName(next.name ?? '');
-        setError(undefined);
-        if (!running(next)) return;
+        const recovered = await api.projectClone(jobId);
+        if (!stopped) accept(recovered);
       } catch (problem) {
         if (stopped) return;
         setError(readableError(problem));
-        if (problem instanceof HttpError && problem.status === 404) {
-          setJobId(undefined);
-          remember();
-          return;
-        }
+        if (problem instanceof HttpError && problem.status === 404) setMissing(true);
+        else timer = setTimeout(() => void reconcile(), 1000);
       }
-      timer = setTimeout(() => void poll(), 1000);
     };
-    void poll();
+    void reconcile();
     return () => {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [jobId, path.setValue]);
+  }, [jobId, job, accept]);
 
   async function start() {
-    if (busy || props.disabled || submitting.current || !path.ready) return;
+    if (jobId || busy || props.disabled || submitting.current || !path.ready) return;
     submitting.current = true;
     setSending(true);
     setError(undefined);
     const id = crypto.randomUUID();
-    remember(id);
+
     try {
       const next = await api.cloneProject({
         clientOperationId: id,
@@ -93,15 +78,15 @@ export function CloneProjectForm(props: {
         path: path.path!,
         ...(name.trim() ? { name: name.trim() } : {}),
       });
-      setJob(next);
+      props.tasks.accept(next);
       setJobId(id);
+      props.tasks.refresh();
     } catch (problem) {
       setError(readableError(problem));
-      if (problem instanceof HttpError && problem.status < 500) remember();
-      else {
-        // A lost POST response must be reconciled by its original identity.
-        setJob(undefined);
+      if (!(problem instanceof HttpError) || problem.status >= 500) {
+        // Reconcile a lost POST via server history; never repeat the submission.
         setJobId(id);
+        props.tasks.refresh();
       }
     } finally {
       submitting.current = false;
@@ -117,10 +102,9 @@ export function CloneProjectForm(props: {
     try {
       if (kind === 'open' && job.project) {
         await props.onImported(job.project.id);
-        remember();
         props.onClose();
       } else {
-        setJob(
+        props.tasks.accept(
           await (kind === 'cancel'
             ? api.cancelProjectClone(job.id)
             : api.registerProjectClone(job.id)),
@@ -131,10 +115,11 @@ export function CloneProjectForm(props: {
     } finally {
       submitting.current = false;
       setSending(false);
+      props.tasks.refresh();
     }
   }
 
-  const terminal = job && !running(job);
+  const terminal = (job && !running(job)) || missing;
   return (
     <form
       onSubmit={(event) => {
@@ -142,7 +127,9 @@ export function CloneProjectForm(props: {
         void start();
       }}
     >
-      <p id="project-dialog-description">{t('sidebar:clone_intro')}</p>
+      <p id="project-dialog-description" className={jobId ? 'sr-only' : undefined}>
+        {t('sidebar:clone_intro')}
+      </p>
       {!job && !jobId && (
         <>
           <label className="project-field">
@@ -191,27 +178,20 @@ export function CloneProjectForm(props: {
           </label>
         </>
       )}
-      {(job || jobId) && (
+      {(job || (jobId && !missing)) && (
         <div className="project-clone-status" role="status" aria-live="polite">
-          <strong>
-            {job?.percent !== undefined
-              ? t('sidebar:clone_progress_percent', {
-                  v0: cloneProgress(job),
-                  v1: formatNumber(job.percent / 100, {
-                    style: 'percent',
-                    maximumFractionDigits: 0,
-                  }),
-                })
-              : job
-                ? cloneProgress(job)
-                : t('sidebar:clone_checking')}
-          </strong>
+          <strong>{job ? cloneProgressLabel(job) : t('sidebar:clone_checking')}</strong>
           {running(job) && (
             <progress aria-label={t('sidebar:clone_progress')} max={100} value={job?.percent} />
           )}
           <code>{job?.path ?? path.path ?? path.value}</code>
-          {running(job) && <small>{t('sidebar:clone_background_help')}</small>}
         </div>
+      )}
+      {jobId && !job && <p className="subtle">{t('sidebar:tasks_checking')}</p>}
+      {props.tasks.error && jobId && (
+        <p role="alert" className="inline-error">
+          {t('sidebar:tasks_connection_lost')}
+        </p>
       )}
       {job?.error && (
         <p className="inline-error project-dialog-error" role="alert">
@@ -235,6 +215,11 @@ export function CloneProjectForm(props: {
         <p className="subtle">{t('sidebar:your_login_expired_log_in_again_to_manage')}</p>
       )}
       <div className="project-dialog-actions">
+        {jobId && (
+          <Button variant="secondary" disabled={sending} onClick={props.onClose}>
+            {running(job) || !job ? t('sidebar:clone_background') : t('common:close')}
+          </Button>
+        )}
         {running(job) ? (
           <Button
             variant="secondary"
@@ -245,11 +230,11 @@ export function CloneProjectForm(props: {
               ? t('sidebar:clone_cancelling')
               : t('sidebar:clone_cancel')}
           </Button>
-        ) : (
+        ) : !jobId ? (
           <Button variant="secondary" disabled={busy} onClick={props.onClose}>
             {t('common:close')}
           </Button>
-        )}
+        ) : null}
         {job?.status === 'completed' ? (
           <Button disabled={props.disabled || sending} onClick={() => void action('open')}>
             {t('sidebar:clone_open')}
@@ -263,10 +248,9 @@ export function CloneProjectForm(props: {
             disabled={props.disabled || sending}
             onClick={(event) => {
               event.preventDefault();
-              remember();
               setJobId(undefined);
-              setJob(undefined);
               setError(undefined);
+              setMissing(false);
             }}
           >
             {t('sidebar:clone_empty_retry')}

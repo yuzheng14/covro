@@ -166,5 +166,13 @@
   "order_save_failed": "{{v0}} もう一度お試しください。",
   "settings": "設定",
   "browser_notifications": "ブラウザー通知",
-  "browser_notifications_status": "ブラウザー通知 · {{v0}}"
+  "browser_notifications_status": "ブラウザー通知 · {{v0}}",
+  "tasks": "タスク",
+  "background_tasks": "バックグラウンドタスク",
+  "clone_background": "バックグラウンドで実行",
+  "tasks_empty": "バックグラウンドタスクはありません",
+  "tasks_connection_lost": "接続が切れました。タスクの状態を再確認しています。",
+  "tasks_view": "表示",
+  "tasks_checking": "送信結果を確認中です。閉じてタスクから確認できます。再送信しないでください。",
+  "clone_stage_interrupted": "サービスが中断され、クローン結果は未確認です"
 }

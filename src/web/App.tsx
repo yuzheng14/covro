@@ -33,6 +33,8 @@ import { downloadThreadExport } from './lib/thread-export';
 import { encodeQuestionReplies } from '../shared/async-questions';
 import { pendingAttention } from '../shared/thread-attention';
 import { CompatibilityNotice } from './components/CompatibilityNotice';
+import { BackgroundTasks } from './components/BackgroundTasks';
+import { useBackgroundTasks } from './hooks/useBackgroundTasks';
 import { ProjectDialog } from './components/ProjectDialog';
 import { NotificationSettings } from './components/NotificationSettings';
 import { GatewaySettings } from './components/GatewaySettings';
@@ -88,6 +90,7 @@ export function App() {
   const shell = useShell(shellOpen);
   const [shellCollapsed, setShellCollapsed] = useState(false);
   const updates = useUpdates();
+  const backgroundTasks = useBackgroundTasks(!workspace.authRequired);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const { isUnreadCompletion, markCompletedRead } = useThreadReadState();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -107,7 +110,7 @@ export function App() {
   const [checkingStatus, setCheckingStatus] = useState(false);
   const statusCheck = useRef(false);
   const [projectDialog, setProjectDialog] = useState<
-    { kind: 'add' } | { kind: 'manage'; id: string }
+    { kind: 'add'; cloneId?: string } | { kind: 'manage'; id: string }
   >();
   const [checkingCompatibility, setCheckingCompatibility] = useState(false);
   const [compatibilityDialogOpen, setCompatibilityDialogOpen] = useState(false);
@@ -615,6 +618,13 @@ export function App() {
           </div>
           <div className="topbar-status">
             <div className="topbar-tools">
+              <BackgroundTasks
+                tasks={backgroundTasks}
+                onDetails={(cloneId) => {
+                  setSidebarOpen(false);
+                  setProjectDialog({ kind: 'add', cloneId });
+                }}
+              />
               <DevPreview threadId={workspace.selectedId} />
               <Button
                 type="button"
@@ -1171,7 +1181,9 @@ export function App() {
       </main>
       {projectDialog && (projectDialog.kind === 'add' || managedProject) && (
         <ProjectDialog
-          key={projectDialog.kind === 'add' ? 'add' : projectDialog.id}
+          key={projectDialog.kind === 'add' ? (projectDialog.cloneId ?? 'add') : projectDialog.id}
+          tasks={backgroundTasks}
+          cloneId={projectDialog.kind === 'add' ? projectDialog.cloneId : undefined}
           project={managedProject}
           disabled={workspace.authRequired}
           onAdd={workspace.addProject}

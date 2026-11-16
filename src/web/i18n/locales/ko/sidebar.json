@@ -166,5 +166,13 @@
   "order_save_failed": "{{v0}} 다시 시도하세요.",
   "settings": "설정",
   "browser_notifications": "브라우저 알림",
-  "browser_notifications_status": "브라우저 알림 · {{v0}}"
+  "browser_notifications_status": "브라우저 알림 · {{v0}}",
+  "tasks": "작업",
+  "background_tasks": "백그라운드 작업",
+  "clone_background": "백그라운드에서 실행",
+  "tasks_empty": "아직 백그라운드 작업이 없습니다",
+  "tasks_connection_lost": "연결이 끊겼습니다. 작업 상태를 다시 확인하고 있습니다.",
+  "tasks_view": "보기",
+  "tasks_checking": "제출 결과를 확인 중입니다. 닫고 작업에서 확인하세요. 다시 제출하지 마세요.",
+  "clone_stage_interrupted": "서비스 중단으로 복제 결과를 확인하지 못했습니다"
 }

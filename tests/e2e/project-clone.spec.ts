@@ -1,6 +1,6 @@
 import { selectInterfaceLocale } from './helpers';
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
-import { mkdtemp, rm, readFile, realpath } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, realpath, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
@@ -14,6 +14,7 @@ import Database from 'better-sqlite3';
 let directory: string;
 let origin: string;
 let runtime: Awaited<ReturnType<typeof startGateway>>;
+let restart: () => Promise<void>;
 let previous: Record<string, string | undefined>;
 test.beforeEach(async () => {
   directory = await realpath(await mkdtemp(join(tmpdir(), 'covro-clone-browser-')));
@@ -33,10 +34,10 @@ test.beforeEach(async () => {
   config.demo = true;
   const codex = new DomainCodex();
   codex.onStart = (id, turn) => setTimeout(() => codex.complete(id, turn.id), 50);
-  runtime = await startGateway(config, {
-    codex,
-    staticDir: resolve('dist/web'),
-  });
+  restart = async () => {
+    runtime = await startGateway(config, { codex, staticDir: resolve('dist/web') });
+  };
+  await restart();
 });
 test.afterEach(async () => {
   await runtime?.close();
@@ -74,6 +75,7 @@ async function screenshot(page: Page, info: TestInfo, name: string) {
 test('clones and imports a real checkout, opens the project, and protects occupied destinations', async ({
   page,
 }, info) => {
+  test.setTimeout(60_000);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(origin);
   const dialog = await form(page, 'https://example.test/project.git');
@@ -117,9 +119,12 @@ test('shows progress, restores after reload, rejects duplicate requests and canc
   });
   expect(duplicate.status()).toBe(409);
   await page.reload();
-  await openAddProject(page);
+  await page.getByRole('button', { name: '后台任务', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: '后台任务', exact: true })
+    .getByRole('button', { name: /克隆示例项目/ })
+    .click();
   dialog = page.getByRole('dialog', { name: '添加服务器项目' });
-  await dialog.getByRole('button', { name: '克隆 Git 仓库', exact: true }).click();
   await expect(dialog.getByRole('status')).toContainText('正在接收对象 42%');
   await dialog.getByRole('button', { name: '取消克隆', exact: true }).click();
   await expect(dialog.getByRole('status')).toContainText('已取消克隆');
@@ -168,6 +173,7 @@ test('offers registration retry without a second clone', async ({ page }, info) 
 
 const localizedProjects = [
   {
+    tasks: '后台任务',
     locale: 'zh-Hans',
     browser: 'zh-CN',
     unassigned: '未关联项目',
@@ -183,6 +189,7 @@ const localizedProjects = [
     welcome: '无需选择项目，发送后自动分配独立工作目录；会话和文件将持续保留。',
   },
   {
+    tasks: 'Background tasks',
     locale: 'en',
     browser: 'en-US',
     unassigned: 'Unassigned',
@@ -198,6 +205,7 @@ const localizedProjects = [
     welcome: 'Start without choosing a project.',
   },
   {
+    tasks: 'バックグラウンドタスク',
     locale: 'ja',
     browser: 'ja-JP',
     unassigned: 'プロジェクト未関連付け',
@@ -213,6 +221,7 @@ const localizedProjects = [
     welcome: 'プロジェクトを選ばずに開始できます。',
   },
   {
+    tasks: '백그라운드 작업',
     locale: 'ko',
     browser: 'ko-KR',
     unassigned: '프로젝트 미연결',
@@ -235,11 +244,8 @@ for (const language of localizedProjects) {
       page,
       context,
     }, info) => {
-      const { mkdir } = await import('node:fs/promises');
-      const evidence = join(tmpdir(), 'covro-i18n-refresh-evidence');
-      await mkdir(evidence, { recursive: true });
       const capture = async (state: string) => {
-        const path = join(evidence, `${language.locale}-${state}.png`);
+        const path = info.outputPath(`${language.locale}-${state}.png`);
         await page.screenshot({ path, fullPage: true, animations: 'disabled' });
         await info.attach(state, { path, contentType: 'image/png' });
       };
@@ -320,8 +326,178 @@ for (const language of localizedProjects) {
         true,
       );
       await capture('clone-cancelled-mobile');
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: language.tasks, exact: true }).click();
+      await expect(page.getByRole('dialog', { name: language.tasks, exact: true })).toContainText(
+        language.cancelled,
+      );
+      await capture('task-list-mobile');
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await capture('task-list-desktop');
       expect((await (await page.request.get(`${origin}/api/projects`)).json()).data).toEqual([]);
       await peer.close();
     });
   });
 }
+
+test('background clone permits chat and session switching; another client restores and completion preserves navigation', async ({
+  page,
+  browser,
+}, info) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(origin);
+  const dialog = await form(page, 'https://example.test/slow-success.git');
+  await dialog.getByRole('button', { name: '克隆并添加项目', exact: true }).click();
+  await expect(dialog.getByRole('status')).toContainText('正在接收对象 42%');
+  await expect(dialog.getByRole('button', { name: '关闭项目管理' })).toBeEnabled();
+  await screenshot(page, info, 'background-clone-details-desktop');
+  await dialog.getByRole('button', { name: '后台运行', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const composer = page.getByRole('textbox', { name: '任务内容', exact: true });
+  await composer.fill('克隆在后台继续，先处理当前工作');
+  await page.getByRole('button', { name: '发送任务', exact: true }).click();
+  await expect(page.locator('.turn-heading .status')).toHaveText('已完成');
+  const first = await page.locator('.topbar h1').innerText();
+  await screenshot(page, info, 'background-clone-chat-desktop');
+  await page.getByRole('button', { name: '后台任务', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '后台任务', exact: true })).toContainText(
+    '正在接收对象 42%',
+  );
+  await screenshot(page, info, 'background-task-list-desktop');
+  await page
+    .getByRole('dialog', { name: '后台任务', exact: true })
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
+  // Start another conversation, then return to the first while Git is still working.
+  await page
+    .getByRole('region', { name: '未关联项目', exact: true })
+    .getByRole('button', { name: '新建会话（无需项目）', exact: true })
+    .click();
+  await composer.fill('第二个会话也可以继续');
+  await page.getByRole('button', { name: '发送任务', exact: true }).click();
+  await expect(page.locator('.turn-heading .status')).toHaveText('已完成');
+  await page
+    .getByRole('navigation', { name: '会话历史' })
+    .getByRole('button', { name: `${first} · 已完成`, exact: true })
+    .click();
+  await expect(page.getByText('克隆在后台继续，先处理当前工作', { exact: true })).toBeVisible();
+  const current = page.url();
+  const peerContext = await browser.newContext({
+    locale: 'zh-CN',
+    viewport: { width: 390, height: 844 },
+  });
+  const peer = await peerContext.newPage();
+  await peer.goto(origin);
+  await peer.getByRole('button', { name: '后台任务', exact: true }).click();
+  await expect(peer.getByRole('dialog', { name: '后台任务', exact: true })).toContainText(
+    '正在接收对象 42%',
+  );
+  await screenshot(peer, info, 'background-task-recovered-mobile');
+  await peer.reload();
+  await expect(peer.getByRole('dialog')).not.toBeVisible();
+  await peer.getByRole('button', { name: '后台任务', exact: true }).click();
+  await expect(peer.getByRole('dialog', { name: '后台任务', exact: true })).toContainText(
+    '正在接收对象 42%',
+  );
+  await writeFile(join(directory, 'release'), 'finish');
+  await expect(page.locator('.background-task-notice')).toContainText('克隆完成，项目已添加');
+  expect(page.url()).toBe(current);
+  await expect(page.getByText('克隆在后台继续，先处理当前工作', { exact: true })).toBeVisible();
+  await screenshot(page, info, 'background-clone-completed-chat');
+  await expect(peer.getByRole('dialog', { name: '后台任务', exact: true })).toContainText(
+    '克隆完成，项目已添加',
+  );
+  await screenshot(peer, info, 'background-clone-completed-mobile');
+  expect((await readFile(join(directory, 'git-calls'), 'utf8')).trim().split('\n')).toHaveLength(1);
+  await page
+    .locator('.background-task-notice')
+    .getByRole('button', { name: '查看', exact: true })
+    .click();
+  await expect(dialog.getByRole('button', { name: '打开项目', exact: true })).toBeEnabled();
+  await screenshot(page, info, 'background-clone-completed-details');
+  await peerContext.close();
+});
+
+test('independent clients reconcile cancellation after reconnect and a real isolated service restart', async ({
+  page,
+  browser,
+}, info) => {
+  test.setTimeout(60_000);
+  await page.goto(origin);
+  const dialog = await form(page, 'https://example.test/slow.git');
+  await dialog.getByRole('button', { name: '克隆并添加项目', exact: true }).click();
+  await expect(dialog.getByRole('status')).toContainText('正在接收对象 42%');
+  await dialog.getByRole('button', { name: '后台运行', exact: true }).click();
+  const peerContext = await browser.newContext({ locale: 'zh-CN' });
+  const peer = await peerContext.newPage();
+  await peer.goto(origin);
+  await peer.getByRole('button', { name: '后台任务', exact: true }).click();
+  await peer
+    .getByRole('dialog', { name: '后台任务', exact: true })
+    .getByRole('button', { name: /克隆示例项目/ })
+    .click();
+  await page.context().setOffline(true);
+  await peer
+    .getByRole('dialog')
+    .filter({ has: peer.getByRole('button', { name: '取消克隆', exact: true }) })
+    .getByRole('button', { name: '取消克隆', exact: true })
+    .click();
+  await expect(
+    peer.getByRole('dialog', { name: '添加服务器项目' }).getByRole('status'),
+  ).toContainText('已取消克隆');
+  await page.context().setOffline(false);
+  await page.getByRole('button', { name: '后台任务', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '后台任务', exact: true })).toContainText(
+    '已取消克隆',
+  );
+  await screenshot(page, info, 'background-task-cancelled-reconnect');
+  await page.keyboard.press('Escape');
+  const next = await form(page, 'https://example.test/slow.git', 'second');
+  await next.getByRole('button', { name: '克隆并添加项目', exact: true }).click();
+  await expect(next.getByRole('status')).toContainText('正在接收对象 42%');
+  await next.getByRole('button', { name: '后台运行', exact: true }).click();
+  await runtime.close();
+  await restart();
+  await page.reload();
+  await page.getByRole('button', { name: '后台任务', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '后台任务', exact: true })).toContainText(
+    '服务中断，克隆结果未确认',
+  );
+  await screenshot(page, info, 'background-task-service-interrupted');
+  expect((await readFile(join(directory, 'git-calls'), 'utf8')).trim().split('\n')).toHaveLength(2);
+  await peerContext.close();
+});
+
+test('reconciles a lost submission response and reports a missing operation without resubmitting', async ({
+  page,
+}) => {
+  await page.goto(origin);
+  await page.route('**/api/project-clones', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    await route.fetch(); // The service accepted the clone; only its response is lost.
+    await route.abort('failed');
+  });
+  const dialog = await form(page, 'https://example.test/slow.git');
+  await dialog.getByRole('button', { name: '克隆并添加项目', exact: true }).click();
+  await expect(dialog.getByRole('status')).toContainText('正在接收对象 42%');
+  await expect(dialog.getByRole('alert')).not.toBeVisible();
+  expect((await readFile(join(directory, 'git-calls'), 'utf8')).trim().split('\n')).toHaveLength(1);
+  await dialog.getByRole('button', { name: '后台运行', exact: true }).click();
+  await page.unroute('**/api/project-clones');
+  await page.route('**/api/project-clones', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: { code: 'CLONE_FAILED', message: 'fixture failure before acceptance' },
+      }),
+    });
+  });
+  const rejected = await form(page, 'https://example.test/project.git', 'rejected');
+  await rejected.getByRole('button', { name: '克隆并添加项目', exact: true }).click();
+  await expect(rejected.getByRole('alert')).toContainText('未找到克隆记录');
+  await expect(rejected.getByRole('button', { name: '使用空目录重试', exact: true })).toBeEnabled();
+  expect((await readFile(join(directory, 'git-calls'), 'utf8')).trim().split('\n')).toHaveLength(1);
+});
