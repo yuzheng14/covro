@@ -40,6 +40,10 @@ export interface PermissionCapabilities {
 }
 /** Values reported by Codex; missing values are never replaced by guessed defaults. */
 export interface RuntimeSettings {
+  /** Native immutable provider of this session, or the effective new-session default. */
+  modelProvider?: string;
+  /** Absent on older servers; an empty catalog never falls back to another provider. */
+  modelCatalog?: { provider: string; models: ModelInfo[]; unavailable?: boolean };
   /** Only present when reported by the running Codex instance. */
   collaborationMode?: 'plan' | 'default';
   /** Verified RPC plus thread feature availability; absent means unverified. */
@@ -389,6 +393,8 @@ export interface OperationInput {
 }
 /** Saved together, independently of any thread's pending runtime settings. */
 export interface ModelDefaults {
+  /** Provider that supplied this selection; never changes the default provider. */
+  modelProvider?: string;
   model: string;
   reasoningEffort: string | null;
 }
@@ -396,7 +402,7 @@ export interface SaveModelDefaultsInput extends OperationInput {
   settings: ModelDefaults;
 }
 export interface ModelDefaultsResult {
-  status: 'ok' | 'okOverridden';
+  status: 'ok' | 'okOverridden' | 'threadOnly';
 }
 export interface ArchiveThreadInput extends OperationInput {
   archived: boolean;

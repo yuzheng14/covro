@@ -187,5 +187,7 @@
   "context_compaction": "コンテキスト変更後の報告を待機中",
   "context_modelChanged": "モデル変更後の報告を待機中",
   "context_recent": "直近のモデル呼び出し",
-  "context_usage": "コンテキスト {{used}} / {{limit}} トークン"
+  "context_usage": "コンテキスト {{used}} / {{limit}} トークン",
+  "thread_only_model_selection": "このセッションにのみ適用",
+  "model_catalog_unavailable": "このセッションのモデル候補を取得できません。"
 }

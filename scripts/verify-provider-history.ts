@@ -17,14 +17,19 @@ import type { TurnStartResponse } from '../src/codex/generated/v2/TurnStartRespo
 const args = process.argv.slice(2);
 const configIndex = args.indexOf('--config');
 const outputIndex = args.indexOf('--output-dir');
-assert(configIndex >= 0, 'Pass --config selecting an existing 0.167.0 binary');
+assert(configIndex >= 0, 'Pass --config selecting an existing 0.169.0 binary');
 const { codex } = JSON.parse(await readFile(resolve(args[configIndex + 1]!), 'utf8')) as {
   codex: { binary: string };
 };
 const root = await mkdtemp(join(tmpdir(), 'covro-provider-history-'));
 let responseId = 0;
+const routes: string[] = [];
+const bodies: { model?: string }[] = [];
 const server = createServer(async (request, response) => {
-  for await (const chunk of request) void chunk;
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  routes.push(request.url ?? '');
+  bodies.push(JSON.parse(Buffer.concat(chunks).toString()));
   const id = `provider-${++responseId}`;
   const item = {
     type: 'message',
@@ -62,7 +67,7 @@ async function configure(home: string, provider: string) {
       ['old', 'current']
         .map(
           (id) =>
-            `[model_providers.${id}]\nname = "Isolated ${id} provider"\nbase_url = "http://127.0.0.1:${port}/v1"\nwire_api = "responses"\nrequires_openai_auth = false\n`,
+            `[model_providers.${id}]\nname = "Isolated ${id} provider"\nbase_url = "http://127.0.0.1:${port}/${id}/v1"\nwire_api = "responses"\nrequires_openai_auth = false\n`,
         )
         .join(''),
   );
@@ -127,7 +132,7 @@ try {
     const adapter = new CodexAdapter({ binary: codex.binary, home });
     adapters.push(adapter);
     await adapter.start();
-    assert.equal(adapter.diagnostics().codexVersion, '0.167.0');
+    assert.equal(adapter.diagnostics().codexVersion, '0.169.0');
     for (const expected of saved) {
       const listed = await adapter.listThreads(project, undefined, expected.archived);
       assert(listed.data.some((thread) => thread.id === expected.id));
@@ -145,16 +150,46 @@ try {
       );
       assert.equal((await adapter.readThreadMetadata(expected.id)).archived, expected.archived);
     }
-    await assert.rejects(adapter.resumeThread(saved[0]!.id, project), (error: unknown) => {
-      assert.equal(
-        (error as { details?: { modelProviderError?: { type?: string } } }).details
-          ?.modelProviderError?.type,
-        'modelProviderMismatch',
-      );
-      return true;
-    });
+    const events: import('../src/codex/types.js').CodexEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    const resumed = await adapter.resumeThread(saved[0]!.id, project);
+    assert.equal(resumed.runtimeSettings?.modelCatalog?.provider, 'old');
+    assert(
+      resumed.runtimeSettings?.modelCatalog?.models.some((model) => model.id === 'gpt-6.1-sol'),
+    );
+    assert.deepEqual(
+      await adapter.saveModelDefaults({
+        model: 'gpt-6.1-sol',
+        reasoningEffort: 'low',
+        modelProvider: 'old',
+      }),
+      { status: 'threadOnly' },
+    );
+    async function finishTurn(id: string) {
+      const before = routes.length;
+      const turn = await adapter.startTurn(id, project, 'Continue with the saved provider', {
+        model: 'gpt-6.1-sol',
+        reasoningEffort: 'low',
+      });
+      const deadline = Date.now() + 20000;
+      while (
+        !events.some(
+          (event) =>
+            event.type === 'turn' && event.turn.id === turn.id && event.turn.status === 'completed',
+        )
+      ) {
+        assert(Date.now() < deadline, 'Provider continuation did not complete');
+        await new Promise((done) => setTimeout(done, 20));
+      }
+      return routes.slice(before);
+    }
+    assert((await finishTurn(resumed.id)).every((route) => route.startsWith('/old/')));
+    const fresh = await adapter.createThread(project);
+    assert.equal(fresh.runtimeSettings?.modelCatalog?.provider, 'current');
+    assert((await finishTurn(fresh.id)).every((route) => route.startsWith('/current/')));
+    assert(bodies.every((body) => body.model === 'gpt-6.1-sol'));
     checks.push(
-      `${historyMode}: provider switch retains active/archived discovery, exact cwd, archive state and readable text; mismatched resume rejected`,
+      `${historyMode}: switched default preserves old-provider history, archive/cwd boundaries, catalog, successful resume and actual old endpoint; new thread uses current endpoint; foreign selection never rewrites defaults`,
     );
     await adapter.stop();
     if (historyMode === 'paginated' && outputIndex >= 0) {
@@ -204,7 +239,7 @@ try {
     }
   }
   console.log(
-    JSON.stringify({ version: '0.167.0', inference: false, localStub: true, checks }, null, 2),
+    JSON.stringify({ version: '0.169.0', inference: false, localStub: true, checks }, null, 2),
   );
 } finally {
   await Promise.all(adapters.map((adapter) => adapter.stop()));

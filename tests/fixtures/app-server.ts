@@ -45,6 +45,7 @@ import type { PermissionRequirements, PermissionSelection } from '../../src/code
 import type { ActivePermissionProfile } from '../../src/codex/generated/v2/ActivePermissionProfile.js';
 
 export interface SimulatorOptions {
+  optionsPath?: string;
   accountUsagePath?: string;
   accountResponse?: GetAccountResponse;
   rateLimitResponses?: unknown[];
@@ -123,6 +124,9 @@ export interface SimulatorOptions {
   titleOutputs?: string[];
   accountType?: 'chatgpt' | 'apiKey';
   models?: string[];
+  providerModels?: Record<string, { id: string; efforts: ReasoningEffort[]; tiers?: string[] }[]>;
+  providerModelFailure?: string;
+  modelPageSize?: number;
   modelProvider?: string;
   threadModelProviders?: string[];
   activePermissionProfile?: string;
@@ -141,6 +145,8 @@ let accountNotified = false;
 const options = JSON.parse(
   optionsIndex < 0 ? '{}' : (process.argv[optionsIndex + 1] ?? '{}'),
 ) as SimulatorOptions;
+if (options.optionsPath && existsSync(options.optionsPath))
+  Object.assign(options, JSON.parse(readFileSync(options.optionsPath, 'utf8')));
 function usageControl(): {
   account?: GetAccountResponse;
   limits?: unknown;
@@ -217,6 +223,8 @@ function error(id: RequestId, message: string, code = -32602): void {
 }
 function makeThread(cwd: string): Thread {
   const id = randomUUID();
+  const provider =
+    options.threadModelProviders?.[threads.size] ?? options.modelProvider ?? 'openai';
   return {
     id,
     sessionId: id,
@@ -228,9 +236,9 @@ function makeThread(cwd: string): Thread {
     sectionEnteredAt: null,
     projectId: null,
     historyMode: options.paginated ? 'paginated' : 'legacy',
-    modelProvider:
-      options.threadModelProviders?.[threads.size] ?? options.modelProvider ?? 'openai',
-    model: savedModelDefaults?.model ?? 'simulated-model',
+    modelProvider: provider,
+    model:
+      savedModelDefaults?.model ?? options.providerModels?.[provider]?.[0]?.id ?? 'simulated-model',
     reasoningEffort: savedModelDefaults
       ? savedModelDefaults.effort
       : cwd.endsWith('other-project')
@@ -1939,6 +1947,7 @@ function receive(request: ClientRequest): void {
       reply(request.id, {
         config: {
           mcp_servers: { 'fixture.tools': { command: 'unused', enabled: true } },
+          model_provider: options.modelProvider ?? 'openai',
           model:
             savedModelDefaults?.model ??
             (options.configModel === undefined ? 'simulated-model' : options.configModel),
@@ -2015,16 +2024,38 @@ function receive(request: ClientRequest): void {
         nextCursor: null,
       });
       break;
-    case 'model/list':
-      reply(request.id, {
-        data: (options.models ?? [model.model]).map((name) => ({
+    case 'model/list': {
+      const params: typeof request.params & { modelProvider?: string } = request.params;
+      const provider = params.modelProvider ?? options.modelProvider ?? 'openai';
+      if (params.modelProvider && provider === options.providerModelFailure) {
+        error(request.id, 'Provider catalog is unavailable', -32600);
+        break;
+      }
+      const entries =
+        options.providerModels?.[provider]?.map((entry) => ({
           ...model,
-          id: name,
-          model: name,
-        })),
-        nextCursor: null,
+          id: entry.id,
+          model: entry.id,
+          supportedReasoningEfforts: entry.efforts.map((reasoningEffort) => ({
+            reasoningEffort,
+            description: reasoningEffort,
+          })),
+          additionalSpeedTiers: entry.tiers ?? [],
+          serviceTiers: (entry.tiers ?? []).map((tier) => ({
+            id: tier === 'fast' ? 'priority' : tier,
+            name: tier,
+            description: tier,
+          })),
+        })) ??
+        (options.models ?? [model.model]).map((name) => ({ ...model, id: name, model: name }));
+      const offset = Number(params.cursor ?? 0);
+      const size = options.modelPageSize ?? entries.length;
+      reply(request.id, {
+        data: entries.slice(offset, offset + size),
+        nextCursor: offset + size < entries.length ? String(offset + size) : null,
       });
       break;
+    }
     case 'thread/start': {
       if (options.rejectPermissions && (request.params as PermissionSelection).permissions) {
         error(request.id, 'Managed policy rejected permission selection');

@@ -27,7 +27,7 @@ export function SettingsPanel({
   settings,
   attachmentControl,
   children,
-  models,
+  models: defaultModels,
   thread,
   projectId,
   runtimeKey,
@@ -64,7 +64,7 @@ export function SettingsPanel({
   const [saveNotice, setSaveNotice] = useState<{
     scope: string;
     settings: ModelDefaults;
-    state: 'saving' | 'saved' | 'overridden' | 'error';
+    state: 'saving' | 'saved' | 'overridden' | 'threadOnly' | 'error';
   }>();
   const notice = saveNotice?.scope === scope ? saveNotice : undefined;
   const saving = savingModelDefaults || notice?.state === 'saving';
@@ -77,6 +77,7 @@ export function SettingsPanel({
     runtimeKey,
   );
   const current = thread ? thread.runtimeSettings : defaults.value;
+  const models = current?.modelCatalog?.models ?? defaultModels;
   // A saved/occupied thread has no effective permission query. Defaults supply availability
   // for a future fork only; never use their permission values as the thread's actual state.
   const permissions =
@@ -155,7 +156,10 @@ export function SettingsPanel({
   async function saveModelDefaults(selection: ModelDefaults) {
     setSaveNotice({ scope, settings: selection, state: 'saving' });
     try {
-      const result = await onSaveModelDefaults(selection);
+      const result = await onSaveModelDefaults({
+        ...selection,
+        ...(current?.modelCatalog ? { modelProvider: current.modelCatalog.provider } : {}),
+      });
       setSaveNotice({
         scope,
         settings: selection,
@@ -164,7 +168,9 @@ export function SettingsPanel({
             ? 'saved'
             : result?.status === 'okOverridden'
               ? 'overridden'
-              : 'error',
+              : result?.status === 'threadOnly'
+                ? 'threadOnly'
+                : 'error',
       });
     } catch {
       setSaveNotice({ scope, settings: selection, state: 'error' });
@@ -279,7 +285,9 @@ export function SettingsPanel({
               ? t('settings:saved_as_codex_defaults_for_new_sessions')
               : notice.state === 'overridden'
                 ? t('settings:defaults_saved_but_overridden_by_higher_priority_configuration')
-                : t('settings:could_not_confirm_defaults_were_saved_pending_selections')}
+                : notice.state === 'threadOnly'
+                  ? t('settings:thread_only_model_selection')
+                  : t('settings:could_not_confirm_defaults_were_saved_pending_selections')}
           {notice.state === 'error' && (
             <button
               type="button"
@@ -297,6 +305,11 @@ export function SettingsPanel({
           <button type="button" onClick={defaults.retry}>
             {t('settings:retry')}
           </button>
+        </p>
+      )}
+      {current?.modelCatalog?.unavailable && (
+        <p className="settings-error" role="status">
+          {t('settings:model_catalog_unavailable')}
         </p>
       )}
       <div className="composer-actions">

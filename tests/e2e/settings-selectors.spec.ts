@@ -1,6 +1,6 @@
 import { openModelSettings } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
-import type { SystemInfo } from '../../src/shared/types';
+import type { RuntimeSettings, SystemInfo } from '../../src/shared/types';
 import {
   confirmCompatibility,
   controlRuntime,
@@ -249,6 +249,7 @@ test('custom menus support keyboard selection, Escape and outside dismissal with
 
 test('model and effort menus fit a 320px viewport with long model names', async ({ page }) => {
   const longModel = 'private-model-with-a-very-long-provider-and-version-name';
+  // Intermediate stack layers retain the global catalog until the version gate is updated.
   await page.route('**/api/system', async (route) => {
     const response = await route.fetch();
     const system = (await response.json()) as SystemInfo;
@@ -262,7 +263,27 @@ test('model and effort menus fit a 320px viewport with long model names', async 
   });
   await page.route('**/api/projects/fixture/runtime-settings', async (route) => {
     const response = await route.fetch();
-    await route.fulfill({ response, json: { ...(await response.json()), model: longModel } });
+    const settings = (await response.json()) as RuntimeSettings;
+    const catalog = settings.modelCatalog;
+    if (catalog) expect(catalog.models.length).toBeGreaterThan(0);
+    await route.fulfill({
+      response,
+      json: {
+        ...settings,
+        model: longModel,
+        ...(catalog
+          ? {
+              modelCatalog: {
+                ...catalog,
+                models: [
+                  ...catalog.models,
+                  { ...catalog.models[0]!, id: longModel, name: longModel },
+                ],
+              },
+            }
+          : {}),
+      },
+    });
   });
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto('/');

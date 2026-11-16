@@ -187,5 +187,7 @@
   "context_compaction": "Context changed; awaiting usage",
   "context_modelChanged": "Model changed; awaiting usage",
   "context_recent": "Latest model call",
-  "context_usage": "Context {{used}} / {{limit}} tokens"
+  "context_usage": "Context {{used}} / {{limit}} tokens",
+  "thread_only_model_selection": "Applied to this session only",
+  "model_catalog_unavailable": "Model choices are unavailable for this session."
 }

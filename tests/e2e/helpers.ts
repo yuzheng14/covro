@@ -54,6 +54,15 @@ export async function controlRuntime(
     external?: 'free' | 'occupied' | 'error';
     releaseThreadId?: string;
     accountUsage?: Record<string, unknown>;
+    fixtureOptions?: Pick<
+      import('../fixtures/app-server').SimulatorOptions,
+      | 'modelProvider'
+      | 'providerModels'
+      | 'threadModelProviders'
+      | 'providerModelFailure'
+      | 'modelPageSize'
+      | 'configModel'
+    >;
     preview?: { threadId: string; projectId: string };
     stopPreview?: string;
   },

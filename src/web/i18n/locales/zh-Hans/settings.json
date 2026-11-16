@@ -187,5 +187,7 @@
   "context_compaction": "上下文已变化，等待新用量",
   "context_modelChanged": "模型已切换，等待新用量",
   "context_recent": "最近一次模型调用",
-  "context_usage": "上下文 {{used}} / {{limit}} tokens"
+  "context_usage": "上下文 {{used}} / {{limit}} tokens",
+  "thread_only_model_selection": "仅应用于当前会话",
+  "model_catalog_unavailable": "暂时无法读取此会话的模型选项。"
 }

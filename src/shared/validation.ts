@@ -51,6 +51,7 @@ export const updateLiveSettingsSchema = operationSchema.extend({
 export const saveModelDefaultsSchema = operationSchema.extend({
   settings: z
     .object({
+      modelProvider: z.string().min(1).max(256).optional(),
       model: z.string().min(1).max(200),
       reasoningEffort: z.string().min(1).max(40).nullable(),
     })

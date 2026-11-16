@@ -95,6 +95,7 @@ export function mapThread(thread: Thread): ThreadView {
     turns,
     managed: false,
     runtimeSettings: {
+      modelProvider: thread.modelProvider,
       model: thread.model ?? null,
       reasoningEffort: thread.reasoningEffort ?? null,
     },

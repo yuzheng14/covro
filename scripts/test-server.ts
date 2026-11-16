@@ -165,6 +165,7 @@ const project = join(root, 'project');
 const otherProject = join(root, 'other-project');
 const historyPath = join(root, 'history.json');
 const accountUsagePath = join(root, 'account-usage.json');
+const fixtureOptionsPath = join(root, 'fixture-options.json');
 const port = Number(process.env.E2E_PORT ?? 8788);
 const origin = `http://127.0.0.1:${port}`;
 await mkdir(project);
@@ -207,6 +208,7 @@ const codex = new ControlledFixture(
         titleDelayMs: 1500,
         historyPath,
         accountUsagePath,
+        optionsPath: fixtureOptionsPath,
         models: ['simulated-model', 'simulated-alternative'],
       }),
     ],
@@ -293,6 +295,7 @@ const control = createServer((request, response) => {
       external?: 'free' | 'occupied' | 'error';
       releaseThreadId?: string;
       accountUsage?: object;
+      fixtureOptions?: object;
       preview?: { threadId: string; projectId: string };
       stopPreview?: string;
     };
@@ -314,6 +317,9 @@ const control = createServer((request, response) => {
         previewChildren.clear();
       }
       if (input.reset === true) await rm(accountUsagePath, { force: true });
+      if (input.reset === true) await rm(fixtureOptionsPath, { force: true });
+      if (input.fixtureOptions)
+        await writeFile(fixtureOptionsPath, JSON.stringify(input.fixtureOptions));
       if (input.accountUsage) {
         await writeFile(`${accountUsagePath}.tmp`, JSON.stringify(input.accountUsage));
         await rename(`${accountUsagePath}.tmp`, accountUsagePath);

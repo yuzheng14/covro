@@ -80,6 +80,103 @@ async function waitFor<T>(get: () => T | undefined): Promise<T> {
 }
 
 describe('verified protocol adapter with a real subprocess', () => {
+  it('keeps a resumed provider catalog on every page and validates effort and Fast against that provider', async () => {
+    const { adapter, requests } = await fixture({
+      codexVersion: '0.169.0',
+      modelProvider: 'current',
+      threadModelProviders: ['old'],
+      modelPageSize: 1,
+      providerModels: {
+        current: [{ id: 'current-only', efforts: ['low'], tiers: ['fast'] }],
+        old: [
+          { id: 'simulated-model', efforts: ['medium'] },
+          { id: 'old-only', efforts: ['high'] },
+        ],
+      },
+    });
+    const thread = await adapter.createThread('/tmp');
+    expect(thread.runtimeSettings?.modelCatalog).toMatchObject({
+      provider: 'old',
+      models: [{ id: 'simulated-model' }, { id: 'old-only' }],
+    });
+    expect((await adapter.readThread(thread.id)).runtimeSettings?.modelCatalog?.provider).toBe(
+      'old',
+    );
+    await expect(
+      adapter.startTurn(thread.id, '/tmp', 'wrong provider', { model: 'current-only' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      adapter.startTurn(thread.id, '/tmp', 'wrong tier', {
+        model: 'old-only',
+        serviceTier: 'fast',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      adapter.startTurn(thread.id, '/tmp', 'wrong effort', {
+        model: 'old-only',
+        reasoningEffort: 'low',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await adapter.startTurn(thread.id, '/tmp', 'old provider', {
+      model: 'old-only',
+      reasoningEffort: 'high',
+    });
+    const calls = await requests();
+    expect(
+      calls.filter((entry) => entry.method === 'turn/start' && entry.params.threadId === thread.id),
+    ).toHaveLength(1);
+    const pages = calls.filter(
+      (entry) => entry.method === 'model/list' && entry.params.cursor === '1',
+    );
+    expect(pages.length).toBeGreaterThan(1);
+    expect(pages.every((entry) => entry.params.modelProvider === 'old')).toBe(true);
+    expect(
+      (await adapter.resumeThread(thread.id, '/tmp')).runtimeSettings?.modelCatalog?.provider,
+    ).toBe('old');
+  });
+  it('keeps history readable when its provider catalog fails, without borrowing the default catalog', async () => {
+    const { adapter, requests } = await fixture({
+      codexVersion: '0.169.0',
+      modelProvider: 'current',
+      threadModelProviders: ['old'],
+      providerModelFailure: 'old',
+    });
+    const thread = await adapter.createThread('/tmp');
+    expect((await adapter.readThread(thread.id)).runtimeSettings?.modelCatalog).toEqual({
+      provider: 'old',
+      models: [],
+      unavailable: true,
+    });
+    await expect(
+      adapter.startTurn(thread.id, '/tmp', 'blocked selection', { model: 'simulated-model' }),
+    ).rejects.toMatchObject({ rpcCode: -32600 });
+    expect((await requests()).filter((entry) => entry.method === 'turn/start')).toHaveLength(0);
+  });
+  it('does not persist a foreign provider selection as the new-session default, even for a shared model name', async () => {
+    const { adapter, requests } = await fixture({
+      codexVersion: '0.169.0',
+      modelProvider: 'current',
+    });
+    expect(
+      await adapter.saveModelDefaults({
+        model: 'simulated-model',
+        reasoningEffort: 'medium',
+        modelProvider: 'old',
+      }),
+    ).toEqual({ status: 'threadOnly' });
+    expect((await requests()).some((entry) => entry.method === 'config/batchWrite')).toBe(false);
+    expect(
+      await adapter.saveModelDefaults({
+        model: 'simulated-model',
+        reasoningEffort: 'medium',
+        modelProvider: 'current',
+      }),
+    ).toEqual({ status: 'ok' });
+    expect((await requests()).filter((entry) => entry.method === 'config/batchWrite')).toHaveLength(
+      1,
+    );
+  });
+
   it('uses native fuzzy file search roots and cancels only its own token without starting another scan', async () => {
     const logs = captureLogger();
     const { adapter, dir, requests } = await fixture({}, 5000, { logger: logs.logger });
