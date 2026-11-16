@@ -51,7 +51,7 @@ export interface SimulatorOptions {
   rateLimitResponses?: unknown[];
   rateLimitFailure?: boolean;
   rateLimitHang?: boolean;
-  rateLimitNotification?: 'account' | 'limits';
+  rateLimitNotification?: 'account' | 'routing' | 'limits';
   accountAfterNotification?: GetAccountResponse;
   configOverrides?: Record<string, JsonValue>;
   requirements?: Partial<PermissionRequirements> | null;
@@ -167,7 +167,11 @@ if (options.accountUsagePath)
         method: 'account/rateLimits/updated',
         params: { rateLimits: { limitId: 'codex' } },
       } as ServerNotification);
-    else notify({ method: 'account/updated', params: { authMode: 'chatgpt', planType: 'plus' } });
+    else
+      notify({
+        method: 'account/updated',
+        params: { authMode: 'chatgpt', planType: 'plus', reason: null },
+      });
   });
 const threads = new Map<string, Thread>();
 const archived = new Set<string>();
@@ -569,6 +573,7 @@ function asyncQuestions(
     const item: ThreadItem = {
       id: randomUUID(),
       type: 'agentMessage',
+      moderation: null,
       phase: 'final_answer',
       memoryCitation: null,
       delivery: 'async',
@@ -673,6 +678,7 @@ function execute(thread: Thread, turn: Turn, cmd = command(randomUUID(), thread.
   const item: ThreadItem = {
     id: randomUUID(),
     type: 'agentMessage',
+    moderation: null,
     text: '',
     phase: 'final_answer',
     memoryCitation: null,
@@ -742,6 +748,7 @@ function imageReply(
   const item: ThreadItem = {
     id: randomUUID(),
     type: 'agentMessage',
+    moderation: null,
     text,
     phase: 'final_answer',
     memoryCitation: null,
@@ -767,6 +774,7 @@ function markdownReply(
   const item: Extract<ThreadItem, { type: 'agentMessage' }> = {
     id: randomUUID(),
     type: 'agentMessage',
+    moderation: null,
     text: '',
     phase: 'final_answer',
     memoryCitation: null,
@@ -934,6 +942,7 @@ function transportHistory(thread: Thread, turn: Turn): void {
   turn.items.push({
     id: randomUUID(),
     type: 'agentMessage',
+    moderation: null,
     text:
       '### 长会话历史验证\n\n' +
       '这段历史正文应当保持完整，继续发送任务和重新连接后，仍然可以读到消息末尾。\n\n'.repeat(16) +
@@ -951,6 +960,7 @@ function stickyPromptReply(thread: Thread, turn: Turn, streaming: boolean): void
   const item: Extract<ThreadItem, { type: 'agentMessage' }> = {
     id: randomUUID(),
     type: 'agentMessage',
+    moderation: null,
     text: Array.from(
       { length: 48 },
       (_, index) =>
@@ -1026,6 +1036,7 @@ function activityScenario(thread: Thread, turn: Turn, streaming: boolean, mixed 
     finishedItem({
       id: randomUUID(),
       type: 'agentMessage',
+      moderation: null,
       text,
       phase,
       memoryCitation: null,
@@ -1201,6 +1212,7 @@ function contextCompaction(thread: Thread, turn: Turn, outcome: 'recover' | 'fai
       const reply: ThreadItem = {
         id: randomUUID(),
         type: 'agentMessage',
+        moderation: null,
         text: '已整理上下文，继续分析剩余实现与测试。',
         phase: 'commentary',
         memoryCitation: null,
@@ -1247,6 +1259,7 @@ function capacityScenario(thread: Thread, turn: Turn, mode: string): void {
         const item: ThreadItem = {
           id: randomUUID(),
           type: 'agentMessage',
+          moderation: null,
           text: mode === 'quote' ? MODEL_CAPACITY_MESSAGE : '容量恢复，继续处理原任务。',
           phase: 'final_answer',
           memoryCitation: null,
@@ -1369,6 +1382,7 @@ function codexReconnect(
       const item: ThreadItem = {
         id: randomUUID(),
         type: 'agentMessage',
+        moderation: null,
         text: '',
         phase: 'final_answer',
         memoryCitation: null,
@@ -1499,6 +1513,7 @@ function autoReview(
             const item: ThreadItem = {
               id: randomUUID(),
               type: 'agentMessage',
+              moderation: null,
               phase: 'final_answer',
               memoryCitation: null,
               delivery: null,
@@ -1610,6 +1625,7 @@ function approval(
       threadId: thread.id,
       turnId: options.elicitationTurnId === null ? null : turn.id,
       serverName: '截图发布服务',
+      environmentId: null,
       _meta:
         options.elicitationMeta ??
         (['elicitation-approval', 'elicitation-session', 'elicitation-session-array'].includes(kind)
@@ -1909,6 +1925,7 @@ function receive(request: ClientRequest): void {
                 : options.accountType === 'apiKey'
                   ? { type: 'apiKey' }
                   : null,
+            userId: null,
             requiresOpenaiAuth: false,
           },
       );
@@ -1929,10 +1946,15 @@ function receive(request: ClientRequest): void {
       if (limitReads === 1 && options.rateLimitNotification)
         setTimeout(() => {
           accountNotified = true;
-          if (options.rateLimitNotification === 'account') {
+          if (options.rateLimitNotification !== 'limits') {
             notify({
               method: 'account/updated',
-              params: { authMode: 'chatgpt', planType: 'plus' },
+              params: {
+                authMode: 'chatgpt',
+                planType: 'plus',
+                reason:
+                  options.rateLimitNotification === 'routing' ? 'workspaceRoutingReady' : null,
+              },
             });
           } else {
             notify({
@@ -2025,7 +2047,7 @@ function receive(request: ClientRequest): void {
       });
       break;
     case 'model/list': {
-      const params: typeof request.params & { modelProvider?: string } = request.params;
+      const params = request.params;
       const provider = params.modelProvider ?? options.modelProvider ?? 'openai';
       if (params.modelProvider && provider === options.providerModelFailure) {
         error(request.id, 'Provider catalog is unavailable', -32600);
@@ -2634,6 +2656,7 @@ function receive(request: ClientRequest): void {
               const item: ThreadItem = {
                 id: randomUUID(),
                 type: 'agentMessage',
+                moderation: null,
                 phase: 'final_answer',
                 memoryCitation: null,
                 delivery: null,

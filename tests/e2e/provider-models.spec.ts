@@ -8,7 +8,7 @@ import {
 } from './helpers';
 
 // Earlier stack layers retain the old verified baseline until native validation completes.
-test.skip(CODEX_COMPATIBILITY.recommended !== '0.169.0', 'Requires the target protocol layer');
+test.skip(CODEX_COMPATIBILITY.recommended !== '0.171.0', 'Requires the target protocol layer');
 
 test('uses the session provider for model and effort choices, without changing new-session defaults', async ({
   page,
@@ -64,10 +64,10 @@ test('keeps a failed provider catalog empty and reports unavailability on a narr
       providerModelFailure: 'old',
     },
   });
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await confirmCompatibility(page);
   await createEmptyThread(page);
+  await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByText('暂时无法读取此会话的模型选项。', { exact: true })).toBeVisible();
   await openModelSettings(page);
   await expect(page.getByRole('combobox', { name: '模型', exact: true })).toBeDisabled();

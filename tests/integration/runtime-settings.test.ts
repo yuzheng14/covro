@@ -59,6 +59,27 @@ it('keeps loaded permission settings through metadata reads and drops them on ru
   });
 });
 
+it('invalidates a provider catalog on reset without borrowing the default provider catalog', () => {
+  const ctx = harness();
+  resources.push(ctx);
+  const source = threadView('provider-thread', ctx.project);
+  source.runtimeSettings = {
+    model: 'old-model',
+    reasoningEffort: 'low',
+    modelProvider: 'old',
+    modelCatalog: { provider: 'old', models: [] },
+    serviceTier: 'fast',
+  };
+  ctx.service.projection.thread(source);
+  ctx.service.projection.runtimeReset();
+  expect(ctx.service.projection.get(source.id)?.runtimeSettings).toEqual({
+    model: 'old-model',
+    reasoningEffort: 'low',
+    modelProvider: 'old',
+    modelCatalog: { provider: 'old', models: [], unavailable: true },
+  });
+});
+
 const confirmedSettings: RuntimeSettings = {
   model: 'model-a',
   reasoningEffort: 'ultra',

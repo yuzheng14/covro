@@ -626,7 +626,11 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
           channel: 'dev' as const,
           commit: String(n).repeat(40),
           downgrade: false,
-          codex: assessCodexCompatibility(CODEX_COMPATIBILITY, '0.167.0', 'restart'),
+          codex: assessCodexCompatibility(
+            CODEX_COMPATIBILITY,
+            CODEX_COMPATIBILITY.recommended,
+            'restart',
+          ),
         });
         f.state.available = candidate(3);
         f.state.run = {
@@ -656,7 +660,7 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
         ).toContainText('0.166.0');
         await expect(
           dialog.getByRole('region', { name: strings.target_version_compatibility, exact: true }),
-        ).toContainText('0.167.0');
+        ).toContainText(CODEX_COMPATIBILITY.recommended);
         await expect(dialog.getByRole('switch')).toBeEnabled();
         await expect(
           dialog.getByRole('button', { name: strings.cancel_pending_update, exact: true }),
@@ -689,7 +693,7 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
         await expect(dialog.locator('.update-release-notes')).toContainText(candidate(4).version);
         await expect(
           dialog.getByRole('region', { name: strings.target_version_compatibility, exact: true }),
-        ).toContainText('0.167.0');
+        ).toContainText(CODEX_COMPATIBILITY.recommended);
         await expect(dialog.getByRole('switch')).toBeDisabled();
         f.state.run = { ...f.state.run!, phase: 'succeeded', committed: true };
         f.state.available = candidate(4);
@@ -730,7 +734,7 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
           '0.166.0',
         );
         fixture.state.settings.automatic = true;
-        fixture.setRestart('0.167.0');
+        fixture.setRestart(CODEX_COMPATIBILITY.recommended);
         // An equal-version Node migration lets the fixture render activation without a synthetic frontend reload.
         fixture.setRelease({ version: currentVersion, channel: 'stable' });
         const current = {
@@ -760,7 +764,7 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
           exact: true,
         });
         await expect(running).toContainText('0.166.0');
-        await expect(candidate).toContainText('0.167.0');
+        await expect(candidate).toContainText(CODEX_COMPATIBILITY.recommended);
         await expect(candidate).toContainText(strings.after_restart!);
         const migrate = dialog.getByRole('button', {
           name: strings.migrate_and_restart,
@@ -777,10 +781,13 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
         );
         await migrate.click();
         expect(fixture.requests.filter((request) => request.path.endsWith('/run'))).toHaveLength(1);
-        fixture.state.codex = assessCodexCompatibility(CODEX_COMPATIBILITY, '0.167.0');
+        fixture.state.codex = assessCodexCompatibility(
+          CODEX_COMPATIBILITY,
+          CODEX_COMPATIBILITY.recommended,
+        );
         fixture.state.runtime = { current: target, migration: false };
         fixture.state.run = { ...fixture.state.run!, phase: 'succeeded', committed: true };
-        await expect(running).toContainText('0.167.0', { timeout: 10_000 });
+        await expect(running).toContainText(CODEX_COMPATIBILITY.recommended, { timeout: 10_000 });
         await expect(dialog.locator('.update-progress')).toContainText(strings.update_successful!);
         await running.scrollIntoViewIfNeeded();
         await screenshot(page, `335-${locale}-${theme}-${viewport.name}-restarted.png`);

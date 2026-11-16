@@ -76,6 +76,7 @@ function conversation(cwd: string, name: string, prompt: string, response: strin
           {
             id: randomUUID(),
             type: 'agentMessage',
+            moderation: null,
             phase: 'final_answer',
             memoryCitation: null,
             delivery: null,

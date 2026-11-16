@@ -197,6 +197,7 @@ describe('bounded capacity recovery', () => {
     'cyberPolicy',
     'unauthorized',
     'inferenceHookDenied',
+    'bioPolicy',
     'sessionBudgetExceeded',
   ])('does not retry %s even when its text resembles capacity advice', async (code) => {
     const ctx = await setup();

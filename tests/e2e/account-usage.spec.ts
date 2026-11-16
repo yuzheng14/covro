@@ -182,6 +182,9 @@ for (const [locale, title, used] of [
     await expect(dialog).toContainText(used!);
     await expect(dialog).not.toContainText('account:');
     expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    // Visible cached quota can precede the opening refresh. Test keyboard traversal
+    // once both controls are available, rather than racing the disabled refresh button.
+    await expect(dialog.locator('.account-refresh button')).toBeEnabled();
     await page.keyboard.press('Tab');
     expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
     await page.keyboard.press('Escape');

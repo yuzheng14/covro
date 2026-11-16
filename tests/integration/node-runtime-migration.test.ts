@@ -23,6 +23,12 @@ import { packageInfo } from '../../src/cli/paths.js';
 import type { RuntimeIdentity, UpdateRun, UpdateStatus } from '../../src/shared/updates.js';
 
 const exec = promisify(execFile);
+// These migration scenarios deliberately retain the historical 0.166 → 0.167 pair.
+const historicalTargetCodex = {
+  recommended: '0.167.0',
+  verified: ['0.167.0'],
+  unsupported: [],
+};
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
@@ -404,7 +410,10 @@ it('uses the selected preinstalled Covro parser and blocks a staged parser that 
   await rm(join(prefix, 'bin/npm'));
   await symlink(npm, join(prefix, 'bin/npm'));
   // A remote higher release is checked before its code is available locally.
-  await writeFile(f.releaseMetadata, JSON.stringify({ ...packageInfo, version: '99.0.0' }));
+  await writeFile(
+    f.releaseMetadata,
+    JSON.stringify({ ...packageInfo, version: '99.0.0', covroCodex: historicalTargetCodex }),
+  );
   expect((await f.cli('update', 'status')).available?.codex).toMatchObject({
     version: '0.167.0',
     status: 'verified',
@@ -601,6 +610,7 @@ it.each(['success', 'rollback'] as const)(
           ...packageInfo,
           version: `99.0.0-dev.${n}`,
           covroCommit: String(n).repeat(40),
+          covroCodex: historicalTargetCodex,
         }),
       );
     await f.cli('update', 'status');

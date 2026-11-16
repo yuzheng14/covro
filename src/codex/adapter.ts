@@ -125,7 +125,7 @@ export type {
 export { CodexError } from './transport.js';
 
 export const VERIFIED_CODEX_VERSION = CODEX_COMPATIBILITY.recommended;
-const LIVE_SETTINGS_CODEX_VERSION = '0.167.0';
+const LIVE_SETTINGS_CODEX_VERSION = '0.171.0';
 const CAPABILITIES = [
   'command/exec',
   'command/exec/terminate',
@@ -212,6 +212,14 @@ type ActionContext = {
   decisions: Map<string, CommandExecutionApprovalDecision>;
   responding: boolean;
 };
+
+function hasModelSettings(settings?: Settings): boolean {
+  return (
+    settings?.model !== undefined ||
+    settings?.reasoningEffort !== undefined ||
+    settings?.serviceTier !== undefined
+  );
+}
 
 function permissionPathLabel(path: FileSystemPath): string {
   if (path.type === 'path') return path.path;
@@ -616,7 +624,7 @@ export class CodexAdapter implements CodexClient {
     return { provider, models };
   }
   private async reportedCatalog(provider: string): Promise<Pick<RuntimeSettings, 'modelCatalog'>> {
-    if (this.state.codexVersion !== '0.169.0') return {};
+    if (this.state.codexVersion !== '0.171.0') return {};
     try {
       return { modelCatalog: await this.modelCatalog(provider) };
     } catch {
@@ -625,7 +633,7 @@ export class CodexAdapter implements CodexClient {
     }
   }
   private async settingsContext(cwd: string, id?: string): Promise<RuntimeSettings | undefined> {
-    if (this.state.codexVersion !== '0.169.0') return id ? this.permissionState.get(id) : undefined;
+    if (this.state.codexVersion !== '0.171.0') return id ? this.permissionState.get(id) : undefined;
     if (id) {
       const current = this.permissionState.get(id);
       if (current?.modelProvider) return current;
@@ -643,16 +651,11 @@ export class CodexAdapter implements CodexClient {
     settings: Settings = {},
     current?: RuntimeSettings,
   ): Promise<void> {
-    if (
-      settings.model === undefined &&
-      settings.reasoningEffort === undefined &&
-      settings.serviceTier === undefined
-    )
-      return;
-    if (this.state.codexVersion === '0.169.0' && !current?.modelProvider)
+    if (!hasModelSettings(settings)) return;
+    if (this.state.codexVersion === '0.171.0' && !current?.modelProvider)
       throw new CodexError('PROTOCOL_INCOMPATIBLE', "Codex did not report this session's provider");
     const models =
-      this.state.codexVersion === '0.169.0'
+      this.state.codexVersion === '0.171.0'
         ? (await this.modelCatalog(current!.modelProvider!)).models
         : this.state.models;
     const selectedModel = settings.model ?? current?.model;
@@ -665,12 +668,17 @@ export class CodexAdapter implements CodexClient {
       effort != null &&
       !(
         model?.reasoningEfforts ??
-        (selectedModel ? [] : models.flatMap((entry) => entry.reasoningEfforts))
+        (selectedModel || this.state.codexVersion === '0.171.0'
+          ? []
+          : models.flatMap((entry) => entry.reasoningEfforts))
       ).includes(effort)
     )
       throw new AppError('VALIDATION_ERROR', '所选推理强度不受当前模型支持');
     const tier = settings.serviceTier !== undefined ? settings.serviceTier : current?.serviceTier;
-    if (tier === 'fast' && model && !model.serviceTiers?.includes('fast'))
+    if (
+      tier === 'fast' &&
+      (model ? !model.serviceTiers?.includes('fast') : this.state.codexVersion === '0.171.0')
+    )
       throw new AppError('VALIDATION_ERROR', '所选模型不支持 Fast');
   }
   async listThreads(
@@ -976,7 +984,10 @@ export class CodexAdapter implements CodexClient {
     return this.storedThread(thread, sequence);
   }
   async createThread(cwd: string, settings?: Settings): Promise<ThreadView> {
-    await this.validateSettings(settings, await this.settingsContext(cwd));
+    await this.validateSettings(
+      settings,
+      hasModelSettings(settings) ? await this.settingsContext(cwd) : undefined,
+    );
     await this.validatePermissionSettings(cwd, settings);
     const titles = this.titles;
     const result = await this.call('thread/start', { cwd, ...threadSettings(settings) });
@@ -1177,7 +1188,10 @@ export class CodexAdapter implements CodexClient {
     return settings;
   }
   async resumeThread(id: string, cwd: string, settings?: Settings): Promise<ThreadView> {
-    await this.validateSettings(settings, await this.settingsContext(cwd, id));
+    await this.validateSettings(
+      settings,
+      hasModelSettings(settings) ? await this.settingsContext(cwd, id) : undefined,
+    );
     await this.validatePermissionSettings(cwd, settings, id);
     const titles = this.titles;
     let result: ThreadResumeResponse;
@@ -1204,7 +1218,10 @@ export class CodexAdapter implements CodexClient {
     return { ...view, runtimeSettings: await this.responseRuntimeSettings(result) };
   }
   async forkThread(id: string, cwd: string, settings?: Settings): Promise<ThreadView> {
-    await this.validateSettings(settings, await this.settingsContext(cwd, id));
+    await this.validateSettings(
+      settings,
+      hasModelSettings(settings) ? await this.settingsContext(cwd, id) : undefined,
+    );
     await this.validatePermissionSettings(cwd, settings, id);
     const titles = this.titles;
     const result = await this.call('thread/fork', {
@@ -1317,7 +1334,10 @@ export class CodexAdapter implements CodexClient {
     skills?: import('../shared/skills.js').SkillReference[],
     clientUserMessageId?: string,
   ): Promise<TurnView> {
-    await this.validateSettings(settings, await this.settingsContext(cwd, id));
+    await this.validateSettings(
+      settings,
+      hasModelSettings(settings) ? await this.settingsContext(cwd, id) : undefined,
+    );
     await this.validatePermissionSettings(cwd, settings, id);
     this.titles?.trackUserInput(id);
     const turn = mapTurn(
@@ -1341,7 +1361,7 @@ export class CodexAdapter implements CodexClient {
     turnId: string,
     settings: LiveSettings,
   ): Promise<Partial<Omit<LiveSettingsState, 'turnId'>>> {
-    // Exact experimental 0.167.0 contract; stable generation intentionally omits this method.
+    // Exact experimental 0.171.0 contract; stable generation intentionally omits this method.
     if (this.state.codexVersion !== LIVE_SETTINGS_CODEX_VERSION)
       throw new AppError('PROTOCOL_INCOMPATIBLE', '执行中配置更新尚未核验此 Codex 版本');
     const epoch = this.epoch;
@@ -1530,9 +1550,16 @@ export class CodexAdapter implements CodexClient {
         break;
       case 'thread/settings/updated':
         {
+          const provider = event.params.threadSettings.modelProvider;
+          const catalog = this.permissionState.get(event.params.threadId)?.modelCatalog;
           const observed: RuntimeSettings = {
-            modelProvider: event.params.threadSettings.modelProvider,
-            modelCatalog: this.permissionState.get(event.params.threadId)?.modelCatalog,
+            modelProvider: provider,
+            modelCatalog:
+              catalog?.provider === provider
+                ? catalog
+                : this.state.codexVersion === '0.171.0' && provider
+                  ? { provider, models: [], unavailable: true }
+                  : undefined,
             ...reportedCollaborationMode(
               (
                 event.params.threadSettings as typeof event.params.threadSettings &

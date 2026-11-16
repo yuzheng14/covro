@@ -154,6 +154,28 @@ export interface AutoReviewView {
   startedAtMs: number;
   completedAtMs?: number;
 }
+/** Stored answer metadata; Chat-specific presentation actions are not executed by Covro. */
+export type AnswerDisplayView =
+  | {
+      version: 1;
+      mode: 'show';
+      annotation?: { kind: 'wellbeingHelpline'; subject: 'answer' | 'prompt' };
+      trustedContacts: 'check' | 'skip';
+    }
+  | { version: 1; mode: 'hide'; replacement: { kind: 'wellbeingPromptHelpline' } }
+  | {
+      version: 1;
+      mode: 'block';
+      reason:
+        { kind: 'protection'; protectionType: string } | { kind: 'cyber'; trustedAccess?: boolean };
+    }
+  | {
+      action: string;
+      blockType: string | null;
+      cyberTrustedAccess: boolean | null;
+      checkTrustedContacts: boolean | null;
+    };
+
 export interface ItemView {
   id: string;
   type: string;
@@ -175,12 +197,7 @@ export interface ItemView {
   /** Answer-scoped upstream metadata. Display actions are not executable Web instructions. */
   moderation?: {
     moderated: boolean;
-    display: {
-      action: string;
-      blockType: string | null;
-      cyberTrustedAccess: boolean | null;
-      checkTrustedContacts: boolean | null;
-    } | null;
+    display: AnswerDisplayView | null;
   } | null;
   questions?: AsyncQuestion[];
   questionReplies?: AsyncQuestionReply[];

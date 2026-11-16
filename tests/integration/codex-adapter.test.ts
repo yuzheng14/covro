@@ -80,9 +80,26 @@ async function waitFor<T>(get: () => T | undefined): Promise<T> {
 }
 
 describe('verified protocol adapter with a real subprocess', () => {
+  it.each([null, 'retired-model'])(
+    'does not infer effort or Fast from another catalog model when the effective model is %s',
+    async (configModel) => {
+      const { adapter, requests } = await fixture({
+        codexVersion: '0.171.0',
+        configModel,
+      });
+      await expect(adapter.createThread('/tmp', { serviceTier: 'fast' })).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+      await expect(adapter.createThread('/tmp', { reasoningEffort: 'low' })).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+      expect((await requests()).filter((entry) => entry.method === 'thread/start')).toHaveLength(0);
+      await expect(adapter.createThread('/tmp')).resolves.toHaveProperty('id');
+    },
+  );
   it('keeps a resumed provider catalog on every page and validates effort and Fast against that provider', async () => {
     const { adapter, requests } = await fixture({
-      codexVersion: '0.169.0',
+      codexVersion: '0.171.0',
       modelProvider: 'current',
       threadModelProviders: ['old'],
       modelPageSize: 1,
@@ -136,7 +153,7 @@ describe('verified protocol adapter with a real subprocess', () => {
   });
   it('keeps history readable when its provider catalog fails, without borrowing the default catalog', async () => {
     const { adapter, requests } = await fixture({
-      codexVersion: '0.169.0',
+      codexVersion: '0.171.0',
       modelProvider: 'current',
       threadModelProviders: ['old'],
       providerModelFailure: 'old',
@@ -154,7 +171,7 @@ describe('verified protocol adapter with a real subprocess', () => {
   });
   it('does not persist a foreign provider selection as the new-session default, even for a shared model name', async () => {
     const { adapter, requests } = await fixture({
-      codexVersion: '0.169.0',
+      codexVersion: '0.171.0',
       modelProvider: 'current',
     });
     expect(
@@ -1711,6 +1728,7 @@ describe('verified protocol adapter with a real subprocess', () => {
     (timing) => {
       const item: ThreadItem = {
         type: 'agentMessage',
+        moderation: null,
         id: 'timed-message',
         text: 'Still working',
         phase: 'commentary',
@@ -1721,6 +1739,7 @@ describe('verified protocol adapter with a real subprocess', () => {
       };
       expect(mapItem(item)).toEqual({
         type: 'agentMessage',
+        moderation: null,
         id: 'timed-message',
         text: 'Still working',
       });

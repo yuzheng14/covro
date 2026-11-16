@@ -49,7 +49,7 @@
 
 <!-- codex-compatibility:start -->
 
-推荐 Codex CLI：**0.167.0**。已验证版本：`0.167.0`。
+推荐 Codex CLI：**0.171.0**。已验证版本：`0.171.0`。
 
 <!-- codex-compatibility:end -->
 

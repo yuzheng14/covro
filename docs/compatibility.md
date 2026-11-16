@@ -2,13 +2,13 @@
 
 <!-- codex-compatibility:start -->
 
-推荐 Codex CLI：**0.167.0**。已验证版本：`0.167.0`。
+推荐 Codex CLI：**0.171.0**。已验证版本：`0.171.0`。
 
 <!-- codex-compatibility:end -->
 
-当前基线为 `codex-cli 0.167.0`，核验日期：2026-11-09（Asia/Shanghai）。稳定协议由显式指定的已有官方完整安装重新生成，单一 verified 版本为 0.167.0；0.166.0 与其他版本继续走 unverified 确认。来源与实验字段差异见 [协议审查](codex-0.167.0-protocol.md)，本轮范围与限制见 [升级验证](codex-0.167.0-verification.md)。此前 [0.166.0 验证](codex-0.166.0-verification.md)、[0.164.0 验证](codex-0.164.0-verification.md) 与 [0.163.0 验证](codex-0.163.0-verification.md) 保留为历史证据。
+当前候选基线为 `codex-cli 0.171.0`，核验日期：2026-11-20（Asia/Shanghai）。复用已有完整安装生成稳定协议，候选推荐/单一 verified 为 0.171.0，其他版本走 unverified 确认。累计包含 0.168.0 / 0.169.0 / 0.169.1 / 0.170.0，来源与差异见 [协议审查](codex-0.171.0-protocol.md)，原生/本地模型 stub 验证及真实账号/截图待完成项见 [升级验证](codex-0.171.0-verification.md)。待审查候选不表示已经发布；此前 [0.170.0](codex-0.170.0-verification.md)、[0.169.0](codex-0.169.0-verification.md) 与 [0.167.0](codex-0.167.0-verification.md) 保留为历史证据。
 
-以下映射适用于 0.167.0；下文保留的旧版本实测日期与版本仍表示历史证据，不扩大为新版完整验证。
+以下映射适用于 0.170.0；下文保留的旧版实测日期与版本仍表示历史证据，不扩大为新版完整验证。
 
 `src/codex/generated/` 是本机该版本执行 `codex app-server generate-ts --out ./src/codex/generated` 的原始产物，未手工修改。`src/codex/protocol-version.json` 记录来源。更新协议需显式执行 `pnpm codex:generate -- --config ./config.local.json`，使用配置中的 `codex.binary`；安装与启动不会更新 CLI 或重新生成协议。生成文件仅用于服务端适配和模拟器的静态类型约束，浏览器使用 `src/shared/types.ts`。
 
@@ -16,7 +16,7 @@
 
 会话创建方 `Thread.originator` 原样进入详情与列表摘要，缺失时返回 `null`。来源展示优先精确识别 `codex_web_ui`、`codex-tui`、`codex_vscode` 和 `Codex Desktop`，其他非空创建方原样显示。仅有 `source: vscode` 时不能判断具体客户端：0.162.1 的独立 app-server 启动路径固定使用 VSCode 来源，网页和连接共享后台服务的终端会话也可能属于此类，因此显示“交互客户端”。协议 `source: appServer` 映射内部 MCP 来源，显示 MCP；原始 `source` 保留以兼容已有接口、关联记录和未知来源兜底。依据为上游 [CLI 启动代码](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/cli/src/main.rs)、[来源映射](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs)、[客户端身份示例](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/app-server-protocol/src/protocol/common.rs)及[初始化处理](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/app-server/src/request_processors/initialize_processor.rs)。这些字段描述创建入口，与当前执行进程、任务状态和连接状态分别展示。
 
-| 项目         | 0.167.0 的映射                                                                                                                                                                                                                                                              |
+| 项目         | 0.170.0 的映射                                                                                                                                                                                                                                                              |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 握手         | `initialize` 成功后发送 `initialized`，随后读认证和模型；`experimentalApi: true` 允许结构化用户请求，`requiredHumanApproval: true` 接收受管人工检查点                                                                                                                       |
 | 历史来源     | `modelProviders: []` 保留跨 provider 的历史和归档识别；`thread/list.sourceKinds` 显式为 `cli`、`appServer`、`vscode`；`cwd` 使用项目的 `canonicalRoot` 精确过滤，每页最多 30 条，按更新时间倒序，不扫描全局历史；其他路径别名和子目录历史不自动收集，服务层继续校验项目归属 |
@@ -34,6 +34,8 @@
 | 自动审核展示 | `item/autoApprovalReview/started`、`item/autoApprovalReview/completed` 按独立 `reviewId` 合并，只读展示操作、状态、风险和原因；不发送审批回复，也不据此判定任务完成                                                                                                         |
 | 请求 ID      | 字符串与数字分别匹配，数字 `0` 有效；不依赖响应顺序                                                                                                                                                                                                                         |
 | 新活动类型   | 保留稳定 item ID，以通用活动详情展示；未知交互请求显示兼容错误并回复 JSON-RPC `-32601`，不会自动同意                                                                                                                                                                        |
+
+会话模型目录绑定保存的 modelProvider，新草稿绑定有效默认 provider；模型、effort、Fast 都使用该目录。目录查询失败时历史仍可读，设置显示不可用；不回退为其他 provider 的目录。跨 provider 的模型选择只应用当前会话，不改写新会话默认值。`agentMessage.moderation` 按答案 ID 保留，支持 version 1 的 show/hide/block 元数据及旧历史；未知版本或不支持的展示载荷保持 moderated 受限标记，Chat 专属动作不执行；规范化 account/read.userId 参与额度缓存身份，不额外暴露给浏览器。inferenceHookDenied、预算等明确终止错误不会被容量文案归类为可重试。
 
 MCP 表单支持字符串、数字、整数、布尔值、单选和多选，以及必填、长度、数值范围、选项和数组长度约束。服务端在领取请求前校验回答，保留 `false`、`0` 和字符串空白；适配层发送前再次校验。不支持的结构或约束会显示说明并禁止接受，但仍允许明确拒绝或取消；不会默默忽略约束后授权。权限目标和表单控制信息不会随长会话输出一起被截断。
 

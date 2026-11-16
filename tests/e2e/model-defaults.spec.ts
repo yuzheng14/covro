@@ -50,8 +50,8 @@ test('remembers explicit model and effort choices across new threads, projects a
   await expect(page.locator('.settings-pending')).toContainText('当前 simulated-model / medium');
   await page.locator('.composer-box').screenshot({ path: '/tmp/codex-model-defaults-saved.png' });
   expect(writes).toEqual([
-    { model: 'simulated-alternative', reasoningEffort: 'medium' },
-    { model: 'simulated-alternative', reasoningEffort: 'high' },
+    { model: 'simulated-alternative', reasoningEffort: 'medium', modelProvider: 'openai' },
+    { model: 'simulated-alternative', reasoningEffort: 'high', modelProvider: 'openai' },
   ]);
   await createEmptyThread(page);
   await expect(model(page)).toHaveAttribute('data-value', 'simulated-alternative');

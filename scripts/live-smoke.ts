@@ -68,7 +68,7 @@ try {
       throw new Error('app-server changed when no event subscribers were present');
     unsubscribe = adapter.onEvent((event) => events.push(event));
     const deadline = Date.now() + 180_000;
-    async function awaitTurn(turnId: string): Promise<void> {
+    async function awaitTurn(turnId: string, recoverCompletedHistory = false): Promise<void> {
       while (Date.now() < deadline) {
         if (!adapter.ready) throw new Error(adapter.diagnostics().error ?? 'Codex disconnected');
         const action = events.find(
@@ -78,8 +78,23 @@ try {
           throw new Error(
             'The smoke task needs a human decision. Use the Web UI to exercise this approval; this script does not auto-approve.',
           );
-        const history = await adapter.readThread(thread.id);
-        const completed = history.turns.find((candidate) => candidate.id === turnId);
+        const terminal = events.find(
+          (event) =>
+            event.type === 'turn' &&
+            event.turn.id === turnId &&
+            ['completed', 'interrupted', 'failed'].includes(event.turn.status),
+        );
+        // A just-started turn's persisted history can still look interrupted. Use the
+        // live terminal receipt; only recover completed history across the deliberate
+        // subscription gap above, where the completion notification may be missed.
+        const completed =
+          terminal?.type === 'turn'
+            ? terminal.turn
+            : recoverCompletedHistory
+              ? (await adapter.readThread(thread.id)).turns.find(
+                  (candidate) => candidate.id === turnId && candidate.status === 'completed',
+                )
+              : undefined;
         if (completed && ['completed', 'interrupted', 'failed'].includes(completed.status)) {
           if (completed.status !== 'completed')
             throw new Error(`Turn ended ${completed.status}: ${completed.error ?? ''}`);
@@ -89,7 +104,7 @@ try {
       }
       throw new Error('Inference smoke test exceeded 180 seconds');
     }
-    await awaitTurn(turn.id);
+    await awaitTurn(turn.id, true);
     const content = await readFile(join(project, 'smoke.txt'), 'utf8');
     if (content !== 'Codex Web UI smoke test\n')
       throw new Error('The real file content does not match the requested isolated task');

@@ -364,8 +364,15 @@ export class Projection {
       delete thread.liveSettings;
       delete thread.resumeError;
       if (thread.runtimeSettings) {
-        const { model, reasoningEffort } = thread.runtimeSettings;
-        thread.runtimeSettings = { model, reasoningEffort };
+        const { model, reasoningEffort, modelProvider, modelCatalog } = thread.runtimeSettings;
+        thread.runtimeSettings = {
+          model,
+          reasoningEffort,
+          modelProvider,
+          ...(modelCatalog
+            ? { modelCatalog: { provider: modelCatalog.provider, models: [], unavailable: true } }
+            : {}),
+        };
       }
       if (isActive(thread.status)) thread.status = 'unknown';
       for (const turn of thread.turns) {

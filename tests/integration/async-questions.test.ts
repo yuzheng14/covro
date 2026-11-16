@@ -19,6 +19,7 @@ const replies = [
 ];
 const question: ThreadItem = {
   type: 'agentMessage',
+  moderation: null,
   id: 'question',
   text: '选择主题？',
   delivery: 'async',

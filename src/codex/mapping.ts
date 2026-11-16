@@ -123,26 +123,90 @@ export function mapTurn(threadId: string, turn: Turn): TurnView {
 function validTiming(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
+function answerDisplay(display: unknown): NonNullable<ItemView['moderation']>['display'] {
+  if (!isRecord(display)) return null;
+  if ('version' in display || 'mode' in display) {
+    if (display.version !== 1) return null;
+    switch (display.mode) {
+      case 'show': {
+        if (display.trustedContacts !== 'check' && display.trustedContacts !== 'skip') return null;
+        const annotation = display.annotation;
+        if (annotation != null) {
+          if (!isRecord(annotation)) return null;
+          const subject = annotation.subject;
+          if (
+            annotation.kind !== 'wellbeingHelpline' ||
+            (subject !== 'answer' && subject !== 'prompt')
+          )
+            return null;
+          return {
+            version: 1,
+            mode: 'show',
+            trustedContacts: display.trustedContacts,
+            annotation: { kind: 'wellbeingHelpline', subject },
+          };
+        }
+        return {
+          version: 1,
+          mode: 'show',
+          trustedContacts: display.trustedContacts,
+        };
+      }
+      case 'hide':
+        return isRecord(display.replacement) &&
+          display.replacement.kind === 'wellbeingPromptHelpline'
+          ? { version: 1, mode: 'hide', replacement: { kind: 'wellbeingPromptHelpline' } }
+          : null;
+      case 'block': {
+        const reason = display.reason;
+        if (!isRecord(reason)) return null;
+        if (reason.kind === 'protection' && typeof reason.protectionType === 'string')
+          return {
+            version: 1,
+            mode: 'block',
+            reason: { kind: 'protection', protectionType: reason.protectionType.slice(0, 128) },
+          };
+        if (
+          reason.kind === 'cyber' &&
+          (reason.trustedAccess == null || typeof reason.trustedAccess === 'boolean')
+        )
+          return {
+            version: 1,
+            mode: 'block',
+            reason: {
+              kind: 'cyber',
+              ...(typeof reason.trustedAccess === 'boolean'
+                ? { trustedAccess: reason.trustedAccess }
+                : {}),
+            },
+          };
+        return null;
+      }
+      default:
+        return null;
+    }
+  }
+  // Pre-0.170 history can contain the earlier unversioned display metadata.
+  return typeof display.action === 'string'
+    ? {
+        action: display.action.slice(0, 128),
+        blockType: typeof display.blockType === 'string' ? display.blockType.slice(0, 128) : null,
+        cyberTrustedAccess:
+          typeof display.cyberTrustedAccess === 'boolean' ? display.cyberTrustedAccess : null,
+        checkTrustedContacts:
+          typeof display.checkTrustedContacts === 'boolean' ? display.checkTrustedContacts : null,
+      }
+    : null;
+}
+
 function answerModeration(value: unknown): ItemView['moderation'] {
   if (value === null) return null;
   if (!isRecord(value) || typeof value.moderated !== 'boolean') return;
-  const display = value.display;
+  const display = answerDisplay(value.display);
   return {
-    moderated: value.moderated,
-    display:
-      isRecord(display) && typeof display.action === 'string'
-        ? {
-            action: display.action.slice(0, 128),
-            blockType:
-              typeof display.blockType === 'string' ? display.blockType.slice(0, 128) : null,
-            cyberTrustedAccess:
-              typeof display.cyberTrustedAccess === 'boolean' ? display.cyberTrustedAccess : null,
-            checkTrustedContacts:
-              typeof display.checkTrustedContacts === 'boolean'
-                ? display.checkTrustedContacts
-                : null,
-          }
-        : null,
+    // Match the target contract: an unreadable instruction cannot unrestrict an answer.
+    moderated: value.moderated || (value.display != null && display === null),
+    display,
   };
 }
 

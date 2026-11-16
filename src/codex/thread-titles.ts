@@ -22,7 +22,7 @@ import {
 import { CodexError, isRecord, type RpcNotification, type RpcTransport } from './transport.js';
 
 // These experimental fields are omitted by the stable protocol generator.
-// Their shapes match the verified CLI 0.164.0 app-server protocol.
+// Their shapes match the verified CLI 0.171.0 app-server protocol.
 type TitleSource = ThreadStartResponse & {
   activePermissionProfile?: { id: string } | null;
 };

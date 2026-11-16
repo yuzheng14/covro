@@ -40,6 +40,61 @@ it('preserves answer-scoped moderation, false values and unknown display actions
   expect(fromWire(JSON.parse(JSON.stringify(wire)))).not.toHaveProperty('moderation');
 });
 
+it.each([
+  { version: 1, mode: 'show', trustedContacts: 'skip' },
+  {
+    version: 1,
+    mode: 'show',
+    trustedContacts: 'check',
+    annotation: { kind: 'wellbeingHelpline', subject: 'answer' },
+  },
+  {
+    version: 1,
+    mode: 'show',
+    trustedContacts: 'skip',
+    annotation: { kind: 'wellbeingHelpline', subject: 'prompt' },
+  },
+  { version: 1, mode: 'hide', replacement: { kind: 'wellbeingPromptHelpline' } },
+  { version: 1, mode: 'block', reason: { kind: 'protection', protectionType: 'omnimod' } },
+  { version: 1, mode: 'block', reason: { kind: 'cyber', trustedAccess: false } },
+  { version: 1, mode: 'block', reason: { kind: 'cyber' } },
+])(
+  'retains a supported versioned display instruction without applying Chat presentation: %j',
+  (display) => {
+    const mapped = fromWire({
+      ...wire,
+      moderation: { moderated: false, display: { ...display, privateField: 'secret' } },
+    });
+    expect(mapped.moderation).toEqual({ moderated: false, display });
+    expect(mapped.text).toBe(wire.text);
+    expect(JSON.stringify(mapped)).not.toContain('secret');
+  },
+);
+
+it.each([
+  { version: 2, mode: 'show', trustedContacts: 'skip' },
+  { version: 2, mode: 'show', action: 'legacy-fallback' },
+  { version: 1, mode: 'unknown' },
+  { version: '1', mode: 'show', trustedContacts: 'skip' },
+  { version: 1, mode: 'show', trustedContacts: 'future' },
+  {
+    version: 1,
+    mode: 'show',
+    trustedContacts: 'skip',
+    annotation: { kind: 'unknown', subject: 'answer' },
+  },
+  { version: 1, mode: 'hide', replacement: { kind: 'unknown' } },
+  { version: 1, mode: 'block', reason: { kind: 'cyber', trustedAccess: 'false' } },
+])(
+  'keeps an unsupported display restricted and never treats it as a legacy action: %j',
+  (display) => {
+    expect(fromWire({ ...wire, moderation: { moderated: false, display } }).moderation).toEqual({
+      moderated: true,
+      display: null,
+    });
+  },
+);
+
 it('updates only the targeted answer across streaming, snapshots, cold projection and explicit clearing', () => {
   const source: ThreadView = {
     id: 'thread',
@@ -58,13 +113,20 @@ it('updates only the targeted answer across streaming, snapshots, cold projectio
   projection.item(
     'thread',
     'turn',
-    fromWire({ ...wire, text: 'x'.repeat(20000), moderation: { moderated: true, display: null } }),
+    fromWire({
+      ...wire,
+      text: 'x'.repeat(20000),
+      moderation: {
+        moderated: true,
+        display: { version: 1, mode: 'block', reason: { kind: 'cyber', trustedAccess: false } },
+      },
+    }),
   );
   projection.item('thread', 'turn', fromWire({ ...wire, id: 'other-answer', moderation: null }));
   const snapshot = compactThreadForTransport(projection.get('thread')!, 4000);
   expect(snapshot.turns[0]?.items.find((item) => item.id === 'answer')?.moderation).toEqual({
     moderated: true,
-    display: null,
+    display: { version: 1, mode: 'block', reason: { kind: 'cyber', trustedAccess: false } },
   });
   expect(
     snapshot.turns[0]?.items.find((item) => item.id === 'other-answer')?.moderation,
@@ -73,7 +135,7 @@ it('updates only the targeted answer across streaming, snapshots, cold projectio
   restored.thread(JSON.parse(JSON.stringify(snapshot)));
   expect(restored.get('thread')?.turns[0]?.items[0]?.moderation).toEqual({
     moderated: true,
-    display: null,
+    display: { version: 1, mode: 'block', reason: { kind: 'cyber', trustedAccess: false } },
   });
   restored.item('thread', 'turn', fromWire({ ...wire, moderation: null }));
   expect(restored.get('thread')?.turns[0]?.items[0]?.moderation).toBeNull();

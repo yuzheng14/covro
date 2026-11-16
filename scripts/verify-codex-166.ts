@@ -11,12 +11,16 @@ import { RpcTransport, CodexError, type RpcNotification } from '../src/codex/tra
 import type { ThreadStartResponse } from '../src/codex/generated/v2/ThreadStartResponse.js';
 import type { ThreadReadResponse } from '../src/codex/generated/v2/ThreadReadResponse.js';
 import type { TurnStartResponse } from '../src/codex/generated/v2/TurnStartResponse.js';
+import { chromium, expect } from '@playwright/test';
+import { parseConfig } from '../src/server/config.js';
+import { startGateway } from '../src/server/main.js';
 
 const args = process.argv.slice(2);
 const versionIndex = args.indexOf('--expected-version');
 const expectedVersion = versionIndex >= 0 ? args[versionIndex + 1]! : '0.166.0';
 assert.match(expectedVersion, /^\d+\.\d+\.\d+$/);
 const configIndex = args.indexOf('--config');
+const outputIndex = args.indexOf('--output-dir');
 assert(configIndex >= 0, 'Pass --config selecting an isolated target binary');
 const { codex } = JSON.parse(await readFile(resolve(args[configIndex + 1]!), 'utf8')) as {
   codex: { binary: string };
@@ -93,17 +97,27 @@ try {
     await configure(home);
     const { rpc, notifications, child } = await start(home);
     let lastThread = '';
-    for (const [code, expected] of [
+    let hookThread = '';
+    const failures = [
       ['model_not_found', 'modelNotFound'],
       ['policy_capacity_unavailable', 'policyCapacityUnavailable'],
-    ] as const) {
-      failureCode = code;
+      ...(expectedVersion === '0.171.0' ? [['bio_policy', 'bioPolicy']] : []),
+      ...(['0.169.0', '0.169.1', '0.170.0', '0.171.0'].includes(expectedVersion)
+        ? [
+            ['inference_hook_denied', 'inferenceHookDenied'],
+            ['budget_reached', 'sessionBudgetExceeded'],
+          ]
+        : []),
+    ];
+    for (const [code, expected] of failures) {
+      failureCode = code!;
       const before = requests;
       const { thread } = await rpc.request<ThreadStartResponse>('thread/start', {
         cwd: root,
         historyMode,
       });
       lastThread = thread.id;
+      if (expected === 'inferenceHookDenied') hookThread = thread.id;
       const { turn } = await rpc.request<TurnStartResponse>('turn/start', {
         threadId: thread.id,
         input: [{ type: 'text', text: 'Probe terminal model failure', text_elements: [] }],
@@ -132,6 +146,51 @@ try {
       checks.push(`${historyMode}: ${expected} is terminal once and preserved in history`);
     }
     await stop(child);
+    if (historyMode === 'paginated' && outputIndex >= 0 && hookThread) {
+      const output = resolve(args[outputIndex + 1]!);
+      await mkdir(output, { recursive: true });
+      const gateway = await startGateway(
+        parseConfig(
+          {
+            port: 8996,
+            publicOrigin: ['http://127.0.0.1:8996'],
+            dataDir: join(root, 'gateway'),
+            codex: { binary: codex.binary, home },
+            projects: [{ id: 'terminal-error', name: '终止错误验证', path: root }],
+          },
+          join(root, 'gateway.json'),
+        ),
+        { staticDir: resolve('dist/web') },
+      );
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({
+          viewport: { width: 1280, height: 1000 },
+          locale: 'zh-CN',
+        });
+        await page.goto('http://127.0.0.1:8996');
+        await page.locator(`[data-thread-id="${hookThread}"]`).click();
+        await expect(page.locator('.turn-heading .status').last()).toHaveText('失败');
+        await expect(page.locator('.composer-resume-status')).toHaveCount(0);
+        await expect(page.getByTestId('capacity-retry-status')).toHaveCount(0);
+        await page.screenshot({ path: join(output, 'terminal-error-desktop.png'), fullPage: true });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await expect
+          .poll(async () => {
+            const box = await page.locator('.sidebar').boundingBox();
+            return box ? box.x + box.width <= 1 : true;
+          })
+          .toBe(true);
+        assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        await page.screenshot({ path: join(output, 'terminal-error-mobile.png'), fullPage: true });
+        checks.push(
+          'production browser: persisted inferenceHookDenied remains failed without a capacity retry at 1280px and 390px',
+        );
+      } finally {
+        await browser.close();
+        await gateway.close();
+      }
+    }
     await configure(home, 'replacement');
     const restarted = await start(home);
     await assert.rejects(

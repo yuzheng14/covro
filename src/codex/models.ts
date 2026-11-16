@@ -3,8 +3,7 @@ import type { ModelListParams } from './generated/v2/ModelListParams.js';
 import type { ModelListResponse } from './generated/v2/ModelListResponse.js';
 import { CodexError } from './transport.js';
 
-// Additive 0.169.0 selector; kept explicit while the protocol upgrade is reviewed separately.
-export type ModelCatalogParams = ModelListParams & { modelProvider?: string };
+export type ModelCatalogParams = ModelListParams;
 
 /** Every read reaches Codex, including cache hits there, to recheck managed provider policy. */
 export async function readModels(
