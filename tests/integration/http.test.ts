@@ -30,6 +30,7 @@ async function setup(
     unsupportedMethod?: string;
     origins?: (origin: string) => string[];
     multipleProjects?: boolean;
+    fragmentBytes?: number;
   } = {},
 ) {
   const probe = createServer();
@@ -72,7 +73,7 @@ async function setup(
       JSON.stringify({
         turnDelayMs: 150,
         codexVersion: '99.0.0',
-        fragmentBytes: 11,
+        fragmentBytes: options.fragmentBytes ?? 11,
         unsupportedMethod: options.unsupportedMethod,
       }),
     ],
@@ -613,7 +614,9 @@ it('does not impose a message body cap on turn starts or steering, while other A
 });
 
 it('accepts image bodies above the former image and request limits and includes images in operation identity', async () => {
-  const { post, runtime } = await setup();
+  // Keep the multi-MiB payload intact without hundreds of thousands of tiny pipe writes.
+  // Bytewise JSONL/UTF-8 fragmentation is covered by codex-transport.test.ts.
+  const { post, runtime } = await setup({ fragmentBytes: 16 * 1024 });
   const created = (await (
     await post('/api/projects/test/threads', { clientOperationId: randomUUID() })
   ).json()) as Operation;

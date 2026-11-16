@@ -43,7 +43,11 @@ async function fixture(
 ) {
   // Short private Unix socket paths; HOME, Codex data and all npm prefixes are disposable.
   const directory = await realpath(await mkdtemp('/tmp/c281-'));
-  cleanups.push(() => rm(directory, { recursive: true, force: true }));
+  // Detached update workers can finish writing after the daemon's stop receipt.
+  // Retry transient removal races without retrying or weakening the test itself.
+  cleanups.push(() =>
+    rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
+  );
   const shellHome = join(directory, 'shell');
   await mkdir(shellHome);
   const home = join(directory, 'home');
