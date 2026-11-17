@@ -5,7 +5,7 @@
   max-height: 60dvh;
   min-height: 0;
   border-top: 1px solid var(--border);
-  background: var(--surface, #fff);
+  background: var(--surface, light-dark(#fff, var(--dark-surface)));
 }
 .main-panel.shell-visible {
   overflow: hidden;
@@ -47,10 +47,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #737d87;
+  color: light-dark(#737d87, var(--dark-text-secondary));
 }
 .shell-heading .shell-running {
-  color: #25724b;
+  color: light-dark(#25724b, var(--dark-accent));
   flex-shrink: 0;
 }
 .shell-body {
@@ -64,55 +64,55 @@
   gap: 10px;
   align-items: baseline;
   font-size: 11px;
-  color: #737d87;
+  color: light-dark(#737d87, var(--dark-text-secondary));
 }
 .shell-location > span {
   flex-shrink: 0;
 }
 .shell-location code {
   overflow-wrap: anywhere;
-  color: #3f4c58;
+  color: light-dark(#3f4c58, var(--dark-text));
 }
 .shell-help,
 .shell-collapsed-note,
 .shell-background {
   font-size: 11px;
   line-height: 1.6;
-  color: #737d87;
+  color: light-dark(#737d87, var(--dark-text-secondary));
   margin: 6px 0 10px;
 }
 .shell-collapsed-note {
   margin: -3px 24px 8px;
 }
 .shell-background {
-  color: #2f7255;
+  color: light-dark(#2f7255, var(--dark-accent));
 }
 .shell-warning {
   font-size: 12px;
   line-height: 1.6;
-  color: #975327;
-  background: #fff6e9;
+  color: light-dark(#975327, var(--dark-danger));
+  background: light-dark(#fff6e9, var(--dark-warning-surface));
   border-radius: 6px;
   padding: 7px 10px;
   margin: 6px 0;
   overflow-wrap: anywhere;
 }
 .shell-result {
-  border: 1px solid #dce2e5;
+  border: 1px solid light-dark(#dce2e5, var(--dark-border));
   border-radius: 8px;
   overflow: hidden;
 }
 .shell-result-toolbar {
   justify-content: space-between;
   padding: 5px 10px;
-  background: #f5f7f8;
+  background: light-dark(#f5f7f8, var(--dark-surface-raised));
 }
 .shell-result-toolbar label {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 10px;
-  color: #737d87;
+  color: light-dark(#737d87, var(--dark-text-secondary));
   min-width: 0;
   flex: 1;
 }
@@ -129,11 +129,11 @@
   gap: 10px;
   padding: 10px 12px 0;
   background: #18212b;
-  color: #e2eaf0;
+  color: light-dark(#e2eaf0, var(--dark-text-muted));
   font-size: 12px;
 }
 .shell-command-line > span {
-  color: #81c9a1;
+  color: light-dark(#81c9a1, var(--dark-accent));
 }
 .shell-command-line code {
   white-space: pre-wrap;
@@ -145,7 +145,7 @@
   height: 110px;
   overflow: auto;
   background: #18212b;
-  color: #e2eaf0;
+  color: light-dark(#e2eaf0, var(--dark-text-muted));
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font:
@@ -156,10 +156,10 @@
     monospace;
 }
 .shell-stderr {
-  color: #ffb6a9;
+  color: light-dark(#ffb6a9, var(--dark-danger));
 }
 .shell-output-empty {
-  color: #9aaaba;
+  color: light-dark(#9aaaba, var(--dark-text-muted));
 }
 .shell-result-status {
   display: flex;
@@ -167,17 +167,17 @@
   gap: 14px;
   padding: 6px 12px;
   font-size: 11px;
-  color: #3f6b52;
-  background: #f5f7f8;
+  color: light-dark(#3f6b52, var(--dark-accent));
+  background: light-dark(#f5f7f8, var(--dark-surface-raised));
 }
 .shell-status-failed,
 .shell-status-unknown {
-  color: #a94f35;
+  color: light-dark(#a94f35, var(--dark-danger));
 }
 .shell-empty {
   padding: 20px 12px;
   text-align: center;
-  color: #737d87;
+  color: light-dark(#737d87, var(--dark-text-secondary));
   font-size: 12px;
 }
 .shell-empty p {
@@ -195,11 +195,11 @@
   box-sizing: border-box;
   resize: vertical;
   max-height: 120px;
-  border: 1px solid #dce2e5;
+  border: 1px solid light-dark(#dce2e5, var(--dark-border));
   border-radius: 7px;
   padding: 9px 11px;
-  background: #fff;
-  color: #28333d;
+  background: light-dark(#fff, var(--dark-surface));
+  color: light-dark(#28333d, var(--dark-text));
   font:
     12px/1.5 ui-monospace,
     SFMono-Regular,
@@ -217,7 +217,7 @@
 }
 .shell-submit-row > span {
   font-size: 10px;
-  color: #737d87;
+  color: light-dark(#737d87, var(--dark-text-secondary));
 }
 .shell-entry {
   gap: 5px;
@@ -225,8 +225,8 @@
 .shell-entry-count {
   border-radius: 8px;
   padding: 0 5px;
-  background: #e5f2e9;
-  color: #2d6d48;
+  background: light-dark(#e5f2e9, var(--dark-accent-surface));
+  color: light-dark(#2d6d48, var(--dark-accent));
 }
 /* The Shell entry can increase the mobile header height. Anchor diagnostics
    below that header so the panel never covers its own toggle. */

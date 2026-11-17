@@ -17,7 +17,7 @@ import { DomainCodex } from '../integration/domain-helpers';
 let root: string, config: string, origin: string;
 let runtime: Awaited<ReturnType<typeof startGateway>>;
 let codex: DomainCodex;
-const dialog = (page: Page) => page.locator('.backup-dialog[open]');
+const dialog = (page: Page) => page.locator('.backup-dialog');
 test.beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'covro-backup-browser-'));
   config = join(root, 'config.json');
@@ -82,7 +82,7 @@ for (const locale of supportedLocales) {
             name: catalog('workspace').open_projects_and_sessions,
           })
           .click();
-      await openSidebarSettings(page);
+      await openSidebarSettings(page, 'service');
       await expect(page.getByRole('button', { name: tr('title'), exact: true })).toBeVisible();
       const footer = page.locator('.sidebar-footer');
       expect(await footer.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
@@ -156,17 +156,13 @@ for (const locale of supportedLocales) {
       await expect(failed.locator('pre')).toContainText('服务配置无效');
       await failed.locator('.backup-technical-details summary').click();
       await expect(dialog(page).locator('.backup-record[data-phase="succeeded"]')).toHaveCount(1);
-      await dialog(page)
-        .getByRole('button', { name: tr('close') })
-        .focus();
-      await expect(dialog(page).locator('.project-dialog-heading')).toBeInViewport();
+      await page.locator('.settings-heading button').focus();
+      await expect(page.locator('.settings-heading')).toBeInViewport();
       await capture(page, info, `backup-${locale}-${viewport.name}-failure`);
       expect(await dialog(page).evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(
         true,
       );
-      await dialog(page)
-        .getByRole('button', { name: tr('close') })
-        .click();
+      await page.locator('.settings-heading button').click();
       await expect(dialog(page)).toHaveCount(0);
     });
   }

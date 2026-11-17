@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Edit the connected Codex environment’s global AGENTS.md from Settings, with conflict detection and active-override notices.
+
+- Configure default permission mode, model, and reasoning effort for new conversations in Settings, with model-aware options and concurrent-edit detection. Existing conversations keep their settings.
+
+### Changed
+
+- Organize Settings into General, AI configuration, Account, and Service & data, with sidebar navigation on desktop, category navigation on mobile, and editors inside one window with unsaved-change protection.
+
+### Fixed
+
+- Align the appearance selector typography and controls with the language selector on desktop and mobile.
+- Improve technical error detail contrast and text size in dark mode.
+
 ## [0.10.0](https://github.com/yuzheng14/covro/compare/v0.9.0...v0.10.0) (2026-11-13)
 
 

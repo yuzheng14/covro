@@ -27,6 +27,17 @@ export function useRuntimeDefaults(projectId?: string, runtimeKey?: string) {
       cancelled = true;
     };
   }, [key, projectId]);
+  useEffect(() => {
+    const update = () => setAttempt((value) => value + 1);
+    window.addEventListener('covro:defaults-updated', update);
+    const channel =
+      typeof BroadcastChannel === 'function' ? new BroadcastChannel('covro-defaults') : undefined;
+    channel?.addEventListener('message', update);
+    return () => {
+      window.removeEventListener('covro:defaults-updated', update);
+      channel?.close();
+    };
+  }, []);
   return {
     value: result?.key === key ? result.value : undefined,
     error: result?.key === key ? result.error : undefined,

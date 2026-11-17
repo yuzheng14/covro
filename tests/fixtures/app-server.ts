@@ -191,7 +191,9 @@ let initialized = false;
 let handshaken = false;
 let nextRequestId = 0;
 let titleAttempts = 0;
-let savedModelDefaults: { model: string; effort: ReasoningEffort | null } | undefined;
+let savedModelDefaults: { model: string | null; effort: ReasoningEffort | null } | undefined;
+let globalConfigVersion = 0;
+const savedPermissionDefaults: Record<string, JsonValue> = {};
 let writes = Promise.resolve();
 function send(message: unknown): void {
   const data = Buffer.from(JSON.stringify(message) + '\n');
@@ -1955,10 +1957,24 @@ function receive(request: ClientRequest): void {
           approvals_reviewer: 'user',
           developer_instructions: 'private instructions',
           api_key: 'private-test-key',
+          ...savedPermissionDefaults,
           ...options.configOverrides,
         },
         origins: {},
-        layers: null,
+        layers: request.params.includeLayers
+          ? [
+              {
+                name: {
+                  type: 'user',
+                  file: join(tmpdir(), 'fixture-user-config.toml'),
+                  profile: null,
+                },
+                version: String(globalConfigVersion),
+                config: {},
+                disabledReason: null,
+              },
+            ]
+          : null,
       });
       break;
     case 'config/batchWrite': {
@@ -1966,18 +1982,36 @@ function receive(request: ClientRequest): void {
         error(request.id, 'Fixture configuration is not writable');
         break;
       }
+      if (
+        request.params.expectedVersion != null &&
+        request.params.expectedVersion !== String(globalConfigVersion)
+      ) {
+        error(request.id, 'Configuration version conflict');
+        break;
+      }
       const selectedModel = request.params.edits.find((edit) => edit.keyPath === 'model')?.value;
       const effort = request.params.edits.find(
         (edit) => edit.keyPath === 'model_reasoning_effort',
       )?.value;
-      if (typeof selectedModel !== 'string' || (effort !== null && typeof effort !== 'string')) {
+      if (
+        (selectedModel !== null && typeof selectedModel !== 'string') ||
+        (effort !== null && typeof effort !== 'string')
+      ) {
         error(request.id, 'Expected a complete model selection');
         break;
       }
-      savedModelDefaults = { model: selectedModel, effort: effort as ReasoningEffort | null };
+      savedModelDefaults = {
+        model: selectedModel as string | null,
+        effort: effort as ReasoningEffort | null,
+      };
+      for (const edit of request.params.edits) {
+        if (edit.keyPath !== 'model' && edit.keyPath !== 'model_reasoning_effort')
+          savedPermissionDefaults[edit.keyPath] = edit.value;
+      }
+      globalConfigVersion++;
       reply(request.id, {
         status: options.configWriteStatus ?? 'ok',
-        version: randomUUID(),
+        version: String(globalConfigVersion),
         filePath: join(tmpdir(), 'fixture-user-config.toml'),
         overriddenMetadata: null,
       });
@@ -2033,6 +2067,24 @@ function receive(request: ClientRequest): void {
       const thread = makeThread(request.params.cwd ?? process.cwd());
       thread.ephemeral = request.params.ephemeral ?? false;
       thread.modelProvider = request.params.modelProvider ?? thread.modelProvider;
+      if (savedPermissionDefaults.sandbox_mode) {
+        const sandbox = savedPermissionDefaults.sandbox_mode as
+          'workspace-write' | 'read-only' | 'danger-full-access';
+        applySettings(thread, {
+          sandbox,
+          approvalPolicy: savedPermissionDefaults.approval_policy as 'on-request' | 'never',
+          approvalsReviewer: savedPermissionDefaults.approvals_reviewer as 'user' | 'auto_review',
+        });
+        profiles.set(thread.id, {
+          id:
+            sandbox === 'workspace-write'
+              ? ':workspace'
+              : sandbox === 'read-only'
+                ? ':read-only'
+                : ':danger-full-access',
+          extends: null,
+        });
+      }
       applySettings(thread, request.params);
       threads.set(thread.id, thread);
       if (options.activeArchiveDescendant && !thread.ephemeral) {

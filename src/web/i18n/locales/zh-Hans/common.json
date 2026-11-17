@@ -55,5 +55,9 @@
   "covro_updates": "Covro 更新",
   "model_defaults_are_being_saved_wait_before_proceeding": "正在保存模型默认值，请完成后再操作。",
   "unassigned": "未关联项目",
-  "close": "关闭"
+  "close": "关闭",
+  "appearance": "外观",
+  "theme_system": "跟随系统",
+  "theme_light": "浅色",
+  "theme_dark": "暗色"
 }

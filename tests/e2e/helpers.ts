@@ -8,15 +8,23 @@ export const projectGroup = (page: Page, name = '测试项目') =>
   page.getByRole('region', { name, exact: true, includeHidden: true });
 export const createThreadButton = (page: Page) =>
   projectGroup(page).getByRole('button', { name: '新建会话', exact: true, includeHidden: true });
-export async function openSidebarSettings(page: Page) {
+export async function openSidebarSettings(
+  page: Page,
+  category: 'general' | 'ai' | 'account' | 'service' = 'general',
+) {
   const dialog = page.locator('.sidebar-settings-dialog[open]');
-  if (await dialog.isVisible()) return dialog;
-  const trigger = page.locator('.sidebar-settings-trigger');
-  const openNavigation = page.locator('.topbar .mobile-only');
-  if ((await openNavigation.isVisible()) && (await page.locator('.sidebar-open').count()) === 0)
-    await openNavigation.click();
-  await trigger.click();
-  await expect(dialog).toBeVisible();
+  if (!(await dialog.isVisible())) {
+    const trigger = page.locator('.sidebar-settings-trigger');
+    const openNavigation = page.locator('.topbar .mobile-only');
+    if ((await openNavigation.isVisible()) && (await page.locator('.sidebar-open').count()) === 0)
+      await openNavigation.click();
+    await trigger.click();
+    await expect(dialog).toBeVisible();
+  }
+  const categoryButton = dialog.locator(`[data-settings-category="${category}"]`);
+  if (!(await categoryButton.isVisible())) await dialog.locator('.settings-back').click();
+  if (!(await categoryButton.isVisible())) await dialog.locator('.settings-back').click();
+  await categoryButton.click();
   return dialog;
 }
 export async function chooseSelectOption(page: Page, trigger: Locator, label: string) {

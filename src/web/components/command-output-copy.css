@@ -3,7 +3,7 @@
   min-width: 0;
   margin: 8px 0;
   border-radius: 5px;
-  background: #fff;
+  background: light-dark(#fff, var(--dark-surface));
 }
 
 .command-output > .tool-output {
@@ -19,13 +19,13 @@
   right: 6px;
   width: 32px;
   height: 32px;
-  color: #657068;
+  color: light-dark(#657068, var(--dark-text-secondary));
 }
 
 .command-output-copy-feedback {
   display: block;
   padding: 8px 44px 0 11px;
-  color: #a18145;
+  color: light-dark(#a18145, var(--dark-warning));
   overflow-wrap: anywhere;
   line-height: 1.5;
 }

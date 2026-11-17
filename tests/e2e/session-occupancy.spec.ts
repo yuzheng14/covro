@@ -192,3 +192,61 @@ test('after explicitly resolving a lost resume receipt, recovery can be retried 
   await expect(send(page)).toBeEnabled();
   await expect(input(page)).toHaveValue('核对后继续');
 });
+
+test('expanded technical error details are readable in both themes and narrow layouts', async ({
+  page,
+  request,
+}, info) => {
+  await openExternal(page, request, 'error');
+  await notice(page).locator('.raw-details > summary').click();
+  const details = notice(page).locator('.raw-details pre');
+  for (const theme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await expect(details).toBeVisible();
+      const metrics = await details.evaluate((element) => {
+        const rgba = (value: string) => {
+          const parts = value.match(/[\d.]+/g)?.map(Number);
+          if (!parts || parts.length < 3 || parts.some((part) => !Number.isFinite(part)))
+            throw new Error('Invalid computed RGB color');
+          return [parts[0]!, parts[1]!, parts[2]!, parts[3] ?? 1] as const;
+        };
+        let background = [255, 255, 255];
+        const ancestors: Element[] = [];
+        for (let parent: Element | null = element; parent; parent = parent.parentElement)
+          ancestors.unshift(parent);
+        for (const parent of ancestors) {
+          const [r, g, b, alpha] = rgba(getComputedStyle(parent).backgroundColor);
+          background = [r, g, b].map(
+            (value, index) => value * alpha + background[index]! * (1 - alpha),
+          );
+        }
+        const style = getComputedStyle(element);
+        const luminance = (rgb: readonly number[]) =>
+          rgb
+            .slice(0, 3)
+            .map((value) => {
+              const v = value / 255;
+              return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+            })
+            .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i]!, 0);
+        const foreground = luminance(rgba(style.color));
+        const back = luminance(background);
+        return {
+          contrast: (Math.max(foreground, back) + 0.05) / (Math.min(foreground, back) + 0.05),
+          fontSize: parseFloat(style.fontSize),
+          overflow: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      expect(metrics.contrast).toBeGreaterThanOrEqual(4.5);
+      expect(metrics.fontSize).toBeGreaterThanOrEqual(12);
+      expect(metrics.overflow).toBe(false);
+      await expect(notice(page).getByRole('button', { name: '重试恢复' })).toBeEnabled();
+      const path = info.outputPath(`error-details-${theme}-${width}.png`);
+      await notice(page).screenshot({ path });
+      await info.attach(`error-details-${theme}-${width}`, { path, contentType: 'image/png' });
+    }
+  }
+});

@@ -353,7 +353,7 @@ describe('verified protocol adapter with a real subprocess', () => {
             { keyPath: 'model', value: 'other-model', mergeStrategy: 'replace' },
             { keyPath: 'model_reasoning_effort', value: 'high', mergeStrategy: 'replace' },
           ],
-          reloadUserConfig: true,
+          reloadUserConfig: false,
         },
       },
     ]);
@@ -1725,4 +1725,88 @@ it('preserves native skill items alongside text and images in turn starts', asyn
       name: skills[0]!.name,
       path: skills[0]!.path,
     });
+});
+
+describe('global session defaults', () => {
+  it('reads user defaults without project cwd and atomically saves for new threads only', async () => {
+    const { adapter, requests } = await fixture({ models: ['simulated-model', 'other-model'] });
+    const existing = await adapter.createThread('/tmp');
+    const initial = await adapter.readGlobalDefaults();
+    expect(initial.settings.permissionMode).toBe('read-only');
+    expect(JSON.stringify(initial)).not.toContain('private-test-key');
+    expect(JSON.stringify(initial)).not.toContain('private instructions');
+    await adapter.saveGlobalDefaults({
+      clientOperationId: crypto.randomUUID(),
+      version: initial.version,
+      settings: { model: 'other-model', reasoningEffort: 'high', permissionMode: 'auto-review' },
+    });
+    const saved = await adapter.readGlobalDefaults();
+    expect(saved.settings).toEqual({
+      model: 'other-model',
+      reasoningEffort: 'high',
+      permissionMode: 'auto-review',
+    });
+    const calls = await requests();
+    expect(
+      calls
+        .filter((call) => call.method === 'config/read' && call.params.includeLayers === true)
+        .every((call) => !('cwd' in call.params)),
+    ).toBe(true);
+    const write = calls.find((call) => call.method === 'config/batchWrite')!;
+    expect(write.params.reloadUserConfig).toBe(false);
+    expect(write.params.expectedVersion).toBe(initial.version);
+    expect(write.params).not.toHaveProperty('filePath');
+    expect((await adapter.resumeThread(existing.id, '/tmp')).runtimeSettings).toMatchObject({
+      model: 'simulated-model',
+      permissionMode: 'read-only',
+    });
+    expect((await adapter.createThread('/tmp')).runtimeSettings).toMatchObject({
+      model: 'other-model',
+      reasoningEffort: 'high',
+      permissionMode: 'auto-review',
+    });
+    await expect(
+      adapter.saveGlobalDefaults({
+        clientOperationId: crypto.randomUUID(),
+        version: initial.version,
+        settings: { model: 'simulated-model', reasoningEffort: 'medium', permissionMode: 'ask' },
+      }),
+    ).rejects.toThrow();
+    expect((await adapter.readGlobalDefaults()).settings).toEqual(saved.settings);
+  });
+  it('rejects invalid models, efforts and unavailable automatic review before writing', async () => {
+    const { adapter, requests } = await fixture({ guardianApproval: false });
+    for (const settings of [
+      { model: 'missing', reasoningEffort: 'high', permissionMode: null },
+      { model: 'simulated-model', reasoningEffort: 'unsupported', permissionMode: null },
+      { model: null, reasoningEffort: 'high', permissionMode: null },
+      { model: 'simulated-model', reasoningEffort: 'high', permissionMode: 'auto-review' as const },
+    ])
+      await expect(
+        adapter.saveGlobalDefaults({
+          clientOperationId: crypto.randomUUID(),
+          version: null,
+          settings,
+        }),
+      ).rejects.toThrow();
+    expect((await requests()).some((call) => call.method === 'config/batchWrite')).toBe(false);
+  });
+  it('does not rewrite permission keys when preserving an existing custom profile', async () => {
+    const { adapter, requests } = await fixture({
+      configOverrides: { default_permissions: 'custom-profile' },
+    });
+    const initial = await adapter.readGlobalDefaults();
+    expect(initial.settings.permissionMode).toBe(null);
+    await adapter.saveGlobalDefaults({
+      clientOperationId: crypto.randomUUID(),
+      version: initial.version,
+      settings: { model: 'simulated-model', reasoningEffort: null, permissionMode: null },
+    });
+    expect(
+      (await requests()).find((call) => call.method === 'config/batchWrite')?.params.edits,
+    ).toEqual([
+      { keyPath: 'model', value: 'simulated-model', mergeStrategy: 'replace' },
+      { keyPath: 'model_reasoning_effort', value: null, mergeStrategy: 'replace' },
+    ]);
+  });
 });

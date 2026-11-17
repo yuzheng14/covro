@@ -204,5 +204,9 @@
   "recovery_confirm_ended": "이전 작업 종료 확인 및 복구",
   "recovery_other_threads": "다른 대화 및 작업",
   "recovery_handle_submission": "복구 방법 보기",
-  "recovery_responding": "이 승인 또는 입력 응답은 처리 확인을 기다리고 있으며 아직 다시 제출할 수 없습니다."
+  "recovery_responding": "이 승인 또는 입력 응답은 처리 확인을 기다리고 있으며 아직 다시 제출할 수 없습니다.",
+  "INSTRUCTIONS_CONFLICT": "AGENTS.md가 외부에서 변경되었습니다. 변경 내용을 복사한 후 다시 읽으세요.",
+  "INSTRUCTIONS_UNSUPPORTED": "AGENTS.md는 링크 없는 일반 UTF-8 텍스트 파일이어야 합니다.",
+  "INSTRUCTIONS_TOO_LARGE": "AGENTS.md가 256 KiB 제한을 초과했습니다.",
+  "INSTRUCTIONS_OVERRIDDEN": "AGENTS.override.md가 우선 적용되어 이 AGENTS.md 저장이 비활성화됩니다."
 }

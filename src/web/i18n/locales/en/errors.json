@@ -204,5 +204,9 @@
   "recovery_confirm_ended": "Confirm previous task ended and restore",
   "recovery_other_threads": "Other conversations and operations",
   "recovery_handle_submission": "View recovery options",
-  "recovery_responding": "This approval or input response is still awaiting confirmation and cannot be submitted again yet."
+  "recovery_responding": "This approval or input response is still awaiting confirmation and cannot be submitted again yet.",
+  "INSTRUCTIONS_CONFLICT": "AGENTS.md changed outside this editor. Copy your changes before reloading the file.",
+  "INSTRUCTIONS_UNSUPPORTED": "AGENTS.md must be a regular UTF-8 text file without links.",
+  "INSTRUCTIONS_TOO_LARGE": "AGENTS.md exceeds the 256 KiB limit.",
+  "INSTRUCTIONS_OVERRIDDEN": "AGENTS.override.md takes precedence. This AGENTS.md is not currently effective; saving is disabled."
 }

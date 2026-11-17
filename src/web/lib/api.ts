@@ -69,6 +69,27 @@ export async function request<T>(path: string, body?: object, signal?: AbortSign
 }
 
 export const api = {
+  globalDefaults: (signal?: AbortSignal) =>
+    request<import('../../shared/global-defaults').GlobalDefaultsSnapshot>(
+      '/api/settings/defaults',
+      undefined,
+      signal,
+    ),
+  saveGlobalDefaults: (input: import('../../shared/global-defaults').SaveGlobalDefaultsInput) =>
+    request<Operation>('/api/settings/defaults', input),
+  globalInstructions: (signal?: AbortSignal) =>
+    request<import('../../shared/global-instructions').GlobalInstructions>(
+      '/api/instructions/global',
+      undefined,
+      signal,
+    ),
+  saveGlobalInstructions: (
+    input: import('../../shared/global-instructions').SaveGlobalInstructions,
+  ) =>
+    request<import('../../shared/global-instructions').GlobalInstructions>(
+      '/api/instructions/global',
+      input,
+    ),
   projectPath: (path: string, directory?: string) =>
     request<{ workDir?: string; path: string }>(
       `/api/project-path?${new URLSearchParams({ path, ...(directory === undefined ? {} : { directory }) })}`,
