@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.11.0](https://github.com/yuzheng14/covro/compare/v0.10.0...v0.11.0) (2026-11-20)
+
+
+### Features
+
+* **codex:** validate Codex CLI 0.171.0 compatibility ([#359](https://github.com/yuzheng14/covro/issues/359)) ([2bdcf29](https://github.com/yuzheng14/covro/commit/2bdcf29bee42d5e0c21b82335a2eb07d11baddce)), closes [#351](https://github.com/yuzheng14/covro/issues/351)
+* **tasks:** run Git clones in the background ([#353](https://github.com/yuzheng14/covro/issues/353)) ([ae9a2e0](https://github.com/yuzheng14/covro/commit/ae9a2e01695122621a7c682219c7e59e62fe6720)), closes [#349](https://github.com/yuzheng14/covro/issues/349)
+
+
+### Bug Fixes
+
+* **codex:** disable agents in isolated helper sessions ([#356](https://github.com/yuzheng14/covro/issues/356)) ([615f25e](https://github.com/yuzheng14/covro/commit/615f25ed333d78a290c4eff6ca78bc4b107e7fc2))
+* **codex:** retain answer moderation and canonical account identity ([#357](https://github.com/yuzheng14/covro/issues/357)) ([bdf7e95](https://github.com/yuzheng14/covro/commit/bdf7e95fc371faa16acc896e847d787b065cc326))
+* **codex:** scope model choices to each session provider ([#355](https://github.com/yuzheng14/covro/issues/355)) ([23e7d50](https://github.com/yuzheng14/covro/commit/23e7d500993f07d9328ddcc282cf0888ecf1fd34))
+* **mermaid:** align diagrams with the application theme ([#352](https://github.com/yuzheng14/covro/issues/352)) ([9c0b604](https://github.com/yuzheng14/covro/commit/9c0b6043764b9d063b740517feeb8babc74fa29b)), closes [#298](https://github.com/yuzheng14/covro/issues/298)
+* **prompt:** restore tooltip arrows and clarify error-state positioning ([#354](https://github.com/yuzheng14/covro/issues/354)) ([7d50e11](https://github.com/yuzheng14/covro/commit/7d50e11ad66a7485c05d8088eed47cc1baad45b1)), closes [#304](https://github.com/yuzheng14/covro/issues/304)
+
 ## [0.10.0](https://github.com/yuzheng14/covro/compare/v0.9.0...v0.10.0) (2026-11-13)
 
 
