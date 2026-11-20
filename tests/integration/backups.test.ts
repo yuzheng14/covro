@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -38,6 +39,7 @@ async function fixture() {
     dataDir,
     config,
     Sqlite: Database,
+    sqliteModulePath: createRequire(import.meta.url).resolve('better-sqlite3'),
     migrations,
     contract: verifyDatabaseContract(),
     appVersion: '0.2.0',
@@ -71,6 +73,39 @@ it('backs up uncheckpointed WAL with config, versioned metadata, private permiss
     expect((await stat(join(store.path('manual'), file.name))).mode & 0o777).toBe(0o600);
   await expect(store.create({ id: 'manual', trigger: 'manual' })).rejects.toThrow();
   expect(await store.verify('manual')).toEqual(manifest);
+});
+it('reclaims deleted data from the open WAL source and creates a compact, verified backup', async () => {
+  const { store, sqlite, dataDir } = await fixture();
+  const source = join(dataDir, 'app.sqlite');
+  sqlite
+    .prepare('INSERT INTO preferences VALUES (?, ?)')
+    .run('temporary', JSON.stringify('x'.repeat(2 * 1024 * 1024)));
+  sqlite.pragma('wal_checkpoint(TRUNCATE)');
+  const bloatedSize = (await stat(source)).size;
+  sqlite.prepare('DELETE FROM preferences WHERE key = ?').run('temporary');
+  sqlite.prepare('INSERT INTO preferences VALUES (?, ?)').run('wal-only', '"included"');
+  expect(sqlite.pragma('freelist_count', { simple: true })).toBeGreaterThan(0);
+  expect((await stat(source)).size).toBe(bloatedSize);
+
+  const manifest = await store.create({ id: 'compact', trigger: 'manual' });
+
+  expect((await stat(source)).size).toBeLessThan(bloatedSize / 2);
+  expect(sqlite.pragma('freelist_count', { simple: true })).toBe(0);
+  expect((await stat(`${source}-wal`)).size).toBe(0);
+  expect(await store.verify('compact')).toEqual(manifest);
+  const copy = new Database(join(store.path('compact'), 'app.sqlite'), { readonly: true });
+  try {
+    const preferences = [{ value: '"original"' }, { value: '"included"' }];
+    const query = 'SELECT value FROM preferences ORDER BY key';
+    expect(sqlite.prepare(query).all()).toEqual(preferences);
+    expect(copy.prepare(query).all()).toEqual(preferences);
+    expect(copy.pragma('freelist_count', { simple: true })).toBe(0);
+    expect(manifest.files.find((file) => file.name === 'app.sqlite')?.size).toBeLessThan(
+      bloatedSize / 2,
+    );
+  } finally {
+    copy.close();
+  }
 });
 it('restores configuration, project registrations and preferences after data changes', async () => {
   const { store, sqlite, config } = await fixture();

@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { BackupStore } from '../../src/backups/store.js';
 import { migrateSqlite, readMigrations } from '../../src/server/db/history.js';
 import { defaultMigrationsFolder } from '../../src/server/db/migrate.js';
@@ -119,6 +120,7 @@ async function fixture() {
     contract: databaseCompatibilitySchema.parse(packageInfo.covroDatabase),
     migrations,
     Sqlite: Database,
+    sqliteModulePath: createRequire(import.meta.url).resolve('better-sqlite3'),
   });
   const phases: string[] = [];
   const effects: UpdateEffects = {

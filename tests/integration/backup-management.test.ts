@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rm, writeFile, copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -36,6 +37,7 @@ async function setup(version = 5) {
     dataDir,
     config,
     Sqlite: Database,
+    sqliteModulePath: createRequire(import.meta.url).resolve('better-sqlite3'),
     migrations,
     contract: verifyDatabaseContract(),
     appVersion: '0.2.0',

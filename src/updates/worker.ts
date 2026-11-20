@@ -182,9 +182,9 @@ async function workerCore(directory: string, logger: Logger) {
       covroCommit?: string;
       covroDatabase?: unknown;
     }>(join(originalRoot, 'package.json'));
-    const Sqlite = createRequire(join(originalRoot, 'package.json'))(
-      'better-sqlite3',
-    ) as typeof Database;
+    const requireOriginal = createRequire(join(originalRoot, 'package.json'));
+    const sqliteModulePath = requireOriginal.resolve('better-sqlite3');
+    const Sqlite = requireOriginal(sqliteModulePath) as typeof Database;
     const migrations = readMigrations(join(originalRoot, 'dist/drizzle'));
     const backups = new BackupStore({
       directory: backupDirectory(context.location.home, context.dataDir),
@@ -200,6 +200,7 @@ async function workerCore(directory: string, logger: Logger) {
         },
       ),
       Sqlite,
+      sqliteModulePath,
       migrations,
     });
     if (process.argv[3] === '--repair') {
