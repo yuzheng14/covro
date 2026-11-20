@@ -23,6 +23,7 @@ import {
 import { MAX_CONFIG_BYTES } from '../server/config-store.js';
 import { parseConfig, parseFileConfig } from '../server/config.js';
 import { copyDurable, readJson, saveJson } from '../updates/files.js';
+import { compactDatabase } from './compact.js';
 
 export interface BackupOptions {
   directory: string;
@@ -33,6 +34,7 @@ export interface BackupOptions {
   contract: DatabaseCompatibility;
   migrations: Migration[];
   Sqlite: typeof Database;
+  sqliteModulePath: string;
 }
 export const backupDirectory = (home: string, dataDir: string) =>
   join(home, 'backups', createHash('sha256').update(resolve(dataDir)).digest('hex').slice(0, 16));
@@ -112,6 +114,7 @@ export class BackupStore {
     }
     return records.sort((a, b) => b.createdAt - a.createdAt);
   }
+  /** Caller must hold the maintenance lock and pause application writes. */
   async create(input: {
     id?: string;
     trigger: BackupManifest['trigger'];
@@ -169,9 +172,13 @@ export class BackupStore {
       } finally {
         await configFile.close();
       }
-      sqlite = new Sqlite(join(dataDir, 'app.sqlite'), { readonly: true, fileMustExist: true });
+      const source = join(dataDir, 'app.sqlite');
+      sqlite = new Sqlite(source, { readonly: true, fileMustExist: true });
       const history = inspectDatabase(sqlite, migrations);
       requireRestorable(history.schemaVersion, this.options.contract);
+      input.signal?.throwIfAborted();
+      await compactDatabase(source, this.options.sqliteModulePath);
+      input.signal?.throwIfAborted();
       await sqlite.backup(join(directory, 'app.sqlite'), {
         progress: ({ totalPages, remainingPages }) => {
           input.signal?.throwIfAborted();

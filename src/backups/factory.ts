@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import Database from 'better-sqlite3';
 import { packageInfo, paths } from '../cli/paths.js';
 import { databaseCompatibilitySchema } from '../shared/database.js';
@@ -19,5 +20,6 @@ export function createBackupStore(
     contract: databaseCompatibilitySchema.parse(packageInfo.covroDatabase),
     migrations: readMigrations(migrationsFolder),
     Sqlite: Database,
+    sqliteModulePath: createRequire(import.meta.url).resolve('better-sqlite3'),
   });
 }
