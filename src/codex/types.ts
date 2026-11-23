@@ -100,6 +100,7 @@ export interface CodexClient {
   readThread(id: string): Promise<ThreadView>;
   /** One recent-to-old history page, without reading the rest of the conversation. */
   readThreadPage?(id: string, cursor?: string): Promise<ThreadView>;
+  loadedThreadActivity?(): Promise<ReadonlySet<ThreadView['status']>>;
   readThreadMetadata(id: string): Promise<ThreadView>;
   createThread(cwd: string, settings?: Settings): Promise<ThreadView>;
   forkThread(id: string, cwd: string, settings?: Settings): Promise<ThreadView>;

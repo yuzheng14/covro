@@ -147,6 +147,23 @@ export class UpdateManager implements UpdateController {
       this.context.directory = directory;
     }
   }
+  /** Share the package lock with update preparation and workers during a service restart. */
+  async reserveServiceRestart() {
+    if (!this.context) return;
+    await mkdir(this.context.directory, { recursive: true, mode: 0o700 });
+    const release = await lockfile.lock(this.context.directory, {
+      retries: 0,
+      stale: 10_000,
+      update: 2_000,
+    });
+    try {
+      if (!updateActive((await this.status()).run)) return release;
+      throw new AppError('MAINTENANCE_BUSY', 'A Covro update is in progress', 409);
+    } catch (error) {
+      await release();
+      throw error;
+    }
+  }
   async status(): Promise<UpdateStatus> {
     const { available, codexTarget, codexError, target, runtimeError, checkedAt, checkError } =
       this;

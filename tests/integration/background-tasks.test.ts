@@ -60,6 +60,7 @@ it('keeps four independent clones busy for automatic/manual updates and backup a
     ready: false,
     reason: '等待项目克隆完成或取消',
   });
+  expect(h.service.restartBlockers(true)).toEqual(['clone']);
   expect(h.service.isInMaintenance()).toBe(false);
   h.service.projectClones.cancel(jobs[0]!.id);
   await terminal(h.service.projectClones, jobs[0]!.id);

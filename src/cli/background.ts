@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { setTimeout } from 'node:timers/promises';
 import lockfile from 'proper-lockfile';
 import type { CovroPaths } from './paths.js';
-import { control, isNotRunning, stopAndWait } from './control.js';
+import { control, isNotRunning, stopAndWait, waitForRestartHandoff } from './control.js';
 import {
   configureLaunchdLogin,
   guiSessionAvailable,
@@ -17,15 +17,20 @@ import { readJson } from '../updates/files.js';
 import { launchRuntime, type LaunchRuntime } from './runtime-launch.js';
 
 const exec = promisify(execFile);
-async function lifecycle<T>(location: CovroPaths, action: () => Promise<T>) {
+export async function acquireLifecycle(location: CovroPaths, wait = true) {
   await mkdir(location.state, { recursive: true, mode: 0o700 });
-  const release = await lockfile.lock(location.state, {
+  return lockfile.lock(location.state, {
     lockfilePath: join(location.state, 'lifecycle.lock'),
     stale: 10_000,
     update: 2_000,
-    retries: { retries: 280, minTimeout: 250, maxTimeout: 250 },
+    retries: wait ? { retries: 280, minTimeout: 250, maxTimeout: 250 } : 0,
   });
+}
+
+async function lifecycle<T>(location: CovroPaths, action: () => Promise<T>) {
+  const release = await acquireLifecycle(location);
   try {
+    await waitForRestartHandoff(location);
     return await action();
   } finally {
     await release();

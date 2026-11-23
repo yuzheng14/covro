@@ -15,16 +15,20 @@ import { packageInfo, paths } from './paths.js';
 import { UpdateManager } from '../updates/manager.js';
 import { saveJson } from '../updates/files.js';
 import { doctor, launchContext } from './doctor.js';
+import { restartHandoffEnv, ServiceRestart } from './service-restart.js';
 import { runningRuntime } from './runtime.js';
 
 export async function runDaemon(configPath: string) {
   const location = paths(configPath);
+  const handoffId = process.env[restartHandoffEnv];
+  delete process.env[restartHandoffEnv];
   await mkdir(location.state, { recursive: true, mode: 0o700 });
   const options = loggingOptions(location.logs, packageInfo.version);
   const release = await acquireInstanceLock(location.state);
   await trimBootstrap(location.log).catch(() => {});
   const logging = await createLogging(options);
   const logger = logging.logger.child({ component: 'daemon' });
+  const restart = new ServiceRestart(location, logger.child({ component: 'restart' }));
   const removeMonitor = monitorCrashes(logger, logging.flushSync);
   let config: Awaited<ReturnType<typeof loadConfig>>;
   let runtime: Awaited<ReturnType<typeof startGateway>> | undefined;
@@ -64,12 +68,15 @@ export async function runDaemon(configPath: string) {
             codexIdentity: runtime?.codex.launchIdentity?.(),
             launchContext: context,
             runtime: runningRuntime(),
+            restart: restart.status().run,
             logging: logging.health(),
           }),
         );
       } else if (request.url === '/doctor') {
         response.end(JSON.stringify({ ...(await doctor()), logging: logging.health() }));
       } else if (request.url === '/stop') {
+        if (restart.committing)
+          throw new AppError('RESTART_MAINTENANCE', 'Covro restart handoff is in progress', 503);
         await stop(() => response.end(JSON.stringify({ stopped: true })));
       } else if (request.url === '/update-readiness') {
         response.end(JSON.stringify(runtime!.service.prepareUpdate('update', false)));
@@ -134,6 +141,7 @@ export async function runDaemon(configPath: string) {
   let stopping: Promise<void> | undefined;
   const stop = (respond?: () => void) =>
     (stopping ??= (async () => {
+      restart.close();
       let failure: unknown;
       try {
         await runtime?.close();
@@ -155,8 +163,10 @@ export async function runDaemon(configPath: string) {
       if (failure) throw failure;
     })());
   try {
+    const handoff = await restart.initialize(handoffId);
     context = await launchContext();
     config = await loadConfig({ configPath, development: false });
+    if (handoff) await restart.assertConfig(config, handoff.identity);
     stage = 'update_initialize';
     updates = new UpdateManager(
       location,
@@ -168,7 +178,7 @@ export async function runDaemon(configPath: string) {
     await updates.initialize();
     const maintenance = await updates.activationPending();
     stage = 'gateway_start';
-    runtime = await startGateway(config, { updates, maintenance, logger });
+    runtime = await startGateway(config, { updates, maintenance, restart, logger });
     stage = 'control_listener';
     if (process.platform !== 'win32') await rm(location.socket, { force: true });
     await new Promise<void>((done, reject) => {
@@ -181,6 +191,7 @@ export async function runDaemon(configPath: string) {
       config: location.config,
       socket: location.socket,
     });
+    await restart.attach(config, runtime.service, updates, () => stop(), handoff?.epoch);
     logger.info('daemon.ready', { port: config.port });
     process.once(
       'SIGINT',
@@ -201,6 +212,8 @@ export async function runDaemon(configPath: string) {
   } catch (error) {
     logger.error('daemon.start_failed', { stage, ...errorFields(error) });
     updates?.close();
+    restart.close();
+    if (handoffId) await restart.fail('startup', error).catch(() => {});
     try {
       await runtime?.close();
     } finally {

@@ -1,3 +1,6 @@
+import { join } from 'node:path';
+import { readJson } from '../updates/files.js';
+import type { RestartRun } from '../shared/service-restart.js';
 import { request } from 'node:http';
 import type { CovroPaths } from './paths.js';
 import lockfile from 'proper-lockfile';
@@ -52,7 +55,24 @@ export function control<T = unknown>(
 export function isNotRunning(error: unknown) {
   return ['ENOENT', 'ECONNREFUSED'].includes((error as NodeJS.ErrnoException).code ?? '');
 }
+export const restartFile = (location: CovroPaths) => join(location.state, 'restart.json');
+
+export async function lastServiceRestart(location: CovroPaths) {
+  return (await readJson<{ run: RestartRun }>(restartFile(location)))?.run;
+}
+
+export async function waitForRestartHandoff(location: CovroPaths) {
+  // The old image releases filesystem locks before execve; the durable handoff keeps CLI
+  // start/stop from claiming the instance until the new image owns the control socket.
+  for (;;) {
+    const run = await lastServiceRestart(location);
+    if (run?.phase !== 'restarting' || (run.recoveryDeadline ?? 0) <= Date.now()) return;
+    await setTimeout(250);
+  }
+}
+
 export async function stopAndWait(location: CovroPaths) {
+  await waitForRestartHandoff(location);
   try {
     await control(location, 'stop');
   } catch (error) {

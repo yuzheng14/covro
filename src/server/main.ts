@@ -25,6 +25,7 @@ import { GatewayService } from './service.js';
 import { createApp } from './http.js';
 import { startHeartbeat } from './websocket.js';
 import { UpdateManager } from '../updates/manager.js';
+import type { RestartController } from '../shared/service-restart.js';
 import type { UpdateController } from '../shared/updates.js';
 import { startManagedMcp } from './mcp/server.js';
 import { PreviewDiscovery } from './preview/discovery.js';
@@ -42,6 +43,7 @@ export async function startGateway(
     migrationsDir?: string;
     updates?: UpdateController;
     backups?: BackupController;
+    restart?: RestartController;
     maintenance?: boolean;
     previewInspector?: ProcessInspector;
   } = {},
@@ -136,6 +138,7 @@ export async function startGateway(
       staticDir: overrides.staticDir ?? fileURLToPath(new URL('../web', import.meta.url)),
       updates,
       backups,
+      restart: overrides.restart,
       logger: logger.child({ component: 'http' }),
     });
     const server = serve({

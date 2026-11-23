@@ -143,6 +143,7 @@ it('retains live output independently of browser requests, separates projects an
     )
     .toContain('first');
   expect(h.run(id).status).toBe('running');
+  expect(h.service.restartBlockers(true)).toContain('shell');
   expect((await h.start('pwd')).op).toMatchObject({ error: { code: 'SHELL_BUSY' } });
   expect(() => h.service.removeProject('test')).toThrow('活动任务');
   expect(h.service.prepareUpdate()).toMatchObject({ ready: false, reason: '等待 Shell 命令结束' });

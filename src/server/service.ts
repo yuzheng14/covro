@@ -90,6 +90,7 @@ import { readLocalMarkdown } from './markdown.js';
 import { readLocalText } from './text-files.js';
 import { readLocalJson } from './json-files.js';
 import { sessionCreationResult } from './session-creation.js';
+import type { RestartBlocker, RestartRequest } from '../shared/service-restart.js';
 import { createSessionSchema } from '../shared/validation.js';
 
 export interface GatewayOptions {
@@ -121,7 +122,8 @@ export class GatewayService {
   private readonly fileTemporaryRoots = temporaryFileRoots();
   private accepting = true;
   private maintenance = false;
-  private maintenanceReason: 'update' | 'backup' = 'update';
+  private maintenanceReason: 'update' | 'backup' | 'restart' = 'update';
+  private httpMutations = 0;
   private currentEpoch: string;
   private confirmedCompatibility: string | undefined;
   private readonly archiveChanges = new Set<string>();
@@ -280,19 +282,92 @@ export class GatewayService {
   isInMaintenance() {
     return this.maintenance;
   }
-  setMaintenance(value: boolean, reason: 'update' | 'backup' = 'update') {
+  setMaintenance(value: boolean, reason: 'update' | 'backup' | 'restart' = 'update') {
+    if (!value && this.maintenance && this.maintenanceReason !== reason) return;
     this.maintenance = value;
     this.maintenanceReason = reason;
   }
   maintenanceError() {
+    if (this.maintenanceReason === 'restart')
+      return new AppError('RESTART_MAINTENANCE', 'Covro is restarting', 503);
     return this.maintenanceReason === 'backup'
       ? new AppError('BACKUP_MAINTENANCE', '正在备份，请完成后重试。', 503)
       : new AppError('UPDATE_MAINTENANCE', '正在升级，请等待服务重新连接', 503);
+  }
+  async trackHttpMutation(work: () => Promise<void>) {
+    if (this.maintenance && this.maintenanceReason === 'restart') throw this.maintenanceError();
+    this.httpMutations++;
+    try {
+      await work();
+    } finally {
+      this.httpMutations--;
+    }
+  }
+  private activityBlockers(): Set<RestartBlocker> {
+    const blockers = new Set<RestartBlocker>();
+    if (this.capacityRetries.active()) blockers.add('retry');
+    if (this.projectClones.hasActive) blockers.add('clone');
+    if (this.shell.active()) blockers.add('shell');
+    if (
+      this.inFlightOperations.size ||
+      this.resumes.size ||
+      this.pendingThreadCreations.size ||
+      this.store.unresolvedOperations().length
+    )
+      blockers.add('operation');
+    const activeThreads = new Set<string>();
+    for (const thread of this.projection.values()) {
+      if (!thread.managed || !isActive(thread.status)) continue;
+      activeThreads.add(thread.id);
+      blockers.add(
+        thread.status === 'waitingApproval'
+          ? 'approval'
+          : thread.status === 'waitingInput'
+            ? 'input'
+            : 'running',
+      );
+    }
+    for (const action of this.projection.actions.values()) {
+      if (action.status !== 'pending' && action.status !== 'responding') continue;
+      const input = action.kind === 'questions' || action.kind === 'elicitation';
+      blockers.add(input ? 'input' : 'approval');
+      if (action.threadId) activeThreads.add(action.threadId);
+    }
+    // A durable marker with no active projection needs reconciliation before shutdown.
+    if (this.store.activeMarkers().some((entry) => !activeThreads.has(entry.threadId)))
+      blockers.add('operation');
+    return blockers;
+  }
+  restartBlockers(closeAdmission = false): RestartBlocker[] {
+    const blockers = this.activityBlockers();
+    if (this.httpMutations) blockers.add('operation');
+    if (this.maintenance || !this.accepting) blockers.add('maintenance');
+    // Callers take the maintenance lock first. No asynchronous work may intervene
+    // between the last idle check and closing admission to HTTP and service writes.
+    if (closeAdmission && !blockers.size) this.setMaintenance(true, 'restart');
+    return [...blockers];
+  }
+  async nativeRestartBlockers(): Promise<RestartBlocker[]> {
+    const blockers: RestartBlocker[] = [];
+    for (const status of (await this.codex.loadedThreadActivity?.()) ?? []) {
+      if (status === 'running') blockers.push('running');
+      if (status === 'waitingApproval') blockers.push('approval');
+      if (status === 'waitingInput') blockers.push('input');
+    }
+    return blockers;
+  }
+  requestRestart(input: RestartRequest, start: () => Promise<{ restartId: string }>) {
+    return this.perform('service.restart', 'system', input, async () => {
+      this.store.dispatch(input.clientOperationId);
+      return { result: await start() };
+    });
   }
   prepareUpdate(
     reason: 'update' | 'backup' = 'update',
     closeAdmission = true,
   ): { ready: boolean; reason?: string } {
+    if (this.maintenance && this.maintenanceReason !== reason)
+      return { ready: false, reason: '等待当前维护操作结束' };
     if (this.capacityRetries.active())
       return { ready: false, reason: '等待模型容量重试结束或取消' };
     if (this.projectClones.hasActive) return { ready: false, reason: '等待项目克隆完成或取消' };
@@ -2022,7 +2097,7 @@ export class GatewayService {
     work: () => Promise<{ result: unknown; turnId?: string; onAcknowledged?: () => void }>,
   ): Promise<Operation> {
     if (!this.accepting) throw new AppError('CODEX_UNAVAILABLE', '服务正在关闭', 503);
-    if (this.maintenance) throw this.maintenanceError();
+    if (this.maintenance && kind !== 'service.restart') throw this.maintenanceError();
     let accepted;
     try {
       accepted = this.store.accept(input.clientOperationId, kind, target, input);

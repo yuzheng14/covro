@@ -332,7 +332,12 @@ export class OperationStore {
         or(
           eq(operations.state, 'accepted'),
           eq(operations.state, 'dispatching'),
-          and(eq(operations.state, 'unknown'), isNull(operations.reconciledAt)),
+          and(
+            eq(operations.state, 'unknown'),
+            isNull(operations.reconciledAt),
+            // A restart receipt is verified by the durable supervisor status, not a Codex turn.
+            ne(operations.kind, 'service.restart'),
+          ),
         ),
       )
       .all();

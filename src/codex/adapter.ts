@@ -541,7 +541,8 @@ export class CodexAdapter implements CodexClient {
     this.restartTimer = undefined;
     await this.starting?.catch(() => {});
     await this.recovering;
-    await this.stopProcess();
+    if (!(await this.stopProcess()))
+      throw new CodexError('CODEX_STOP_TIMEOUT', 'Managed Codex app-server did not exit');
   }
   private scheduleRestart(): void {
     if (this.stopped || this.restartTimer) return;
@@ -549,8 +550,12 @@ export class CodexAdapter implements CodexClient {
     this.restartTimer = setTimeout(() => {
       this.restartTimer = undefined;
       this.recovering = (async () => {
-        await this.stopProcess();
+        const exited = await this.stopProcess();
         if (this.stopped) return;
+        if (!exited) {
+          this.scheduleRestart();
+          return;
+        }
         try {
           await this.start();
           this.restartAttempt = 0;
@@ -566,20 +571,24 @@ export class CodexAdapter implements CodexClient {
   }
   private async stopProcess(
     reason = new CodexError('CODEX_UNAVAILABLE', 'Codex connection closed by this service', true),
-  ): Promise<void> {
+  ): Promise<boolean> {
     const child = this.child;
     this.state.ready = false;
     this.state.connection = 'unavailable';
     this.expireActions();
     this.rpc?.fail(reason);
-    if (!child || child.exitCode !== null || child.signalCode !== null) return;
+    if (!child || child.exitCode !== null || child.signalCode !== null) return true;
+    if (child.pid === undefined) {
+      if (this.child === child) this.child = undefined;
+      return true;
+    }
     child.stdin.end();
-    await new Promise<void>((resolve) => {
+    const exited = await new Promise<boolean>((resolve) => {
       const term = setTimeout(() => child.kill('SIGTERM'), 1000);
       const kill = setTimeout(() => child.kill('SIGKILL'), 2500);
       const done = setTimeout(() => {
         cleanup();
-        resolve();
+        resolve(false);
       }, 3500);
       const cleanup = () => {
         clearTimeout(term);
@@ -588,10 +597,11 @@ export class CodexAdapter implements CodexClient {
       };
       child.once('exit', () => {
         cleanup();
-        resolve();
+        resolve(true);
       });
     });
-    if (this.child === child) this.child = undefined;
+    if (exited && this.child === child) this.child = undefined;
+    return exited;
   }
   private async call<M extends keyof Responses>(
     method: M,
@@ -764,6 +774,50 @@ export class CodexAdapter implements CodexClient {
     };
   }
 
+  private async *loadedThreadIds() {
+    let cursor: string | null = null;
+    const seen = new Set<string>();
+    do {
+      const page: ThreadLoadedListResponse = await this.call('thread/loaded/list', {
+        cursor,
+        limit: 100,
+      });
+      yield* page.data;
+      cursor = page.nextCursor;
+      if (cursor && (seen.has(cursor) || seen.size >= 1000))
+        throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid loaded thread pagination');
+      if (cursor) seen.add(cursor);
+    } while (cursor);
+  }
+
+  private async loadedThread(id: string) {
+    try {
+      return (await this.call('thread/read', { threadId: id, includeTurns: false })).thread;
+    } catch (error) {
+      // A completed helper can unload after the loaded-thread snapshot.
+      if (
+        error instanceof CodexError &&
+        error.rpcCode === -32600 &&
+        error.message === `thread not loaded: ${id}`
+      )
+        return;
+      throw error;
+    }
+  }
+
+  async loadedThreadActivity() {
+    const active = new Set<ReturnType<typeof threadStatus>>();
+    if (!this.ready) return active;
+    const epoch = this.epoch;
+    for await (const id of this.loadedThreadIds()) {
+      const thread = await this.loadedThread(id);
+      if (thread?.status.type === 'active') active.add(threadStatus(thread.status));
+    }
+    if (this.epoch !== epoch || !this.ready)
+      throw new CodexError('CODEX_UNAVAILABLE', 'Codex restarted during the idle check', true);
+    return active;
+  }
+
   /** Native archive also shuts down spawned descendants, even already-archived ones. */
   private async assertArchiveIdle(rootId: string): Promise<void> {
     const threads = new Map<string, Thread>();
@@ -775,44 +829,22 @@ export class CodexAdapter implements CodexClient {
       }
       return thread;
     };
-    let cursor: string | null = null;
-    const seen = new Set<string>();
-    do {
-      const page: ThreadLoadedListResponse = await this.call('thread/loaded/list', {
-        cursor,
-        limit: 100,
-      });
-      for (const id of page.data) {
-        let thread: Thread;
-        try {
-          thread = await read(id);
-        } catch (error) {
-          // A completed helper can unload after the loaded-thread snapshot.
-          if (
-            error instanceof CodexError &&
-            error.rpcCode === -32600 &&
-            error.message === `thread not loaded: ${id}`
-          )
-            continue;
-          throw error;
-        }
-        if (thread.status.type !== 'active') continue;
-        const ancestors = new Set<string>();
-        for (;;) {
-          if (thread.id === rootId)
-            throw new AppError('THREAD_BUSY', '会话或其子任务仍在运行，结束后才能归档', 409);
-          if (!thread.parentThreadId) break;
-          if (ancestors.has(thread.id))
-            throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid thread ancestry');
-          ancestors.add(thread.id);
-          thread = await read(thread.parentThreadId);
-        }
+    for await (const id of this.loadedThreadIds()) {
+      let thread = threads.get(id) ?? (await this.loadedThread(id));
+      if (!thread) continue;
+      threads.set(id, thread);
+      if (thread.status.type !== 'active') continue;
+      const ancestors = new Set<string>();
+      for (;;) {
+        if (thread.id === rootId)
+          throw new AppError('THREAD_BUSY', '会话或其子任务仍在运行，结束后才能归档', 409);
+        if (!thread.parentThreadId) break;
+        if (ancestors.has(thread.id))
+          throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid thread ancestry');
+        ancestors.add(thread.id);
+        thread = await read(thread.parentThreadId);
       }
-      cursor = page.nextCursor;
-      if (cursor && (seen.has(cursor) || seen.size >= 1000))
-        throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid loaded thread pagination');
-      if (cursor) seen.add(cursor);
-    } while (cursor);
+    }
   }
 
   async renameThread(id: string, name: string): Promise<void> {

@@ -3,10 +3,11 @@ import type { LogLevel } from '../logging/logger.js';
 import { backupCommand } from './backup.js';
 import type { UpdateStatus } from '../shared/updates.js';
 import { join } from 'node:path';
-import { control, isNotRunning } from './control.js';
+import { control, isNotRunning, lastServiceRestart } from './control.js';
 import { startBackground as startManagedBackground, stopBackground } from './background.js';
 import { randomUUID } from 'node:crypto';
 import { ensureConfig, packageInfo, packageRoot, paths, type CovroPaths } from './paths.js';
+import { restartHandoffEnv } from './service-restart.js';
 import { runDaemon } from './daemon.js';
 import { service } from './service.js';
 import { UpdateManager } from '../updates/manager.js';
@@ -112,7 +113,7 @@ export async function main(args = process.argv.slice(2)) {
   } else if (command === 'start')
     console.log(JSON.stringify(await startBackground(location), null, 2));
   else if (command === 'run') {
-    await ensureConfig(location);
+    if (!process.env[restartHandoffEnv]) await ensureConfig(location);
     await runDaemon(location.config);
   } else if (command === 'update') {
     if (subcommand === 'repair') {
@@ -151,7 +152,9 @@ export async function main(args = process.argv.slice(2)) {
       } else console.log(JSON.stringify(await control(location, command), null, 2));
     } catch (error) {
       if (!isNotRunning(error)) throw error;
-      console.log('Covro 未运行');
+      const restart = command === 'status' ? await lastServiceRestart(location) : undefined;
+      if (restart) console.log(JSON.stringify({ running: false, restart }, null, 2));
+      else console.log('Covro 未运行');
     }
   } else if (command === 'logs') {
     const controller = new AbortController();

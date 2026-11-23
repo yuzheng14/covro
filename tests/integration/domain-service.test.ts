@@ -40,6 +40,28 @@ describe('domain execution and approval recovery', () => {
     expect(ctx.store.activeForThread(id)).toBeUndefined();
   });
 
+  it('waits for tracked requests and running turns before closing restart admission', async () => {
+    const ctx = setup();
+    const id = await create(ctx);
+    const mutating = deferred<void>();
+    const request = ctx.service.trackHttpMutation(() => mutating.promise);
+    expect(ctx.service.restartBlockers(true)).toEqual(['operation']);
+    mutating.resolve();
+    await request;
+
+    await ctx.service.startTurn(id, { clientOperationId: operationId(), text: 'running' });
+    expect(ctx.service.restartBlockers(true)).toEqual(['running']);
+    ctx.codex.complete(id, 'turn-1');
+    expect(ctx.service.restartBlockers(true)).toEqual([]);
+    expect(ctx.service.prepareUpdate('backup').ready).toBe(false);
+    ctx.service.setMaintenance(false, 'update');
+    await expect(
+      ctx.service.startTurn(id, { clientOperationId: operationId(), text: 'too late' }),
+    ).rejects.toMatchObject({ code: 'RESTART_MAINTENANCE' });
+    ctx.service.setMaintenance(false, 'restart');
+    expect(ctx.service.isInMaintenance()).toBe(false);
+  });
+
   it('handles a terminal event arriving before the start response without resurrecting the turn', async () => {
     const ctx = setup();
     const id = await create(ctx);

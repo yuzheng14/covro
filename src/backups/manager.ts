@@ -151,7 +151,7 @@ export class BackupManager implements BackupController {
       }
     } finally {
       logger.info('backup.finished', { outcome, durationMs: Date.now() - record.createdAt });
-      if (gated) this.service.setMaintenance(false);
+      if (gated) this.service.setMaintenance(false, 'backup');
       await release();
       this.active = undefined;
       this.abort = undefined;
