@@ -38,6 +38,9 @@ import { assertCodexIdentity, type CodexIdentity } from '../codex/identity.js';
 const runtimeChanged = (target: Parameters<typeof changedRuntime>[0]) =>
   changedRuntime(target, runningRuntime());
 
+const lockUpdateDirectory = (directory: string) =>
+  lockfile.lock(directory, { retries: 0, stale: 10_000, update: 2_000 });
+
 export const settingsSchema = z
   .object({ channel: z.enum(releaseChannels), automatic: z.boolean() })
   .strict();
@@ -151,11 +154,7 @@ export class UpdateManager implements UpdateController {
   async reserveServiceRestart() {
     if (!this.context) return;
     await mkdir(this.context.directory, { recursive: true, mode: 0o700 });
-    const release = await lockfile.lock(this.context.directory, {
-      retries: 0,
-      stale: 10_000,
-      update: 2_000,
-    });
+    const release = await lockUpdateDirectory(this.context.directory);
     try {
       if (!updateActive((await this.status()).run)) return release;
       throw new AppError('MAINTENANCE_BUSY', 'A Covro update is in progress', 409);
@@ -484,11 +483,7 @@ export class UpdateManager implements UpdateController {
     await mkdir(this.context.directory, { recursive: true, mode: 0o700 });
     let releaseLock: () => Promise<void>;
     try {
-      releaseLock = await lockfile.lock(this.context.directory, {
-        retries: 0,
-        stale: 10_000,
-        update: 2_000,
-      });
+      releaseLock = await lockUpdateDirectory(this.context.directory);
     } catch {
       return this.status();
     }
@@ -649,7 +644,7 @@ export class UpdateManager implements UpdateController {
     const directory = this.context.directory;
     let releaseLock: () => Promise<void>;
     try {
-      releaseLock = await lockfile.lock(directory, { retries: 0, stale: 10_000, update: 2_000 });
+      releaseLock = await lockUpdateDirectory(directory);
     } catch {
       throw new Error('升级进程仍持有锁，请等待完成后再恢复');
     }

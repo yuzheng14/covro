@@ -51,6 +51,10 @@ describe('domain execution and approval recovery', () => {
 
     await ctx.service.startTurn(id, { clientOperationId: operationId(), text: 'running' });
     expect(ctx.service.restartBlockers(true)).toEqual(['running']);
+    expect(ctx.service.prepareUpdate('update', false)).toEqual({
+      ready: false,
+      reason: '等待任务结束，并核对结果尚未确认的操作',
+    });
     ctx.codex.complete(id, 'turn-1');
     expect(ctx.service.restartBlockers(true)).toEqual([]);
     expect(ctx.service.prepareUpdate('backup').ready).toBe(false);

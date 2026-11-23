@@ -303,49 +303,61 @@ export class GatewayService {
       this.httpMutations--;
     }
   }
-  private activityBlockers(): Set<RestartBlocker> {
+  private prepareMaintenance(kind: 'update' | 'backup' | 'restart', closeAdmission: boolean) {
     const blockers = new Set<RestartBlocker>();
-    if (this.capacityRetries.active()) blockers.add('retry');
-    if (this.projectClones.hasActive) blockers.add('clone');
-    if (this.shell.active()) blockers.add('shell');
-    if (
-      this.inFlightOperations.size ||
-      this.resumes.size ||
-      this.pendingThreadCreations.size ||
-      this.store.unresolvedOperations().length
-    )
-      blockers.add('operation');
+    let reason: string | undefined;
+    const block = (activity: RestartBlocker, detail: string) => {
+      blockers.add(activity);
+      reason ??= detail;
+    };
+    if (this.capacityRetries.active()) block('retry', '等待模型容量重试结束或取消');
+    if (this.projectClones.hasActive) block('clone', '等待项目克隆完成或取消');
+    if (this.shell.active()) block('shell', '等待 Shell 命令结束');
+    if (this.inFlightOperations.size || this.resumes.size || this.pendingThreadCreations.size)
+      block('operation', '等待正在提交或恢复的操作完成');
+
+    const markers = this.store.activeMarkers();
+    const unconfirmed = '等待任务结束，并核对结果尚未确认的操作';
+    if (markers.length) reason ??= unconfirmed;
+    if (this.store.unresolvedOperations().length) block('operation', unconfirmed);
+
+    const interactive = '等待执行中的任务、审批或输入结束';
     const activeThreads = new Set<string>();
     for (const thread of this.projection.values()) {
       if (!thread.managed || !isActive(thread.status)) continue;
       activeThreads.add(thread.id);
-      blockers.add(
+      block(
         thread.status === 'waitingApproval'
           ? 'approval'
           : thread.status === 'waitingInput'
             ? 'input'
             : 'running',
+        interactive,
       );
     }
     for (const action of this.projection.actions.values()) {
       if (action.status !== 'pending' && action.status !== 'responding') continue;
       const input = action.kind === 'questions' || action.kind === 'elicitation';
-      blockers.add(input ? 'input' : 'approval');
+      block(input ? 'input' : 'approval', interactive);
       if (action.threadId) activeThreads.add(action.threadId);
     }
     // A durable marker with no active projection needs reconciliation before shutdown.
-    if (this.store.activeMarkers().some((entry) => !activeThreads.has(entry.threadId)))
-      blockers.add('operation');
-    return blockers;
+    if (markers.some((entry) => !activeThreads.has(entry.threadId)))
+      block('operation', unconfirmed);
+
+    const restarting = kind === 'restart';
+    if (
+      (this.maintenance && (restarting || this.maintenanceReason !== kind)) ||
+      (restarting && !this.accepting)
+    )
+      blockers.add('maintenance');
+    if (restarting && this.httpMutations) blockers.add('operation');
+    // The final idle check and gate share one event-loop boundary with write admission.
+    if (closeAdmission && !blockers.size) this.setMaintenance(true, kind);
+    return { blockers, reason: blockers.has('maintenance') ? '等待当前维护操作结束' : reason };
   }
   restartBlockers(closeAdmission = false): RestartBlocker[] {
-    const blockers = this.activityBlockers();
-    if (this.httpMutations) blockers.add('operation');
-    if (this.maintenance || !this.accepting) blockers.add('maintenance');
-    // Callers take the maintenance lock first. No asynchronous work may intervene
-    // between the last idle check and closing admission to HTTP and service writes.
-    if (closeAdmission && !blockers.size) this.setMaintenance(true, 'restart');
-    return [...blockers];
+    return [...this.prepareMaintenance('restart', closeAdmission).blockers];
   }
   async nativeRestartBlockers(): Promise<RestartBlocker[]> {
     const blockers: RestartBlocker[] = [];
@@ -366,26 +378,8 @@ export class GatewayService {
     reason: 'update' | 'backup' = 'update',
     closeAdmission = true,
   ): { ready: boolean; reason?: string } {
-    if (this.maintenance && this.maintenanceReason !== reason)
-      return { ready: false, reason: '等待当前维护操作结束' };
-    if (this.capacityRetries.active())
-      return { ready: false, reason: '等待模型容量重试结束或取消' };
-    if (this.projectClones.hasActive) return { ready: false, reason: '等待项目克隆完成或取消' };
-    if (this.shell.active()) return { ready: false, reason: '等待 Shell 命令结束' };
-    if (this.inFlightOperations.size || this.resumes.size || this.pendingThreadCreations.size)
-      return { ready: false, reason: '等待正在提交或恢复的操作完成' };
-    if (this.store.activeMarkers().length || this.store.unresolvedOperations().length)
-      return { ready: false, reason: '等待任务结束，并核对结果尚未确认的操作' };
-    if (
-      this.projection.values().some((thread) => thread.managed && isActive(thread.status)) ||
-      [...this.projection.actions.values()].some((action) =>
-        ['pending', 'responding'].includes(action.status),
-      )
-    )
-      return { ready: false, reason: '等待执行中的任务、审批或输入结束' };
-    // Synchronous gate and check share one event-loop boundary with perform().
-    if (closeAdmission) this.setMaintenance(true, reason);
-    return { ready: true };
+    const activity = this.prepareMaintenance(reason, closeAdmission);
+    return activity.blockers.size ? { ready: false, reason: activity.reason } : { ready: true };
   }
   addProject(input: CreateProjectInput) {
     this.workspaces.assertProjectDirectory(input.path);
