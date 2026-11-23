@@ -230,6 +230,7 @@ export const subscribeSchema = z
     type: z.literal('subscribe'),
     threadId: idSchema,
     incremental: z.boolean().optional(),
+    subscriptionId: z.number().int().positive().optional(),
     after: z
       .object({ serverEpoch: idSchema, seq: z.number().int().nonnegative() })
       .strict()
@@ -238,7 +239,7 @@ export const subscribeSchema = z
   .strict();
 export const socketMessageSchema = z.discriminatedUnion('type', [
   subscribeSchema,
-  z.object({ type: z.literal('unsubscribe') }).strict(),
+  z.object({ type: z.literal('unsubscribe'), threadId: idSchema.optional() }).strict(),
 ]);
 
 export const archiveThreadSchema = operationSchema.extend({ archived: z.boolean() });

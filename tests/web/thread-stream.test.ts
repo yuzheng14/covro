@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ServerMessage, ThreadView } from '../../src/shared/types';
+import {
+  MAX_THREAD_SUBSCRIPTIONS,
+  type Cursor,
+  type ServerMessage,
+  type ThreadView,
+} from '../../src/shared/types';
 import { toThreadSummary } from '../../src/shared/thread-summary';
 import { ThreadStream } from '../../src/web/lib/realtime';
 
@@ -36,6 +41,32 @@ class FakeSocket {
     this.readyState = 1;
     this.onopen?.();
   }
+  subscriptions() {
+    return this.send.mock.calls
+      .map(([raw]) => JSON.parse(raw))
+      .filter((entry) => entry.type === 'subscribe');
+  }
+  subscription(id: string) {
+    return this.subscriptions().findLast((entry) => entry.threadId === id);
+  }
+  detail(
+    message: ServerMessage,
+    subscriptionId = this.subscription(message.threadId!).subscriptionId,
+  ) {
+    this.receive({ ...message, subscriptionId });
+  }
+  ready(threadId: string, seq: number, threadSeq = seq, serverEpoch = 'epoch') {
+    this.detail({ type: 'subscribed', threadId, cursor: { serverEpoch, seq }, threadSeq });
+  }
+  snapshot(id: string, seq: number) {
+    this.detail({
+      type: 'snapshot',
+      threadId: id,
+      cursor: { serverEpoch: 'epoch', seq },
+      data: thread(id),
+    });
+    this.ready(id, seq);
+  }
   receive(message: ServerMessage) {
     this.onmessage?.({ data: JSON.stringify(message) });
   }
@@ -67,6 +98,7 @@ function start(snapshot?: ConstructorParameters<typeof ThreadStream>[0]['snapsho
     completion: vi.fn(),
     attention: vi.fn(),
     refresh: vi.fn(),
+    readError: vi.fn(),
   };
   stream = new ThreadStream(handlers);
   stream.start();
@@ -91,8 +123,8 @@ describe('HTTP snapshot and incremental replay', () => {
     );
     const { stream, socket, handlers } = start(read);
     stream.select('a');
-    socket.receive({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'epoch', seq: 1 } });
-    socket.receive({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'epoch', seq: 2 } });
+    socket.detail({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'epoch', seq: 1 } });
+    socket.detail({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'epoch', seq: 2 } });
     expect(read).toHaveBeenCalledTimes(1);
     const data = thread('a');
     data.turns = [
@@ -104,8 +136,11 @@ describe('HTTP snapshot and incremental replay', () => {
       },
     ];
     finish({ data, cursor: { serverEpoch: 'epoch', seq: 3 } });
-    await vi.waitFor(() => expect(handlers.thread).toHaveBeenCalledWith(data));
-    expect(JSON.parse(socket.send.mock.lastCall![0])).toEqual({
+    await vi.waitFor(() => expect(socket.subscription('a').after?.seq).toBe(3));
+    expect(handlers.thread).not.toHaveBeenCalled();
+    socket.ready('a', 3);
+    expect(handlers.thread).toHaveBeenCalledWith(data);
+    expect(JSON.parse(socket.send.mock.lastCall![0])).toMatchObject({
       type: 'subscribe',
       incremental: true,
       threadId: 'a',
@@ -127,8 +162,8 @@ describe('HTTP snapshot and incremental replay', () => {
         ],
       },
     };
-    socket.receive(patch);
-    socket.receive(patch);
+    socket.detail(patch);
+    socket.detail(patch);
     expect(stream.cache.get('a')!.data.turns[0]!.items[0]!.text).toBe(
       '正文'.repeat(400) + '，实时末尾',
     );
@@ -148,13 +183,8 @@ describe('HTTP snapshot and incremental replay', () => {
         }),
     );
     stream.select('a');
-    socket.receive({
-      type: 'snapshot',
-      threadId: 'a',
-      cursor: { serverEpoch: 'epoch', seq: 1 },
-      data: thread('a'),
-    });
-    socket.receive({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'epoch', seq: 2 } });
+    socket.snapshot('a', 1);
+    socket.detail({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'epoch', seq: 2 } });
     const later: ServerMessage = {
       type: 'event',
       kind: 'thread',
@@ -162,22 +192,21 @@ describe('HTTP snapshot and incremental replay', () => {
       cursor: { serverEpoch: 'epoch', seq: 5 },
       payload: { ...thread('a'), title: '最新标题' },
     };
-    socket.receive(later);
-    expect(stream.cache.get('a')).toBeUndefined();
+    socket.detail(later);
+    expect(stream.view('a')).toBeUndefined();
     finish({ data: thread('a'), cursor: { serverEpoch: 'epoch', seq: 3 } });
-    await vi.waitFor(() => expect(socket.send).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(socket.subscription('a').after?.seq).toBe(3));
     expect(stream.cache.get('a')!.data.title).toBe('a');
     expect(JSON.parse(socket.send.mock.lastCall![0]).after.seq).toBe(3);
-    expect(handlers.thread).toHaveBeenCalledTimes(2);
-    socket.receive(later);
+    expect(handlers.thread).toHaveBeenCalledTimes(1);
+    socket.detail(later);
+    expect(handlers.thread).toHaveBeenCalledTimes(1);
+    socket.ready('a', 5);
     expect(stream.cache.get('a')!.data.title).toBe('最新标题');
   });
 
-  it('aborts a previous selection and ignores its late snapshot', async () => {
-    let finish!: (value: {
-      data: ThreadView;
-      cursor: { serverEpoch: string; seq: number };
-    }) => void;
+  it('drops late recovery for evicted sessions and bounds subscriptions', async () => {
+    let finish!: (value: { data: ThreadView; cursor: Cursor }) => void;
     let signal: AbortSignal | undefined;
     const { stream, socket, handlers } = start((_id, input) => {
       signal = input;
@@ -186,26 +215,81 @@ describe('HTTP snapshot and incremental replay', () => {
       });
     });
     stream.select('a');
-    socket.receive({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'epoch', seq: 1 } });
+    socket.detail({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'epoch', seq: 1 } });
     stream.select('b');
-    expect(signal!.aborted).toBe(true);
+    expect(signal?.aborted).toBe(false);
+    for (let i = 1; i < MAX_THREAD_SUBSCRIPTIONS; i++) stream.select(`visit-${i}`);
+    expect(signal?.aborted).toBe(true);
     finish({ data: thread('a'), cursor: { serverEpoch: 'epoch', seq: 3 } });
     await Promise.resolve();
     expect(handlers.thread).not.toHaveBeenCalled();
     expect(stream.cache.get('a')).toBeUndefined();
-    expect(JSON.parse(socket.send.mock.lastCall![0]).threadId).toBe('b');
+    expect(JSON.parse(socket.send.mock.calls.at(-2)![0])).toMatchObject({
+      type: 'unsubscribe',
+      threadId: 'a',
+    });
   });
 
-  it('retries a failed HTTP synchronization through the reconnect path', async () => {
-    const { socket, stream, handlers } = start(async () => {
-      throw new Error('read failed');
-    });
+  it('retries a failed detail read on revisit without disrupting the socket', async () => {
+    const read = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('read failed'))
+      .mockResolvedValue({
+        data: thread('a'),
+        cursor: { serverEpoch: 'epoch', seq: 3 },
+      });
+    const { socket, stream, handlers } = start(read);
     stream.select('a');
-    socket.receive({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'epoch', seq: 1 } });
-    await vi.waitFor(() => expect(socket.close).toHaveBeenCalledOnce());
-    expect(handlers.error).toHaveBeenCalledWith('read failed');
-    expect(stream.cache.get('a')).toBeUndefined();
-    expect(handlers.connection).toHaveBeenLastCalledWith('disconnected');
+    socket.detail({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'epoch', seq: 1 } });
+    await vi.waitFor(() => expect(handlers.readError).toHaveBeenCalledWith('a', expect.any(Error)));
+    stream.select('b');
+    stream.select('a');
+    socket.detail({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'epoch', seq: 2 } });
+    await vi.waitFor(() => expect(socket.subscription('a').after?.seq).toBe(3));
+    socket.ready('a', 3);
+    expect(handlers.thread).toHaveBeenCalledWith(thread('a'));
+    expect(socket.close).not.toHaveBeenCalled();
+  });
+
+  it('rejects late reads and retired generations after a gateway epoch change', async () => {
+    let finish!: (value: { data: ThreadView; cursor: Cursor }) => void;
+    const read = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue({
+        data: { ...thread('a'), title: 'new gateway' },
+        cursor: { serverEpoch: 'new', seq: 2 },
+      });
+    const { stream, socket, handlers } = start(read);
+    stream.select('a');
+    socket.snapshot('a', 50);
+    void stream.refresh('a');
+    socket.close();
+    stream.retry();
+    const reopened = FakeSocket.instances.at(-1)!;
+    reopened.open();
+    const old = reopened.subscription('a').subscriptionId;
+    reopened.detail({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'new', seq: 1 } });
+    await vi.waitFor(() => expect(reopened.subscription('a').after?.seq).toBe(2));
+    reopened.detail(
+      {
+        type: 'snapshot',
+        threadId: 'a',
+        data: thread('a'),
+        cursor: { serverEpoch: 'epoch', seq: 100 },
+      },
+      old,
+    );
+    reopened.ready('a', 2, 2, 'new');
+    finish({ data: thread('a'), cursor: { serverEpoch: 'epoch', seq: 100 } });
+    await Promise.resolve();
+    expect(handlers.thread).toHaveBeenCalledTimes(2);
+    expect(stream.view('a')?.title).toBe('new gateway');
   });
 });
 
@@ -273,69 +357,39 @@ describe('workspace overview transport', () => {
     document.dispatchEvent(new Event('resume'));
     expect(handlers.refresh).toHaveBeenCalledTimes(2);
   });
-  it('switches detail subscriptions without reconnecting or turning an overview into a replay cursor', () => {
+  it('retains background detail independently of overview and current selection', () => {
     const { stream, socket, handlers } = start();
-    expect(socket.url).toBe('ws://localhost/ws?overview=1');
-    stream.select('a');
-    expect(JSON.parse(socket.send.mock.lastCall![0])).toEqual({
-      type: 'subscribe',
-      incremental: true,
-      threadId: 'a',
-    });
-    socket.receive({
-      type: 'snapshot',
-      threadId: 'a',
-      cursor: { serverEpoch: 'epoch', seq: 10 },
-      data: thread('a'),
-    });
-    socket.receive({
-      type: 'event',
-      kind: 'threadSummary',
-      threadId: 'b',
-      cursor: { serverEpoch: 'epoch', seq: 11 },
-      payload: toThreadSummary(thread('b')),
-    });
     stream.select('b');
-    expect(JSON.parse(socket.send.mock.lastCall![0])).toEqual({
-      type: 'subscribe',
-      incremental: true,
-      threadId: 'b',
-    });
+    socket.snapshot('b', 1);
     stream.select('a');
-    expect(JSON.parse(socket.send.mock.lastCall![0])).toEqual({
-      type: 'subscribe',
-      incremental: true,
-      threadId: 'a',
-      after: { serverEpoch: 'epoch', seq: 10 },
-    });
-    stream.select(undefined);
-    expect(JSON.parse(socket.send.mock.lastCall![0])).toEqual({ type: 'unsubscribe' });
+    socket.snapshot('a', 2);
     socket.receive({
       type: 'event',
       kind: 'threadSummary',
       threadId: 'b',
-      cursor: { serverEpoch: 'epoch', seq: 12 },
-      payload: toThreadSummary(thread('b')),
+      cursor: { serverEpoch: 'epoch', seq: 3 },
+      payload: toThreadSummary({ ...thread('b'), status: 'completed' }),
     });
-    expect(handlers.summary).toHaveBeenCalledTimes(2);
-    expect(handlers.connection.mock.calls.filter(([state]) => state === 'connected')).toHaveLength(
-      1,
-    );
-    expect(FakeSocket.instances).toHaveLength(1);
+    expect(stream.view('b')?.status).toBe('idle');
+    socket.detail({
+      type: 'event',
+      kind: 'thread',
+      threadId: 'b',
+      cursor: { serverEpoch: 'epoch', seq: 4 },
+      payload: { ...thread('b'), status: 'completed' },
+    });
+    expect(handlers.thread.mock.calls.map(([view]) => view.id)).toEqual(['b', 'a']);
+    stream.select('b');
+    expect(stream.view('b')?.status).toBe('completed');
+    expect(socket.subscriptions()).toHaveLength(2);
+    expect(handlers.summary).toHaveBeenCalledTimes(1);
     expect(socket.close).not.toHaveBeenCalled();
-    expect(handlers.error).not.toHaveBeenCalled();
   });
-
   it('resubscribes after a real disconnect and rejects duplicate summaries independently of details', () => {
     vi.useFakeTimers();
     const { stream, socket, handlers } = start();
     stream.select('a');
-    socket.receive({
-      type: 'snapshot',
-      threadId: 'a',
-      cursor: { serverEpoch: 'epoch', seq: 1 },
-      data: thread('a'),
-    });
+    socket.snapshot('a', 1);
     const overview: ServerMessage = {
       type: 'event',
       kind: 'threadSummary',
@@ -351,7 +405,7 @@ describe('workspace overview transport', () => {
     vi.runOnlyPendingTimers();
     const reconnected = FakeSocket.instances[1]!;
     reconnected.open();
-    expect(JSON.parse(reconnected.send.mock.lastCall![0])).toEqual({
+    expect(JSON.parse(reconnected.send.mock.lastCall![0])).toMatchObject({
       type: 'subscribe',
       incremental: true,
       threadId: 'a',
@@ -360,13 +414,16 @@ describe('workspace overview transport', () => {
     expect(handlers.connection.mock.calls.filter(([state]) => state === 'connected')).toHaveLength(
       2,
     );
-    reconnected.receive({
+    reconnected.detail({
       type: 'event',
       kind: 'thread',
       threadId: 'a',
       cursor: { serverEpoch: 'epoch', seq: 2 },
       payload: thread('a'),
     });
+    expect(stream.view('a')).toBeUndefined();
+    expect(handlers.thread).toHaveBeenCalledTimes(1);
+    reconnected.ready('a', 2);
     expect(stream.cache.get('a')?.cursor.seq).toBe(2);
     expect(handlers.thread).toHaveBeenCalledTimes(2);
   });

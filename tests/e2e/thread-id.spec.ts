@@ -132,22 +132,7 @@ test('late details and clipboard completion never replace the current session or
   const target = await seed(request);
   let release!: () => void;
   const delayed = new Promise<void>((resolve) => (release = resolve));
-  await page.routeWebSocket('**/ws?overview=1', (socket) => {
-    const server = socket.connectToServer();
-    server.onMessage((raw) => {
-      const message = JSON.parse(raw.toString()) as ServerMessage;
-      if (
-        message.type !== 'error' &&
-        message.threadId === delayedId &&
-        (message.type === 'snapshot' ||
-          message.type === 'resync' ||
-          (message.type === 'event' && message.kind === 'threadPatch'))
-      )
-        return;
-      socket.send(raw);
-    });
-  });
-  await page.route(`**/api/threads/${delayedId}`, async (route) => {
+  await page.route(`**/api/threads/${delayedId}/snapshot`, async (route) => {
     await delayed;
     await route.continue();
   });
@@ -174,7 +159,7 @@ test('late details and clipboard completion never replace the current session or
     await page.evaluate(() => Reflect.get(window, 'finishCopy')());
     await expect(info(page).getByRole('status')).toBeEmpty();
     const lateResponse = page.waitForResponse((response) =>
-      response.url().endsWith(`/threads/${delayedId}`),
+      response.url().endsWith(`/threads/${delayedId}/snapshot`),
     );
     release();
     await lateResponse;
@@ -191,15 +176,7 @@ test('late details and clipboard completion never replace the current session or
 test('failed detail loading clears the old ID and disables copying', async ({ page, request }) => {
   const source = await send(page);
   const target = await seed(request);
-  await page.routeWebSocket('**/ws?overview=1', (socket) => {
-    const server = socket.connectToServer();
-    server.onMessage((raw) => {
-      const message = JSON.parse(raw.toString()) as ServerMessage;
-      if (message.type !== 'error' && message.threadId === target) return;
-      socket.send(raw);
-    });
-  });
-  await page.route(`**/api/threads/${target}`, (route) =>
+  await page.route(`**/api/threads/${target}/snapshot`, (route) =>
     route.fulfill({
       status: 503,
       json: { error: { code: 'UNAVAILABLE', message: '测试详情不可用' } },

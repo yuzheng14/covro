@@ -225,7 +225,6 @@ test('restored unselected history subscribes from a fresh snapshot instead of re
   });
   const { id } = await seed(page, request);
   await projectGroup(page).locator('.project-link').click();
-  await expect.poll(() => subscriptions.at(-1)?.type).toBe('unsubscribe');
   for (const archived of [true, false]) {
     const response = await request.post(`/api/threads/${id}/archive`, {
       headers: { Origin: testOrigin },
@@ -235,12 +234,24 @@ test('restored unselected history subscribes from a fresh snapshot instead of re
     if (archived) await expect(row(page, id)).toHaveCount(0);
     else await expect(row(page, id)).toBeVisible();
   }
-  const before = subscriptions.filter((entry) => entry.threadId === id).length;
+  await expect
+    .poll(() =>
+      subscriptions.some((entry) => entry.type === 'unsubscribe' && entry.threadId === id),
+    )
+    .toBe(true);
+  const before = subscriptions.length;
   await row(page, id).locator('.thread-link').click();
   await expect
-    .poll(() => subscriptions.filter((entry) => entry.threadId === id).length)
-    .toBe(before + 1);
-  expect(subscriptions.filter((entry) => entry.threadId === id).at(-1)?.after).toBeUndefined();
+    .poll(() =>
+      subscriptions
+        .slice(before)
+        .find((entry) => entry.type === 'subscribe' && entry.threadId === id),
+    )
+    .toMatchObject({ threadId: id });
+  expect(
+    subscriptions.slice(before).find((entry) => entry.type === 'subscribe' && entry.threadId === id)
+      ?.after,
+  ).toBeUndefined();
   await page.getByRole('textbox', { name: '任务内容', exact: true }).fill('恢复后可以继续工作');
   await expect(page.getByRole('button', { name: '发送任务', exact: true })).toBeEnabled();
 });

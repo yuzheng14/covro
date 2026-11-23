@@ -452,7 +452,7 @@ it('validates unsubscribe and releases detail delivery while keeping overview an
   const threadId = (created.result as { threadId: string }).threadId;
   const ws = await connect(origin, true);
   const invalid = message(ws, (event) => event.type === 'error');
-  ws.send(JSON.stringify({ type: 'unsubscribe', threadId }));
+  ws.send(JSON.stringify({ type: 'unsubscribe', threadId: 42 }));
   expect(await invalid).toMatchObject({ error: { code: 'VALIDATION_FAILED' } });
   const snapshot = message(ws, (event) => event.type === 'snapshot');
   ws.send(JSON.stringify({ type: 'subscribe', threadId }));

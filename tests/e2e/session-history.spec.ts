@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, type Page, type WebSocketRoute, type TestInfo } from '@playwright/test';
 import { confirmCompatibility, controlRuntime } from './helpers';
-import type { ThreadView } from '../../src/shared/types';
+import type { SubscribeMessage, ThreadView } from '../../src/shared/types';
 import { diffPreviewChanges } from '../fixtures/diff-preview';
 
 async function recordMetrics(testInfo: TestInfo, name: string, value: unknown) {
@@ -49,17 +49,40 @@ export const historyPage = (
     };
   }),
 });
+const historySnapshot = (data: ThreadView, seq = 1) => ({
+  data,
+  cursor: { serverEpoch: 'history-stream', seq },
+});
+
 export async function mockHistory(page: Page, full = false, confirm = true) {
   let socketClient: WebSocketRoute;
-  let sequence = 0;
+  const subscriptions = new Map<string, number | undefined>();
+  let sequence = 1;
   let initialRequests = 0;
   await page.routeWebSocket('**/ws?overview=1', (socket) => {
     socketClient = socket;
     const server = socket.connectToServer();
-    server.onMessage((raw) => {
-      const message = JSON.parse(raw.toString());
-      if (message.type !== 'snapshot' && message.type !== 'error' && message.kind !== 'thread')
-        socket.send(raw);
+    socket.onMessage((raw) => {
+      const input = JSON.parse(raw.toString()) as
+        | SubscribeMessage
+        | {
+            type: 'unsubscribe';
+            threadId?: string;
+          };
+      if (input.type !== 'subscribe' || !input.threadId.startsWith('history-')) {
+        server.send(raw);
+        return;
+      }
+      subscriptions.set(input.threadId, input.subscriptionId);
+      socket.send(
+        JSON.stringify({
+          type: input.after ? 'subscribed' : 'resync',
+          threadId: input.threadId,
+          subscriptionId: input.subscriptionId,
+          cursor: input.after ?? historySnapshot(historyPage(0, 0, null)).cursor,
+          ...(input.after ? { threadSeq: input.after.seq } : {}),
+        }),
+      );
     });
   });
   await page.route('**/api/projects/fixture/threads*', (route) =>
@@ -84,14 +107,17 @@ export async function mockHistory(page: Page, full = false, confirm = true) {
       ),
     }),
   );
-  await page.route('**/api/threads/history-*', (route) => {
+  await page.route('**/api/threads/history-*/snapshot', (route) => {
     initialRequests++;
     return route.fulfill({
-      json: historyPage(
-        full ? 0 : 24,
-        full ? 125 : 36,
-        full ? null : '24',
-        route.request().url().endsWith('history-two') ? 'history-two' : 'history-one',
+      json: historySnapshot(
+        historyPage(
+          full ? 0 : 24,
+          full ? 125 : 36,
+          full ? null : '24',
+          route.request().url().includes('history-two') ? 'history-two' : 'history-one',
+        ),
+        sequence,
       ),
     });
   });
@@ -108,8 +134,8 @@ export async function mockHistory(page: Page, full = false, confirm = true) {
         JSON.stringify({
           type: 'snapshot',
           threadId: thread.id,
-          data: thread,
-          cursor: { serverEpoch: 'history-stream', seq: ++sequence },
+          subscriptionId: subscriptions.get(thread.id),
+          ...historySnapshot(thread, ++sequence),
         }),
       ),
   };
@@ -280,12 +306,12 @@ test('reopens and reloads from a cached page while reconciling server correction
     release = resolve;
   });
   let initialRequests = 0;
-  await page.route('**/api/threads/history-one', async (route) => {
+  await page.route('**/api/threads/history-one/snapshot', async (route) => {
     initialRequests++;
     await gate;
     const next = historyPage(24, 37, '24');
     next.turns[11]!.items[1]!.text = '另一台设备已更新这条回复。';
-    await route.fulfill({ json: next });
+    await route.fulfill({ json: historySnapshot(next) });
   });
   const start = Date.now();
   await page.reload();
@@ -312,7 +338,7 @@ test('keeps cached reading available on network failure and drops it after acces
 }, testInfo) => {
   await mockHistory(page);
   await expectCacheSaved(page);
-  await page.route('**/api/threads/history-one', (route) =>
+  await page.route('**/api/threads/history-one/snapshot', (route) =>
     route.fulfill({
       status: 503,
       json: { error: { code: 'UNAVAILABLE', message: '服务暂时不可达' } },
@@ -322,7 +348,7 @@ test('keeps cached reading available on network failure and drops it after acces
   await expect(page.locator('.history-cache-notice')).toContainText('同步失败');
   await expect(page.locator('.turn')).toHaveCount(12);
   await page.screenshot({ path: testInfo.outputPath('cached-offline.png') });
-  await page.route('**/api/threads/history-one', (route) =>
+  await page.route('**/api/threads/history-one/snapshot', (route) =>
     route.fulfill({
       status: 404,
       json: { error: { code: 'THREAD_NOT_FOUND', message: '会话已删除' } },
@@ -459,13 +485,13 @@ test('reads further cached history without network requests after failure, then 
   await expect(page.locator('.turn')).toHaveCount(36);
   await expectCacheSaved(page, 3);
   unavailable = true;
-  await page.route('**/api/threads/history-one', (route) =>
+  await page.route('**/api/threads/history-one/snapshot', (route) =>
     unavailable
       ? route.fulfill({
           status: 503,
           json: { error: { code: 'UNAVAILABLE', message: '服务暂时不可达' } },
         })
-      : route.fulfill({ json: historyPage(24, 36, '24') }),
+      : route.fulfill({ json: historySnapshot(historyPage(24, 36, '24')) }),
   );
   await page.reload();
   await expect(page.locator('.history-cache-notice')).toContainText('同步失败');

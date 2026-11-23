@@ -26,6 +26,7 @@ export class EventHub {
   private readonly listeners = new Set<{ threadId: string; send: Listener }>();
   private readonly runtimeListeners = new Set<Listener>();
   private readonly overviewListeners = new Set<Listener>();
+  private readonly threadSequences = new Map<string, number>();
   private readonly threadPatches = new Map<string, ThreadPatchBuilder>();
 
   constructor(private readonly maxBytes = 16 * 1024 * 1024) {}
@@ -39,13 +40,16 @@ export class EventHub {
     payload: ThreadView | ThreadPatch | SystemInfo | Operation,
     threadId?: string,
   ): void {
+    const detailId = kind === 'threadPatch' || kind === 'thread' ? threadId : undefined;
     const event: BusinessEvent = {
       type: 'event',
       cursor: { serverEpoch: this.serverEpoch, seq: ++this.seq },
       kind,
       payload: structuredClone(payload),
       ...(threadId === undefined ? {} : { threadId }),
+      ...(detailId ? { previousThreadSeq: this.threadSequences.get(detailId) ?? 0 } : {}),
     };
+    if (detailId) this.threadSequences.set(detailId, this.seq);
     const bytes = Buffer.byteLength(JSON.stringify(event));
     this.events.push({ event, bytes });
     this.bytes += bytes;
@@ -136,10 +140,12 @@ export class EventHub {
     after: Cursor | undefined,
     send: Listener,
     incremental = false,
+    signalReplayBoundary = false,
   ): () => void {
+    const threadSeq = this.threadSequences.get(threadId) ?? 0;
     const replayable =
       after?.serverEpoch === this.serverEpoch &&
-      after.seq >= this.discardedThrough &&
+      (after.seq >= this.discardedThrough || (signalReplayBoundary && after.seq >= threadSeq)) &&
       after.seq <= this.seq;
     const queued: ServerMessage[] = [];
     let initializing = true;
@@ -161,6 +167,13 @@ export class EventHub {
           (!event.threadId || event.threadId === threadId)
         )
           this.deliver(send, event);
+      if (signalReplayBoundary)
+        this.deliver(send, {
+          type: 'subscribed',
+          cursor: { serverEpoch: this.serverEpoch, seq: boundary },
+          threadId,
+          threadSeq,
+        });
     } else {
       boundary = this.seq;
       this.deliver(

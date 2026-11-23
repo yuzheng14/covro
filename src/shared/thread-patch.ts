@@ -14,13 +14,21 @@ export interface ThreadPatch {
 
 /** Absolute offsets make a streamed replacement safe after an HTTP snapshot or replay. */
 export function applyThreadPatch(current: ThreadView, patch: ThreadPatch): ThreadView {
+  if (
+    patch.thread.id !== current.id ||
+    (patch.thread.execution && patch.thread.execution.threadId !== current.id)
+  )
+    throw new Error('Mismatched thread patch');
   const turns = new Map(current.turns.map((turn) => [turn.id, turn]));
   for (const update of patch.turns) {
+    if (update.turn.threadId !== current.id) throw new Error('Mismatched turn patch');
     const previous = turns.get(update.turn.id);
     const items = new Map(previous?.items.map((item) => [item.id, item]));
     for (const change of update.items) {
-      if (change.value) items.set(change.id, change.value);
-      else if (change.append) {
+      if (change.value) {
+        if (change.value.id !== change.id) throw new Error('Mismatched item patch');
+        items.set(change.id, change.value);
+      } else if (change.append) {
         const item = items.get(change.id);
         const { field, offset, text } = change.append;
         if (

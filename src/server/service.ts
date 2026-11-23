@@ -1984,14 +1984,24 @@ export class GatewayService {
     after: Cursor | undefined,
     listener: (message: ServerMessage) => void,
     incremental = false,
+    signalReplayBoundary = false,
   ): Promise<() => void> {
-    await this.getThread(threadId);
+    if (signalReplayBoundary) {
+      // Cold and expired cursors use the authorized HTTP snapshot path.
+      if (after?.serverEpoch !== this.events.serverEpoch || !this.projection.get(threadId)) {
+        listener({ type: 'resync', cursor: this.events.cursor(), threadId });
+        return () => {};
+      }
+      const thread = this.projection.get(threadId)!;
+      this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+    } else await this.getThread(threadId);
     return this.events.subscribe(
       threadId,
       () => this.threadView(this.projection.get(threadId)!),
       after,
       listener,
       incremental,
+      signalReplayBoundary,
     );
   }
 

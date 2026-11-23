@@ -329,16 +329,7 @@ export function useWorkspace() {
       )
         return;
       if (projectStore.current.applySummary(summary, cursor)) {
-        const cached = streamRef.current?.cache.get(summary.id)?.data;
-        if (
-          summary.id !== selectedRef.current &&
-          cached &&
-          Boolean(cached.archived) !== Boolean(summary.archived)
-        ) {
-          // An unselected cache can miss the archive detail event, then return to
-          // the same visible state after restore. Never replay that obsolete visit.
-          streamRef.current?.cache.invalidateDetail(summary.id);
-        }
+        streamRef.current?.observe(summary);
         setProjectThreads(projectStore.current.snapshot);
         if (summary.archived && !projectStore.current.archived)
           forgetSelection(summary.id, scopeKey(summary.projectId));
@@ -495,7 +486,7 @@ export function useWorkspace() {
         // Check remembered selections before subscribing: opening an empty draft
         // would otherwise automatically resume it and put it back into history.
         try {
-          loaded = restoring ? await api.threadMetadata(id) : await api.thread(id);
+          loaded = await api.threadMetadata(id);
           if (navigationRevision.current !== revision || detailReadSequence.current !== read)
             return;
           if (project && scopeKey(loaded.projectId) !== project) return;
@@ -536,46 +527,19 @@ export function useWorkspace() {
       selectedRef.current = id;
       selectionsRef.current[project] = id;
       setSelectedId(id);
-      const cached = streamRef.current?.cache.get(id)?.data;
-      // An unselected detail cache may predate an archive/restore overview event.
-      const initial =
-        cached &&
-        scopeKey(cached.projectId) === project &&
-        Boolean(cached.archived) === projectStore.current.archived
-          ? cached
-          : loaded;
+      const stream = streamRef.current;
+      const cached = stream?.view(id);
+      // Archive transitions invalidate previously visited detail independently of sidebar loading.
+      if (cached && Boolean(cached.archived) !== projectStore.current.archived) stream?.forget(id);
+      stream?.select(id, project === UNASSIGNED_SCOPE ? null : project);
+      const initial = stream?.view(id);
       selectedThreadRef.current = initial;
       setThread(initial);
-      // Do not replay pre-archive lifecycle events when explicitly opening archived
-      // history (or a restored conversation). The overview already knows its new state.
-      if (cached && initial !== cached) streamRef.current?.cache.invalidateDetail(id);
-      streamRef.current?.select(id);
+      if (initial) updateThread(initial);
       try {
         localStorage.setItem(`codex-web.selected:${project}`, id);
       } catch {
         /* Preferences are optional. */
-      }
-      try {
-        loaded ??= await api.thread(id);
-        if (
-          selectedRef.current !== id ||
-          projectRef.current !== project ||
-          navigationRevision.current !== revision ||
-          detailReadSequence.current !== read
-        )
-          return;
-        const latest = streamRef.current?.cache.get(id)?.data;
-        updateThread(latest && latest !== cached ? latest : loaded);
-      } catch (problem) {
-        if (
-          selectedRef.current === id &&
-          projectRef.current === project &&
-          navigationRevision.current === revision &&
-          detailReadSequence.current === read
-        ) {
-          if (problem instanceof HttpError) setThreadReadFailure({ id, status: problem.status });
-          report(problem);
-        }
       }
     },
     [activateProject, report, updateThread],
@@ -633,7 +597,7 @@ export function useWorkspace() {
           listReads.current.get(project.id)?.abort();
           projectStore.current.removeProject(project.id);
           void listCacheRef.current?.remove(project.id);
-          streamRef.current?.cache.removeProject(project.id);
+          streamRef.current?.removeProject(project.id);
         }
         setProjectThreads(projectStore.current.snapshot);
       }
@@ -901,7 +865,10 @@ export function useWorkspace() {
                 let checking = threads.get(threadId);
                 if (!checking) {
                   executionChecks.current.set(threadId, Date.now());
-                  checking = api.thread(threadId).then(updateThread);
+                  const stream = streamRef.current;
+                  checking = stream?.isWatching(threadId)
+                    ? Promise.resolve(stream.refresh(threadId))
+                    : api.thread(threadId).then(() => undefined);
                   threads.set(threadId, checking);
                 }
                 // History may confirm the original execution ended. Fetch its updated receipt afterwards.
@@ -926,28 +893,16 @@ export function useWorkspace() {
         if (operationRefresh.current === refreshing) operationRefresh.current = undefined;
       }
     },
-    [applyOperation, report, recordLookupError, updateThread],
+    [applyOperation, report, recordLookupError],
   );
   const refreshThread = useCallback(async () => {
     const id = selectedRef.current;
-    if (!id) return;
+    const stream = streamRef.current;
+    if (!id || !stream) return;
     // A remembered session can be readable from cache before its metadata check recovers.
-    streamRef.current?.select(id);
-    const revision = navigationRevision.current;
-    const read = ++detailReadSequence.current;
-    try {
-      const cached = streamRef.current?.cache.get(id)?.data;
-      const loaded = await api.thread(id);
-      if (revision !== navigationRevision.current || detailReadSequence.current !== read) return;
-      const latest = streamRef.current?.cache.get(id)?.data;
-      updateThread(latest && latest !== cached ? latest : loaded);
-    } catch (problem) {
-      if (revision === navigationRevision.current && detailReadSequence.current === read) {
-        if (problem instanceof HttpError) setThreadReadFailure({ id, status: problem.status });
-        report(problem);
-      }
-    }
-  }, [report, updateThread]);
+    stream.select(id, projectRef.current === UNASSIGNED_SCOPE ? null : projectRef.current);
+    await stream.refresh(id);
+  }, []);
   const loadThreads = useCallback(
     (cursor?: string) => loadProjectThreads(projectRef.current, cursor),
     [loadProjectThreads],
@@ -986,6 +941,10 @@ export function useWorkspace() {
         }
       },
       thread: updateThread,
+      readError: (id, problem) => {
+        if (problem instanceof HttpError) setThreadReadFailure({ id, status: problem.status });
+        report(problem, id);
+      },
       summary: updateSummary,
       completion: (completion) => {
         void notifyCompletion(completion);
@@ -1014,7 +973,11 @@ export function useWorkspace() {
     });
     streamRef.current = stream;
     stream.start();
-    if (selectedRef.current) stream.select(selectedRef.current);
+    if (selectedRef.current)
+      stream.select(
+        selectedRef.current,
+        projectRef.current === UNASSIGNED_SCOPE ? null : projectRef.current,
+      );
     return () => {
       stream.stop();
       streamRef.current = undefined;
@@ -1031,6 +994,7 @@ export function useWorkspace() {
     notifyAttention,
     refreshThread,
     refreshOperations,
+    report,
   ]);
   useEffect(() => {
     if (authRequired) {

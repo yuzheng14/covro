@@ -1,6 +1,8 @@
 import { t } from '../i18n';
 import { api, HttpError } from './api';
 import { applyThreadPatch, type ThreadPatch } from '../../shared/thread-patch';
+import { MAX_THREAD_SUBSCRIPTIONS } from '../../shared/types';
+import { isActive } from '../../shared/run-status';
 import type {
   Cursor,
   Operation,
@@ -29,6 +31,13 @@ export class ProjectionCache {
   get(threadId: string) {
     return this.threads.get(threadId);
   }
+  advance(threadId: string, cursor: Cursor, threadSeq: number) {
+    const entry = this.threads.get(threadId);
+    if (entry?.cursor.serverEpoch !== cursor.serverEpoch || entry.cursor.seq < threadSeq)
+      return false;
+    if (entry.cursor.seq < cursor.seq) this.threads.set(threadId, { ...entry, cursor });
+    return true;
+  }
   invalidateDetail(threadId: string) {
     // Keep overview ordering; only the next detail subscription needs a fresh snapshot.
     this.threads.delete(threadId);
@@ -42,12 +51,13 @@ export class ProjectionCache {
   }
   apply(message: ServerMessage): boolean {
     if (message.type === 'error') return true;
-    if (message.type === 'resync') return true;
+    if (message.type === 'resync' || message.type === 'subscribed') return true;
     // Live signals do not establish or advance any snapshot/replay cursor.
     if (message.type === 'event' && ['turnCompletion', 'attentionRequest'].includes(message.kind))
       return true;
     if (message.type === 'snapshot') {
       const previous = this.threads.get(message.threadId);
+      if (!ownsThread(message.data, message.threadId)) return false;
       if (
         previous?.cursor.serverEpoch === message.cursor.serverEpoch &&
         previous.cursor.seq > message.cursor.seq
@@ -84,6 +94,13 @@ export class ProjectionCache {
         previous.cursor.seq >= message.cursor.seq
       )
         return false;
+      if (
+        message.previousThreadSeq !== undefined &&
+        previous.cursor.seq < message.previousThreadSeq
+      )
+        throw new Error('Missing thread event');
+      if (message.kind === 'thread' && !ownsThread(message.payload as ThreadView, message.threadId))
+        throw new Error('Mismatched thread event');
       this.threads.set(message.threadId, {
         data:
           message.kind === 'threadPatch'
@@ -116,9 +133,18 @@ interface Handlers {
   projects?: (projects: Project[]) => void;
   operation: (operation: Operation) => void;
   error: (message: string) => void;
+  readError?: (threadId: string, problem: unknown) => void;
   completion?: (completion: TurnCompletion) => void;
   attention?: (request: AttentionRequest) => void;
   refresh?: () => void;
+}
+
+function ownsThread(data: ThreadView, id: string) {
+  return (
+    data.id === id &&
+    (!data.execution || data.execution.threadId === id) &&
+    data.turns.every((turn) => turn.threadId === id)
+  );
 }
 
 function isMessage(value: unknown): value is ServerMessage {
@@ -131,10 +157,19 @@ function isMessage(value: unknown): value is ServerMessage {
   if (
     typeof cursor.serverEpoch !== 'string' ||
     typeof cursor.seq !== 'number' ||
-    !Number.isSafeInteger(cursor.seq)
+    !Number.isSafeInteger(cursor.seq) ||
+    cursor.seq < 0
   )
     return false;
   if (m.type === 'resync') return typeof m.threadId === 'string';
+  if (m.type === 'subscribed')
+    return (
+      typeof m.threadId === 'string' &&
+      typeof m.threadSeq === 'number' &&
+      Number.isSafeInteger(m.threadSeq) &&
+      m.threadSeq >= 0 &&
+      m.threadSeq <= cursor.seq
+    );
   const payload = (m.type === 'snapshot' ? m.data : m.payload) as
     Record<string, unknown> | undefined;
   if (!payload || typeof payload !== 'object') return false;
@@ -166,7 +201,7 @@ function isMessage(value: unknown): value is ServerMessage {
   if (m.type === 'snapshot' || m.kind === 'thread')
     return (
       typeof m.threadId === 'string' &&
-      typeof payload.id === 'string' &&
+      payload.id === m.threadId &&
       Array.isArray(payload.turns) &&
       Array.isArray(payload.actions)
     );
@@ -206,15 +241,25 @@ function isMessage(value: unknown): value is ServerMessage {
   return m.type === 'event' && (m.kind === 'runtime' || m.kind === 'operation');
 }
 
+interface Watch {
+  projectId: string | null;
+  subscriptionId?: number;
+  ready: boolean;
+  running: boolean;
+  minimum?: Cursor;
+  read?: { controller: AbortController; promise: Promise<void> };
+}
+
 export class ThreadStream {
   readonly cache = new ProjectionCache();
+  private readonly watches = new Map<string, Watch>();
   private socket?: WebSocket;
   private timer?: ReturnType<typeof setTimeout>;
   private attempt = 0;
   private stopped = true;
   private selected?: string;
   private blocked = false;
-  private syncRead?: AbortController;
+  private nextSubscriptionId = 0;
 
   constructor(private readonly handlers: Handlers) {}
   start() {
@@ -232,8 +277,6 @@ export class ThreadStream {
   }
   stop() {
     this.stopped = true;
-    this.syncRead?.abort();
-    this.syncRead = undefined;
     clearTimeout(this.timer);
     window.removeEventListener('online', this.retry);
     window.removeEventListener('offline', this.offline);
@@ -244,19 +287,75 @@ export class ThreadStream {
       document.removeEventListener('resume', this.resume);
       document.removeEventListener('visibilitychange', this.visible);
     }
-    this.socket?.close();
+    const socket = this.socket;
     this.socket = undefined;
+    socket?.close();
+    this.resetWatches();
   }
-  select(threadId?: string) {
-    if (this.selected === threadId) return;
-    this.syncRead?.abort();
-    this.syncRead = undefined;
+  view(threadId: string) {
+    if (this.watches.get(threadId)?.ready) return this.cache.get(threadId)?.data;
+  }
+  select(threadId?: string, projectId: string | null = null) {
     this.selected = threadId;
-    const cached = threadId ? this.cache.get(threadId) : undefined;
-    if (cached) this.handlers.thread(cached.data);
-    // Replace only the detail subscription. Project summaries continue on the same connection.
-    if (this.socket?.readyState === WebSocket.OPEN) this.subscribe();
-    else this.retry();
+    if (!threadId) return;
+    const current = this.watches.get(threadId);
+    if (current) {
+      // Refresh recency without replacing the working subscription.
+      this.watches.delete(threadId);
+      this.watches.set(threadId, current);
+      this.retryWatch(threadId, current);
+    } else this.watch(threadId, projectId, false);
+    this.retry();
+  }
+  observe(summary: ThreadSummary) {
+    const current = this.watches.get(summary.id);
+    const running = isActive(summary.status);
+    if (current) {
+      current.running ||= running;
+      if (summary.archived && summary.id !== this.selected) this.forget(summary.id);
+      else this.retryWatch(summary.id, current);
+    } else if (running && !summary.archived) this.watch(summary.id, summary.projectId, true);
+  }
+  removeProject(projectId: string) {
+    for (const [id, watch] of this.watches) if (watch.projectId === projectId) this.forget(id);
+    this.cache.removeProject(projectId);
+  }
+  forget(threadId: string) {
+    const watch = this.watches.get(threadId);
+    if (!watch) return;
+    watch.read?.controller.abort();
+    this.watches.delete(threadId);
+    this.cache.invalidateDetail(threadId);
+    if (this.socket?.readyState === WebSocket.OPEN)
+      this.socket.send(JSON.stringify({ type: 'unsubscribe', threadId }));
+  }
+  private retryWatch(threadId: string, watch: Watch) {
+    if (!watch.ready && watch.subscriptionId === undefined && !watch.read)
+      this.subscribe(threadId, watch);
+  }
+  private watch(threadId: string, projectId: string | null, running: boolean) {
+    if (this.watches.size >= MAX_THREAD_SUBSCRIPTIONS) {
+      const candidates = [...this.watches].filter(([id]) => id !== this.selected);
+      const evict =
+        candidates.find(([, watch]) => !watch.running) ??
+        (threadId === this.selected ? candidates[0] : undefined);
+      if (!evict) return;
+      this.forget(evict[0]);
+    }
+    const watch: Watch = { projectId, ready: false, running };
+    this.watches.set(threadId, watch);
+    this.subscribe(threadId, watch);
+  }
+  isWatching(threadId: string) {
+    return this.watches.has(threadId);
+  }
+  refresh(threadId: string) {
+    const watch = this.watches.get(threadId);
+    if (watch && this.socket?.readyState === WebSocket.OPEN) {
+      if (!watch.ready && watch.subscriptionId !== undefined) return watch.read?.promise;
+      return this.readSnapshot(threadId, watch, this.socket, watch.minimum);
+    }
+    this.retry();
   }
   retry = () => {
     if (
@@ -269,9 +368,17 @@ export class ThreadStream {
     clearTimeout(this.timer);
     this.connect();
   };
+  private resetWatches() {
+    for (const watch of this.watches.values()) {
+      watch.ready = false;
+      watch.read?.controller.abort();
+      watch.read = undefined;
+      watch.subscriptionId = undefined;
+      watch.minimum = undefined;
+    }
+  }
   private offline = () => {
-    this.syncRead?.abort();
-    this.syncRead = undefined;
+    this.resetWatches();
     clearTimeout(this.timer);
     const socket = this.socket;
     this.socket = undefined;
@@ -286,50 +393,115 @@ export class ThreadStream {
   private visible = () => {
     if (document.visibilityState === 'visible') this.resume();
   };
-  private subscribe() {
-    const cached = this.selected ? this.cache.get(this.selected) : undefined;
-    this.socket?.send(
-      JSON.stringify(
-        this.selected
-          ? {
-              type: 'subscribe',
-              threadId: this.selected,
-              incremental: true,
-              ...(cached ? { after: cached.cursor } : {}),
-            }
-          : { type: 'unsubscribe' },
-      ),
+  private subscribe(threadId: string, watch: Watch) {
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    const after = this.cache.get(threadId)?.cursor;
+    watch.ready = false;
+    watch.subscriptionId = ++this.nextSubscriptionId;
+    this.socket.send(
+      JSON.stringify({
+        type: 'subscribe',
+        threadId,
+        incremental: true,
+        subscriptionId: watch.subscriptionId,
+        ...(after ? { after } : {}),
+      }),
     );
   }
-  private async synchronize(threadId: string, socket: WebSocket) {
-    if (this.syncRead) return;
+  private publish(threadId: string, watch: Watch) {
+    const data = this.cache.get(threadId)?.data;
+    if (!data) return;
+    const lastTurn = data.turns.at(-1);
+    watch.running =
+      isActive(data.status) ||
+      Boolean(lastTurn && isActive(lastTurn.status)) ||
+      Boolean(data.execution && !data.execution.ended);
+    if (this.selected === threadId) this.handlers.thread(data);
+  }
+  private readSnapshot(threadId: string, watch: Watch, socket: WebSocket, minimum?: Cursor) {
+    if (watch.read) return watch.read.promise;
     const controller = new AbortController();
-    this.syncRead = controller;
-    // A resync can mean a large replacement was omitted. Later patches must not
-    // advance past that gap; keep the displayed view until HTTP + replay recovers it.
-    this.cache.invalidateDetail(threadId);
-    try {
-      const snapshot = await (this.handlers.snapshot ?? api.threadSnapshot)(
-        threadId,
-        controller.signal,
-      );
-      if (controller.signal.aborted || this.socket !== socket || this.selected !== threadId) return;
-      const message = { type: 'snapshot' as const, threadId, ...snapshot };
-      if (!isMessage(message) || snapshot.data.id !== threadId)
-        throw new Error('Invalid thread snapshot');
-      if (this.cache.apply(message)) this.handlers.thread(this.cache.get(threadId)!.data);
-      // Replay everything after the HTTP boundary, including changes during the read.
-      this.subscribe();
-    } catch (problem) {
-      if (controller.signal.aborted || this.socket !== socket || this.selected !== threadId) return;
-      this.handlers.error(problem instanceof Error ? problem.message : String(problem));
-      if (problem instanceof HttpError && problem.authenticationRequired) {
-        this.blocked = true;
-        this.handlers.connection('authenticationRequired');
+    const current = () =>
+      !controller.signal.aborted && this.socket === socket && this.watches.get(threadId) === watch;
+    const promise = (async () => {
+      try {
+        const snapshot = await (this.handlers.snapshot ?? api.threadSnapshot)(
+          threadId,
+          AbortSignal.any([controller.signal, AbortSignal.timeout(35_000)]),
+        );
+        if (!current()) return;
+        const message = { type: 'snapshot' as const, threadId, ...snapshot };
+        if (!isMessage(message) || !ownsThread(snapshot.data, threadId))
+          throw new Error('Invalid thread snapshot');
+        const previous = this.cache.get(threadId);
+        const epoch = minimum?.serverEpoch ?? previous?.cursor.serverEpoch;
+        if (epoch && snapshot.cursor.serverEpoch !== epoch) {
+          socket.close();
+          return;
+        }
+        if (minimum && snapshot.cursor.seq < minimum.seq)
+          throw new Error('Thread snapshot precedes the recovery boundary');
+        if (this.cache.apply(message) && watch.ready) this.publish(threadId, watch);
+        if (!watch.ready) this.subscribe(threadId, watch);
+      } catch (problem) {
+        if (!current()) return;
+        if (problem instanceof HttpError && [401, 403, 404].includes(problem.status))
+          this.forget(threadId);
+        if (this.selected === threadId) this.handlers.readError?.(threadId, problem);
+        if (problem instanceof HttpError && problem.authenticationRequired) {
+          this.blocked = true;
+          socket.close();
+        }
+      } finally {
+        if (watch.read?.controller === controller) watch.read = undefined;
       }
-      socket.close();
-    } finally {
-      if (this.syncRead === controller) this.syncRead = undefined;
+    })();
+    watch.read = { controller, promise };
+    return promise;
+  }
+  private detail(value: ServerMessage, socket: WebSocket) {
+    if (value.threadId === undefined) return;
+    const id = value.threadId;
+    const watch = this.watches.get(id);
+    if (
+      !watch ||
+      value.subscriptionId === undefined ||
+      watch.subscriptionId !== value.subscriptionId
+    )
+      return;
+    if (value.type === 'error') {
+      this.forget(id);
+      if (id === this.selected)
+        this.handlers.readError?.(id, new HttpError(value.status ?? 400, value.error));
+      return;
+    }
+    const recover = () => {
+      watch.ready = false;
+      watch.read?.controller.abort();
+      watch.read = undefined;
+      watch.subscriptionId = undefined;
+      watch.minimum = value.cursor;
+      socket.send(JSON.stringify({ type: 'unsubscribe', threadId: id }));
+      void this.readSnapshot(id, watch, socket, value.cursor);
+    };
+    if (value.type === 'resync') {
+      recover();
+      return;
+    }
+    if (value.type === 'subscribed') {
+      if (!this.cache.advance(id, value.cursor, value.threadSeq)) {
+        recover();
+        return;
+      }
+      watch.ready = true;
+      watch.minimum = undefined;
+      this.publish(id, watch);
+      return;
+    }
+    try {
+      if (this.cache.apply(value) && watch.ready) this.publish(id, watch);
+    } catch {
+      recover();
     }
   }
   private connect() {
@@ -346,8 +518,8 @@ export class ThreadStream {
     socket.onopen = () => {
       if (this.socket !== socket) return socket.close();
       this.attempt = 0;
+      for (const [id, watch] of this.watches) this.subscribe(id, watch);
       this.handlers.connection('connected');
-      if (this.selected) this.subscribe();
     };
     socket.onmessage = (event) => {
       if (this.socket !== socket) return;
@@ -357,53 +529,46 @@ export class ThreadStream {
           this.handlers.error(t('errors:unrecognized_server_message_check_version_compatibility'));
           return;
         }
-        if (value.type === 'resync') {
-          if (value.threadId === this.selected) void this.synchronize(value.threadId, socket);
+        if (
+          value.type === 'snapshot' ||
+          value.type === 'resync' ||
+          value.type === 'subscribed' ||
+          (value.type === 'event' && (value.kind === 'thread' || value.kind === 'threadPatch')) ||
+          (value.type === 'error' && value.subscriptionId !== undefined)
+        ) {
+          this.detail(value, socket);
           return;
         }
+        // Operation receipts retain their selected-detail scope. Background operations
+        // still reconcile through the existing receipt lookup.
+        if (
+          value.type === 'event' &&
+          value.kind === 'operation' &&
+          (!this.selected || (value.threadId && value.threadId !== this.selected))
+        )
+          return;
         if (!this.cache.apply(value)) return;
-        if (value.type === 'error') {
-          this.handlers.error(value.error.message);
-          return;
-        }
-        if (value.type === 'snapshot' && value.threadId === this.selected)
-          this.handlers.thread(value.data);
-        if (value.type === 'event') {
-          if (value.kind === 'turnCompletion')
-            this.handlers.completion?.(value.payload as TurnCompletion);
-          if (value.kind === 'attentionRequest')
-            this.handlers.attention?.(value.payload as AttentionRequest);
-          if (value.kind === 'threadSummary')
-            this.handlers.summary(value.payload as ThreadSummary, value.cursor);
-          if (
-            (value.kind === 'thread' || value.kind === 'threadPatch') &&
-            value.threadId === this.selected
-          )
-            this.handlers.thread(this.cache.get(value.threadId!)!.data);
-          if (value.kind === 'runtime') this.handlers.system(value.payload as SystemInfo);
-          if (value.kind === 'projects') this.handlers.projects?.(value.payload as Project[]);
-          if (value.kind === 'operation') this.handlers.operation(value.payload as Operation);
-        }
+        if (value.type === 'error') this.handlers.error(value.error.message);
+        if (value.type !== 'event') return;
+        if (value.kind === 'turnCompletion')
+          this.handlers.completion?.(value.payload as TurnCompletion);
+        if (value.kind === 'attentionRequest')
+          this.handlers.attention?.(value.payload as AttentionRequest);
+        if (value.kind === 'threadSummary')
+          this.handlers.summary(value.payload as ThreadSummary, value.cursor);
+        if (value.kind === 'runtime') this.handlers.system(value.payload as SystemInfo);
+        if (value.kind === 'projects') this.handlers.projects?.(value.payload as Project[]);
+        if (value.kind === 'operation') this.handlers.operation(value.payload as Operation);
       } catch {
         this.handlers.error(t('errors:could_not_parse_a_live_message_refresh_the'));
-        if (this.selected) void this.synchronize(this.selected, socket);
+        socket.close();
       }
     };
     socket.onclose = (event) => {
       if (this.stopped || this.socket !== socket) return;
       this.socket = undefined;
-      this.syncRead?.abort();
-      this.syncRead = undefined;
-      if (this.blocked) {
-        this.handlers.connection('authenticationRequired');
-        return;
-      }
-      if (
-        event.code === 4001 ||
-        event.code === 4401 ||
-        event.code === 4403 ||
-        event.code === 1008
-      ) {
+      this.resetWatches();
+      if (this.blocked || [4001, 4401, 4403, 1008].includes(event.code)) {
         this.blocked = true;
         this.handlers.connection('authenticationRequired');
         return;

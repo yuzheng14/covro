@@ -11,8 +11,8 @@ import type {
   TurnErrorMetadata,
 } from '../shared/types.js';
 
-export const isActive = (status: RunStatus): boolean =>
-  status === 'running' || status === 'waitingApproval' || status === 'waitingInput';
+import { isActive } from '../shared/run-status.js';
+export { isActive };
 export const isTerminal = (status: RunStatus): boolean =>
   status === 'completed' || status === 'failed' || status === 'interrupted';
 

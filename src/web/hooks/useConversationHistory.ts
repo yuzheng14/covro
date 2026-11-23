@@ -161,7 +161,10 @@ export function useConversationHistory(
     cached: valid && state.cached,
     loading: valid && state.loading,
     error: valid ? state.error : undefined,
-    thread: valid ? state.thread : undefined,
+    // Render the current projection on the same commit as a selection change.
+    thread: forbidden
+      ? undefined
+      : ((valid ? state.thread : undefined) ?? (thread?.id === selectedId ? thread : undefined)),
     loadOlder,
     loadCachedOlder,
     getHistoryCursor,

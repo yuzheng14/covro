@@ -563,10 +563,13 @@ export interface Cursor {
   serverEpoch: string;
   seq: number;
 }
+export const MAX_THREAD_SUBSCRIPTIONS = 8;
+
 export interface SubscribeMessage {
   type: 'subscribe';
   threadId: string;
   incremental?: boolean;
+  subscriptionId?: number;
   after?: Cursor;
 }
 /** Live-only completion metadata; never replayed from conversation history. */
@@ -589,12 +592,14 @@ export interface AttentionRequest {
   kind: 'answer' | 'approval';
   target: AttentionTarget;
 }
-export type ServerMessage =
+export type ServerMessage = { subscriptionId?: number } & (
   | { type: 'snapshot'; cursor: Cursor; threadId: string; data: ThreadView }
   | { type: 'resync'; cursor: Cursor; threadId: string }
+  | { type: 'subscribed'; cursor: Cursor; threadId: string; threadSeq: number }
   | {
       type: 'event';
       cursor: Cursor;
+      previousThreadSeq?: number;
       threadId?: string;
       kind:
         | 'thread'
@@ -615,7 +620,8 @@ export type ServerMessage =
         | TurnCompletion
         | AttentionRequest;
     }
-  | { type: 'error'; error: ApiError };
+  | { type: 'error'; threadId?: string; status?: number; error: ApiError }
+);
 
 export interface TextFile {
   path: string;

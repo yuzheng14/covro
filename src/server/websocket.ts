@@ -5,7 +5,7 @@ import type { WSEvents, WSContext } from 'hono/ws';
 import type { WebSocketLike } from '@hono/node-server';
 import type { WebSocketServer, WebSocket } from 'ws';
 import { socketMessageSchema } from '../shared/validation.js';
-import type { ServerMessage, ThreadView } from '../shared/types.js';
+import { MAX_THREAD_SUBSCRIPTIONS, type ServerMessage, type ThreadView } from '../shared/types.js';
 import { AppError } from '../shared/errors.js';
 import type { GatewayService } from './service.js';
 import type { AppConfig } from './config.js';
@@ -63,7 +63,12 @@ export function sendBounded(
     });
     sendBounded(
       socket,
-      { type: 'resync', threadId: message.threadId!, cursor: message.cursor },
+      {
+        type: 'resync',
+        threadId: message.threadId!,
+        cursor: message.cursor,
+        subscriptionId: message.subscriptionId,
+      },
       limit,
       logger,
     );
@@ -89,10 +94,16 @@ export function socketHandlers(
   logger: Logger = nullLogger,
 ): WSEvents<WebSocketLike> {
   logger = logger.child({ ...logContext(), connectionId: crypto.randomUUID() });
-  let unsubscribe: (() => void) | undefined;
+  const subscriptions = new Map<string, { stop?: () => void }>();
+  const remove = (id: string) => {
+    subscriptions.get(id)?.stop?.();
+    subscriptions.delete(id);
+  };
+  const clear = () => {
+    for (const id of subscriptions.keys()) remove(id);
+  };
   let stopRuntime: (() => void) | undefined;
   let stopOverview: (() => void) | undefined;
-  let generation = 0;
   let expiry: ReturnType<typeof setTimeout> | undefined;
   const send = (ws: WSContext<WebSocketLike>, message: ServerMessage) => {
     const raw = ws.raw as WebSocket | undefined;
@@ -120,30 +131,53 @@ export function socketHandlers(
         );
     },
     async onMessage(event, ws) {
-      const current = ++generation;
-      unsubscribe?.();
-      unsubscribe = undefined;
-      const deliver = (message: ServerMessage) => {
-        if (current === generation && !(message.type === 'event' && message.kind === 'runtime'))
-          send(ws, message);
-      };
+      let scoped: { threadId: string; subscriptionId: number } | undefined;
+      let key: string | undefined;
+      let slot: { stop?: () => void } | undefined;
       try {
         if (typeof event.data !== 'string' || Buffer.byteLength(event.data) > 8192)
           throw new AppError('VALIDATION_FAILED', 'Invalid subscription');
         const input = socketMessageSchema.parse(JSON.parse(event.data));
-        if (input.type === 'unsubscribe') return;
+        if (input.type === 'unsubscribe') {
+          if (input.threadId) remove(input.threadId);
+          else clear();
+          return;
+        }
+        if (input.subscriptionId !== undefined)
+          scoped = { threadId: input.threadId, subscriptionId: input.subscriptionId };
+        else clear(); // Preserve the legacy single-selection protocol.
+        key = scoped ? input.threadId : '';
+        remove(key);
+        if (subscriptions.size >= MAX_THREAD_SUBSCRIPTIONS)
+          throw new AppError('VALIDATION_FAILED', 'Too many thread subscriptions');
+        slot = {};
+        subscriptions.set(key, slot);
         const stop = await service.subscribe(
           input.threadId,
           input.after,
-          deliver,
-          input.incremental,
+          (message) => {
+            if (subscriptions.get(key!) !== slot) return;
+            if (message.type === 'event' && message.kind === 'runtime') return;
+            send(ws, scoped ? { ...message, subscriptionId: scoped.subscriptionId } : message);
+          },
+          scoped ? true : input.incremental,
+          Boolean(scoped),
         );
-        if (current !== generation || ws.readyState !== 1) stop();
-        else unsubscribe = stop;
+        if (subscriptions.get(key) !== slot || ws.readyState !== 1) stop();
+        else slot.stop = stop;
       } catch (error) {
-        logger.warn('websocket.subscription_failed', errorFields(error));
-        deliver({
+        if (slot && key !== undefined) {
+          if (subscriptions.get(key) !== slot) return;
+          remove(key);
+        }
+        logger.warn('websocket.subscription_failed', {
+          ...errorFields(error),
+          threadId: scoped?.threadId,
+        });
+        send(ws, {
           type: 'error',
+          ...scoped,
+          ...(scoped ? { status: error instanceof AppError ? error.status : 400 } : {}),
           error:
             error instanceof AppError
               ? error.toJSON()
@@ -153,16 +187,14 @@ export function socketHandlers(
     },
     onClose() {
       logger.debug('websocket.disconnected');
-      generation++;
-      unsubscribe?.();
+      clear();
       stopRuntime?.();
       stopOverview?.();
       clearTimeout(expiry);
     },
     onError() {
       logger.warn('websocket.failed');
-      generation++;
-      unsubscribe?.();
+      clear();
       stopRuntime?.();
       stopOverview?.();
       clearTimeout(expiry);
