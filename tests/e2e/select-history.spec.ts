@@ -13,6 +13,8 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     await page.goto('/');
     await confirmCompatibility(page);
+    if (viewport.name === 'mobile')
+      await page.getByRole('button', { name: '更多操作', exact: true }).click();
     await page.getByRole('button', { name: '打开 Shell 面板', exact: true }).click();
     const panel = page.getByRole('region', { name: 'Shell 面板' });
     const history = panel.getByRole('combobox', { name: '近期 Shell 命令', exact: true });

@@ -436,7 +436,6 @@ test('independent clients reconcile cancellation after reconnect and a real isol
   const peerContext = await browser.newContext({ locale: 'zh-CN' });
   const peer = await peerContext.newPage();
   await peer.goto(origin);
-  await peer.locator('.topbar-more').click();
   await peer.getByRole('button', { name: '后台任务', exact: true }).click();
   await peer
     .getByRole('dialog', { name: '后台任务', exact: true })
