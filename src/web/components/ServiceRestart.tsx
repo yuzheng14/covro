@@ -36,7 +36,12 @@ export function ServiceRestartControl({
           : t('settings:restart_description')}
       </p>
       {text && (
-        <div className="gateway-status" role="status" data-pending={restart.active}>
+        <div
+          className="gateway-status"
+          role="status"
+          data-pending={restart.active}
+          data-failed={status?.run?.phase === 'failed' || restart.unreachable}
+        >
           <strong>{text}</strong>
           {waiting && blockers.length > 0 && (
             <span>
@@ -106,7 +111,12 @@ export function ServiceRestartNotice({
 }) {
   if (!restart.showInWorkspace) return null;
   return (
-    <div className="connection-banner" role="status">
+    <div
+      className="connection-banner service-restart-notice"
+      role="status"
+      data-failed={restart.status?.run?.phase === 'failed' || restart.unreachable}
+      data-recovered={restart.status?.run?.phase === 'succeeded' && connected}
+    >
       <span>{statusText(restart, connected)}</span>
       <Button variant="ghost" size="sm" onClick={onOpen}>
         {t('common:service_settings')}

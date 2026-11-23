@@ -744,6 +744,15 @@ svg {
   color: #795d20;
   background: #faf2dc;
 }
+.service-restart .gateway-status[data-failed='true'],
+.service-restart-notice[data-failed='true'] {
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 8%, transparent);
+}
+.service-restart-notice[data-recovered='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 .gateway-tools {
   display: flex;
   flex-wrap: wrap;
