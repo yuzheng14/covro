@@ -2,6 +2,7 @@ import { npmPackageName } from '../shared/package.js';
 import { rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { UpdateRun } from '../shared/updates.js';
+import { confirmRestart, restartService } from './service-restart.js';
 
 export interface TransactionPaths {
   root: string;
@@ -13,13 +14,13 @@ export interface TransactionPaths {
   config: string;
 }
 export interface UpdateEffects {
-  waitForIdle(): Promise<void>;
+  prepare(): Promise<boolean>;
   beforeStop?(): Promise<void>;
   backup(): Promise<void>;
   restore(): Promise<void>;
   stop(): Promise<void>;
   start(candidate: boolean): Promise<void>;
-  verify(): Promise<void>;
+  verify(): Promise<boolean>;
   commit(): Promise<void>;
   hasCommitted?(): Promise<boolean>;
   resume?(): Promise<void>;
@@ -39,24 +40,37 @@ export async function activateUpdate(
   let committed = false;
   try {
     await effects.phase('waiting', '候选包已准备好，等待所有任务、审批与待核对操作结束');
-    await effects.waitForIdle();
-    await effects.beforeStop?.();
-    await effects.phase('stopping', '已关闭新任务入口，正在停止旧服务并备份数据');
-    // stop may fail after the process has already exited; recovery must restart the old service.
-    stopped = true;
-    await effects.stop();
-    await effects.backup();
-    backedUp = true;
-    if (!reuseTarget) {
-      await rename(paths.root, paths.previous);
-      moved = true;
-      await rename(paths.candidate, paths.root);
-    }
-    await effects.switchLaunch?.();
-    await effects.phase('verifying', '正在启动新版、迁移数据库并验证；业务写入保持暂停');
-    await effects.start(true);
-    await effects.verify();
-    await effects.commit();
+    await restartService(
+      {
+        prepare: effects.prepare,
+        stop: async () => {
+          await effects.beforeStop?.();
+          await effects.phase('stopping', '已关闭新任务入口，正在停止旧服务并备份数据');
+          // Stop can fail after the process exits. Rollback must still start the old service.
+          stopped = true;
+          await effects.stop();
+        },
+        start: async () => {
+          await effects.backup();
+          backedUp = true;
+          if (!reuseTarget) {
+            await rename(paths.root, paths.previous);
+            moved = true;
+            await rename(paths.candidate, paths.root);
+          }
+          await effects.switchLaunch?.();
+          await effects.phase('verifying', '正在启动新版、迁移数据库并验证；业务写入保持暂停');
+          await effects.start(true);
+        },
+        confirm: () =>
+          confirmRestart(effects.verify, effects.commit, {
+            interval: 250,
+            deadline: Date.now() + 60_000,
+            timeout: () => new Error('新版服务或 Codex 连接未就绪，拒绝激活'),
+          }),
+      },
+      { interval: 2_000 },
+    );
     committed = true;
     // The new gateway persists the commit before admitting requests. Never restore its data later.
     return;

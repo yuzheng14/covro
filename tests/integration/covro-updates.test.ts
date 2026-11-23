@@ -124,7 +124,7 @@ async function fixture() {
   });
   const phases: string[] = [];
   const effects: UpdateEffects = {
-    waitForIdle: vi.fn(async () => {}),
+    prepare: vi.fn(async () => true),
     backup: async () => {
       await backups.create({ id: 'backup', trigger: 'preUpgrade' });
     },
@@ -133,7 +133,7 @@ async function fixture() {
     },
     stop: vi.fn(async () => {}),
     start: vi.fn(async () => {}),
-    verify: vi.fn(async () => {}),
+    verify: vi.fn(async () => true),
     commit: vi.fn(async () => {}),
     phase: async (phase) => {
       phases.push(phase);

@@ -2,7 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import lockfile from 'proper-lockfile';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+import { restartService } from '../../src/updates/service-restart.js';
 import { acquireLifecycle } from '../../src/cli/background.js';
 import { paths } from '../../src/cli/paths.js';
 import { acquireInstanceLock } from '../../src/server/instance-lock.js';
@@ -37,3 +38,19 @@ it.each(['failed preflight', 'successful handoff'])(
     }
   },
 );
+
+it('leaves the service running when a queued restart is cancelled during the idle probe', async () => {
+  const abort = new AbortController();
+  const stop = vi.fn(async () => {});
+  const start = vi.fn(async () => {});
+  const prepare = async () => {
+    abort.abort();
+    return true;
+  };
+
+  await expect(
+    restartService({ prepare, stop, start }, { interval: 0, signal: abort.signal }),
+  ).rejects.toMatchObject({ name: 'AbortError' });
+  expect(stop).not.toHaveBeenCalled();
+  expect(start).not.toHaveBeenCalled();
+});

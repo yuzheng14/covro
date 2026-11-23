@@ -19,6 +19,7 @@ import {
 import { readJson, saveJson } from '../updates/files.js';
 import type { UpdateManager } from '../updates/manager.js';
 import { verifyRuntimeExecutable } from '../updates/runtime.js';
+import { confirmRestart, restartService } from '../updates/service-restart.js';
 import { acquireLifecycle } from './background.js';
 import { restartFile } from './control.js';
 import { packageInfo, packageRoot, type CovroPaths } from './paths.js';
@@ -27,9 +28,18 @@ import { runningRuntime } from './runtime.js';
 const waitLimit = 30 * 60_000;
 export const restartHandoffEnv = 'COVRO_INTERNAL_RESTART_ID';
 
+type Handoff = { identity: string; epoch: string; pid: number };
+type RestartFailure = NonNullable<RestartRun['failure']>;
 interface RestartRecord {
   run: RestartRun;
-  handoff?: { identity: string; epoch: string; pid: number };
+  handoff?: Handoff;
+}
+interface RestartContext {
+  config: AppConfig;
+  identity: string;
+  service: GatewayService;
+  updates: UpdateManager;
+  shutdown: () => Promise<void>;
 }
 
 async function instanceIdentity(config: AppConfig) {
@@ -48,12 +58,11 @@ async function instanceIdentity(config: AppConfig) {
 
 export class ServiceRestart implements RestartController {
   private record?: RestartRecord;
-  private service?: GatewayService;
-  private maintenanceBusy = false;
-  private nativeBlockers: RestartBlocker[] = [];
-  private stopped = false;
+  private context?: RestartContext;
+  private controller?: AbortController;
+  private blockers: RestartBlocker[] = [];
+  private closed = false;
   committing = false;
-  private timer?: ReturnType<typeof setTimeout>;
   private mutations: Promise<unknown> = Promise.resolve();
   readonly supported =
     ['darwin', 'linux'].includes(process.platform) && typeof process.execve === 'function';
@@ -88,56 +97,46 @@ export class ServiceRestart implements RestartController {
     shutdown: () => Promise<void>,
     recoveredEpoch?: string,
   ) {
-    this.service = service;
-    const identity = await instanceIdentity(config);
-    if (recoveredEpoch) {
-      // The private control socket and HTTP listener already belong to the new daemon.
-      await this.save({ run: { ...this.record!.run, phase: 'verifying' } });
-    }
-    const poll = async () => {
-      const run = this.record?.run;
-      if (this.stopped || !restartActive(run)) return;
-      if (run!.phase === 'verifying') {
-        const system = service.getSystem();
-        if (system.ready && system.codexEpoch !== recoveredEpoch)
-          await this.save({ run: { ...run!, phase: 'succeeded' } });
-        else if (Date.now() >= run!.recoveryDeadline!) await this.fail('codex');
-      } else if (run!.phase === 'waiting') {
-        if (Date.now() > run!.createdAt + waitLimit) await this.fail('timedOut');
-        else if (!service.restartBlockers().length)
-          await this.tryRestart(config, identity, service, updates, shutdown);
-      }
-    };
-    const schedule = () => {
-      if (this.stopped) return;
-      this.timer = setTimeout(() => {
-        void this.serialize(poll)
-          .catch((error: unknown) => this.logger.error('restart.poll_failed', errorFields(error)))
-          .finally(schedule);
-      }, 500);
-      this.timer.unref();
-    };
-    schedule();
+    this.context = { config, identity: await instanceIdentity(config), service, updates, shutdown };
+    const run = this.record?.run;
+    if (run && recoveredEpoch) {
+      await this.save({ ...run, phase: 'verifying' });
+      const signal = (this.controller = new AbortController()).signal;
+      this.background(
+        confirmRestart(
+          async () => {
+            const system = service.getSystem();
+            return system.ready && system.codexEpoch !== recoveredEpoch;
+          },
+          () => this.save({ ...run, phase: 'succeeded' }),
+          { interval: 500, deadline: run.recoveryDeadline, signal },
+        ).catch((error: unknown) => {
+          if (!signal.aborted) return this.fail('codex', error);
+        }),
+      );
+    } else if (run?.phase === 'waiting') this.launch(run);
   }
 
   close() {
-    this.stopped = true;
-    clearTimeout(this.timer);
+    this.closed = true;
+    this.controller?.abort();
   }
 
   status() {
-    const localBlockers = this.stopped ? [] : (this.service?.restartBlockers() ?? []);
-    const blockers = [...new Set([...localBlockers, ...this.nativeBlockers])];
-    if (this.maintenanceBusy && !blockers.includes('maintenance')) blockers.push('maintenance');
-    return { supported: this.supported, run: this.record?.run, blockers };
+    const local = this.closed ? [] : (this.context?.service.restartBlockers() ?? []);
+    return {
+      supported: this.supported,
+      run: this.record?.run,
+      blockers: [...new Set([...local, ...this.blockers])],
+    };
   }
 
   start(input: RestartRequest) {
     return this.serialize(async () => {
-      if (this.stopped) throw new AppError('GATEWAY_STOPPING', 'Covro is stopping', 503);
+      if (this.closed) throw new AppError('GATEWAY_STOPPING', 'Covro is stopping', 503);
       const latest = this.record?.run;
       // The observed receipt fences requests delayed across cancellation or a completed restart.
-      if (latest && (restartActive(latest) || input.afterId !== latest.id))
+      if (latest && (this.committing || restartActive(latest) || input.afterId !== latest.id))
         return { restartId: latest.id };
       if (!latest && input.afterId !== null)
         throw new AppError(
@@ -145,23 +144,29 @@ export class ServiceRestart implements RestartController {
           'Restart status changed; reload it and try again',
           409,
         );
-      await this.save({
-        run: { id: input.clientOperationId, phase: 'waiting', createdAt: Date.now() },
-      });
-      return { restartId: input.clientOperationId };
+      const run: RestartRun = {
+        id: input.clientOperationId,
+        phase: 'waiting',
+        createdAt: Date.now(),
+      };
+      await this.save(run);
+      this.launch(run);
+      return { restartId: run.id };
     });
   }
 
   cancel(id: string) {
     return this.serialize(async () => {
       const run = this.record?.run;
-      if (run?.id === id && run.phase === 'waiting')
-        await this.save({ run: { ...run, phase: 'cancelled' } });
+      if (run?.id === id && run.phase === 'waiting' && !this.committing) {
+        await this.save({ ...run, phase: 'cancelled' });
+        this.controller?.abort();
+      }
       return this.status();
     });
   }
 
-  async fail(failure: NonNullable<RestartRun['failure']>, error?: unknown) {
+  async fail(failure: RestartFailure, error?: unknown) {
     const run = this.record?.run;
     if (!run) return;
     this.logger.warn('restart.failed', {
@@ -169,112 +174,131 @@ export class ServiceRestart implements RestartController {
       stage: failure,
       ...errorFields(error),
     });
-    await this.save({ run: { ...run, phase: 'failed', failure } });
+    await this.save({ ...run, phase: 'failed', failure });
   }
 
-  private async tryRestart(
-    config: AppConfig,
-    identity: string,
-    service: GatewayService,
-    updates: UpdateManager,
-    shutdown: () => Promise<void>,
+  private launch(run: RestartRun) {
+    if (!this.context) return;
+    const signal = (this.controller = new AbortController()).signal;
+    this.background(this.perform(run, this.context, signal));
+  }
+
+  private background(task: Promise<void>) {
+    void task.catch((error: unknown) =>
+      this.logger.error('restart.record_failed', errorFields(error)),
+    );
+  }
+
+  private async perform(
+    run: RestartRun,
+    { config, identity, service, updates, shutdown }: RestartContext,
+    signal: AbortSignal,
   ) {
     const releases: (() => Promise<void>)[] = [];
-    let gated = false;
-    let phase: NonNullable<RestartRun['failure']> = 'launch';
-    let id: string | undefined;
-    try {
-      try {
-        const releaseUpdate = await updates.reserveServiceRestart();
-        if (releaseUpdate) releases.push(releaseUpdate);
-        releases.push(await acquireMaintenanceLock(config.dataDir));
-        releases.push(await acquireLifecycle(this.location, false));
-      } catch (error) {
-        if (
-          (error as NodeJS.ErrnoException).code !== 'ELOCKED' &&
-          !(error instanceof AppError && error.code === 'MAINTENANCE_BUSY')
-        )
-          throw error;
-        this.maintenanceBusy = true;
-        return;
-      }
-      this.maintenanceBusy = false;
-      const runtime = runningRuntime();
-      await access(runtime.entry, constants.R_OK);
-      await verifyRuntimeExecutable(runtime);
-      const installed = await readJson<typeof packageInfo>(join(packageRoot, 'package.json'));
-      if (installed?.name !== packageInfo.name || installed.version !== packageInfo.version)
-        throw new Error('Covro package on disk changed');
-      phase = 'config';
-      const next = await loadConfig({ configPath: this.location.config, development: false });
-      phase = 'identity';
-      await this.assertConfig(next, identity);
-      phase = 'activity';
-      this.nativeBlockers = await service.nativeRestartBlockers();
-
-      if (this.nativeBlockers.length) return;
-      if (this.stopped || service.restartBlockers(true).length) return;
-      gated = true;
-      this.committing = true;
-      phase = 'storage';
-      const run = this.record!.run;
-      const handoff = { identity, epoch: service.getSystem().codexEpoch, pid: process.pid };
-      await this.save({
-        run: { ...run, phase: 'restarting', recoveryDeadline: Date.now() + restartRecoveryMs },
-        handoff,
-      });
-      if (this.stopped) {
-        await this.fail('interrupted');
-        return;
-      }
-      phase = 'shutdown';
-      this.close();
-      await shutdown();
-      id = run.id;
-    } catch (error) {
-      await this.fail(phase, error);
-    } finally {
-      for (const release of releases.reverse()) {
-        await release().catch((error: unknown) =>
+    const release = async () => {
+      for (const unlock of releases.splice(0).reverse())
+        await unlock().catch((error: unknown) =>
           this.logger.warn('restart.lock_release_failed', errorFields(error)),
         );
+    };
+    let stage: RestartFailure = 'launch';
+    let stopped = false;
+    let gated = false;
+    const prepare = async () => {
+      signal.throwIfAborted();
+      if (service.restartBlockers().length) return false;
+      stage = 'launch';
+      try {
+        const updateLock = await updates.reserveServiceRestart();
+        if (updateLock) releases.push(updateLock);
+        releases.push(await acquireMaintenanceLock(config.dataDir));
+        releases.push(await acquireLifecycle(this.location, false));
+        this.blockers = [];
+        const runtime = runningRuntime();
+        await access(runtime.entry, constants.R_OK);
+        await verifyRuntimeExecutable(runtime);
+        const installed = await readJson<typeof packageInfo>(join(packageRoot, 'package.json'));
+        if (installed?.name !== packageInfo.name || installed.version !== packageInfo.version)
+          throw new Error('Covro package on disk changed');
+        stage = 'config';
+        const next = await loadConfig({ configPath: this.location.config, development: false });
+        stage = 'identity';
+        await this.assertConfig(next, identity);
+        stage = 'activity';
+        this.blockers = await service.nativeRestartBlockers();
+        signal.throwIfAborted();
+        gated = !this.blockers.length && !service.restartBlockers(true).length;
+        this.committing = gated;
+        return gated;
+      } catch (error) {
+        if (
+          stage !== 'launch' ||
+          !['ELOCKED', 'MAINTENANCE_BUSY'].includes((error as NodeJS.ErrnoException).code ?? '')
+        )
+          throw error;
+        this.blockers = ['maintenance'];
+        return false;
+      } finally {
+        if (!gated) await release();
       }
-      if (!this.stopped) {
-        this.committing = false;
-        if (gated) service.setMaintenance(false, 'restart');
-      }
-    }
-    if (!id) {
-      if (this.stopped && gated) process.exitCode = 1;
-      return;
-    }
+    };
     try {
-      // The same launchd/systemd job or foreground process retains its PID, cwd, and environment.
-      process.execve!(
-        process.execPath,
-        [process.execPath, ...process.execArgv, ...process.argv.slice(1)],
+      await restartService(
         {
-          ...process.env,
-          [restartHandoffEnv]: id,
+          prepare: () => this.serialize(prepare),
+          stop: async () => {
+            stage = 'storage';
+            await this.save(
+              { ...run, phase: 'restarting', recoveryDeadline: Date.now() + restartRecoveryMs },
+              { identity, epoch: service.getSystem().codexEpoch, pid: process.pid },
+            );
+            stage = 'interrupted';
+            signal.throwIfAborted();
+            stage = 'shutdown';
+            stopped = true;
+            await shutdown();
+          },
+          start: async () => {
+            await release();
+            stage = 'launch';
+            // Replace the image under the same foreground process or service manager.
+            process.execve!(
+              process.execPath,
+              [process.execPath, ...process.execArgv, ...process.argv.slice(1)],
+              { ...process.env, [restartHandoffEnv]: run.id },
+            );
+          },
+        },
+        {
+          interval: 500,
+          deadline: run.createdAt + waitLimit,
+          signal,
+          timeout: () => new AppError('RESTART_WAIT_TIMEOUT', 'Covro did not become idle'),
         },
       );
     } catch (error) {
-      console.error('Covro could not reload its process; check covro status and covro logs.');
-      await this.fail('launch', error);
-      process.exitCode = 1;
+      await this.serialize(async () => {
+        if (signal.aborted && !gated) return;
+        if (stopped) process.exitCode = 1;
+        const timedOut = error instanceof AppError && error.code === 'RESTART_WAIT_TIMEOUT';
+        await this.fail(timedOut ? 'timedOut' : stage, error);
+      });
+    } finally {
+      await release();
+      if (gated) {
+        if (!this.closed) service.setMaintenance(false, 'restart');
+        this.committing = false;
+      }
     }
   }
 
-  private async save(record: RestartRecord) {
+  private async save(run: RestartRun, handoff?: Handoff) {
+    const record = { run, handoff };
     await saveJson(restartFile(this.location), record);
     this.record = record;
-    if (record.run.phase !== 'waiting') {
-      this.maintenanceBusy = false;
-      this.nativeBlockers = [];
-      this.logger.info('restart.phase_changed', {
-        operationId: record.run.id,
-        stage: record.run.phase,
-      });
+    if (run.phase !== 'waiting') {
+      this.blockers = [];
+      this.logger.info('restart.phase_changed', { operationId: run.id, stage: run.phase });
     }
   }
 
