@@ -119,6 +119,7 @@ test('shows progress, restores after reload, rejects duplicate requests and canc
   });
   expect(duplicate.status()).toBe(409);
   await page.reload();
+  await page.locator('.topbar-more').click();
   await page.getByRole('button', { name: '后台任务', exact: true }).click();
   await page
     .getByRole('dialog', { name: '后台任务', exact: true })
@@ -327,6 +328,7 @@ for (const language of localizedProjects) {
       );
       await capture('clone-cancelled-mobile');
       await page.keyboard.press('Escape');
+      await page.locator('.topbar-more').click();
       await page.getByRole('button', { name: language.tasks, exact: true }).click();
       await expect(page.getByRole('dialog', { name: language.tasks, exact: true })).toContainText(
         language.cancelled,
@@ -389,6 +391,7 @@ test('background clone permits chat and session switching; another client restor
   });
   const peer = await peerContext.newPage();
   await peer.goto(origin);
+  await peer.locator('.topbar-more').click();
   await peer.getByRole('button', { name: '后台任务', exact: true }).click();
   await expect(peer.getByRole('dialog', { name: '后台任务', exact: true })).toContainText(
     '正在接收对象 42%',
@@ -396,6 +399,7 @@ test('background clone permits chat and session switching; another client restor
   await screenshot(peer, info, 'background-task-recovered-mobile');
   await peer.reload();
   await expect(peer.getByRole('dialog')).not.toBeVisible();
+  await peer.locator('.topbar-more').click();
   await peer.getByRole('button', { name: '后台任务', exact: true }).click();
   await expect(peer.getByRole('dialog', { name: '后台任务', exact: true })).toContainText(
     '正在接收对象 42%',
@@ -432,6 +436,7 @@ test('independent clients reconcile cancellation after reconnect and a real isol
   const peerContext = await browser.newContext({ locale: 'zh-CN' });
   const peer = await peerContext.newPage();
   await peer.goto(origin);
+  await peer.locator('.topbar-more').click();
   await peer.getByRole('button', { name: '后台任务', exact: true }).click();
   await peer
     .getByRole('dialog', { name: '后台任务', exact: true })

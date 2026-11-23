@@ -101,8 +101,10 @@ test('occupied history can fork on mobile without stopping or retrying the origi
     if (req.method() === 'POST') posts.push(req.url());
   });
   await notice(page).getByRole('button', { name: 'Fork 为新会话' }).click();
-  await expect(page.getByRole('button', { name: '返回原会话', exact: true })).toBeVisible();
   await expect(notice(page)).toHaveCount(0);
+  await page.getByRole('button', { name: '更多操作', exact: true }).click();
+  await expect(page.getByRole('button', { name: '返回原会话', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
   await expect(
     page.locator('.conversation-content').getByText('已保存的会话历史', { exact: true }),
   ).toBeVisible();

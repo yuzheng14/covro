@@ -119,13 +119,17 @@ test('allows command execution in a narrow viewport without horizontal overflow'
 }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const panel = page.getByRole('region', { name: 'Shell 面板' });
+  await panel.getByRole('button', { name: '关闭 Shell 面板', exact: true }).click();
+  await page.getByRole('button', { name: '更多操作', exact: true }).click();
+  const entry = page.getByRole('button', { name: '打开 Shell 面板', exact: true });
+  await expect(entry).toBeInViewport();
+  await entry.click();
   await panel
     .getByRole('textbox', { name: 'Shell 命令', exact: true })
     .fill("printf 'Mobile shell ready\\n'; pwd");
   await panel.getByRole('button', { name: '执行命令', exact: true }).click();
   await expect(panel.getByLabel('Shell 输出')).toContainText('Mobile shell ready');
   await expect(panel.locator('.shell-result-status')).toContainText('退出码 0');
-  await expect(page.getByRole('button', { name: '打开 Shell 面板', exact: true })).toBeInViewport();
   await expect(panel.getByRole('button', { name: '执行命令', exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,

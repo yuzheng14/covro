@@ -123,3 +123,23 @@ export async function openModelSettings(page: Page) {
   if (!(await panel.isVisible())) await trigger.click();
   await expect(panel).toBeVisible();
 }
+
+export async function openHeaderDiagnostics(page: Page) {
+  const summary = page.locator('.diagnostics > summary');
+  if (await summary.isVisible()) {
+    await summary.click();
+    return;
+  }
+  const more = page.getByRole('button', { name: '更多操作', exact: true });
+  await expect(more).toBeVisible();
+  const direct = page.locator('.topbar-diagnostics');
+  if (await direct.isVisible()) {
+    await direct.click();
+  } else {
+    await more.click();
+    await page
+      .locator('.topbar-tools')
+      .getByRole('button', { name: '状态诊断', exact: true })
+      .click();
+  }
+}

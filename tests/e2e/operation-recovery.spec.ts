@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import type { Operation, ThreadView } from '../../src/shared/types';
-import { confirmCompatibility, controlRuntime, createEmptyThread, testOrigin } from './helpers';
+import {
+  confirmCompatibility,
+  controlRuntime,
+  createEmptyThread,
+  openHeaderDiagnostics,
+  testOrigin,
+} from './helpers';
 
 const headers = { Origin: testOrigin };
 const panel = (page: Page) => page.getByRole('region', { name: '状态诊断详情' });
@@ -67,7 +73,7 @@ for (const mobile of [false, true]) {
     await page.setViewportSize(
       mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
     );
-    await page.locator('.diagnostics > summary').click();
+    await openHeaderDiagnostics(page);
     const others = panel(page).getByRole('region', { name: '其他会话与操作' });
     // section landmarks require an accessible name; each card names the real source conversation.
     const firstCard = others.getByRole('article', { name: '发送消息 · 整理发布计划' });
@@ -87,7 +93,7 @@ for (const mobile of [false, true]) {
     await expect(page.locator('.topbar')).toContainText('检查仓库依赖');
     await expect(page.locator('.action-card')).toHaveCount(1);
     await expect(page.locator('.error-banner.dismissible')).toHaveCount(0);
-    await page.locator('.diagnostics > summary').click();
+    await openHeaderDiagnostics(page);
     const current = panel(page).getByRole('article', { name: '发送消息 · 检查仓库依赖' });
     await expect(current).toContainText('仍在运行');
     await expect(current.getByRole('button', { name: /恢复此会话的操作/ })).toHaveCount(0);

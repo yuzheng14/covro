@@ -5,6 +5,7 @@ import {
   controlRuntime,
   createEmptyThread,
   expectThreadReady,
+  openHeaderDiagnostics,
   testOrigin,
 } from './helpers';
 
@@ -113,7 +114,7 @@ for (const mobile of [false, true]) {
       if (request.method() === 'POST') posts.push(request.url());
     });
     await expect(page.locator('.pending-notice')).toHaveCount(0);
-    await expect(page.locator('.topbar .status')).toHaveText('已完成');
+    await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
     await expect(send(page)).toBeEnabled();
     await expect(input(page)).toHaveValue('恢复后继续的草稿');
     expect(posts).toHaveLength(0);
@@ -196,10 +197,11 @@ for (const mobile of [false, true]) {
     await expect(input(page)).toHaveValue('核对期间保留的草稿');
     expect(submissions).toHaveLength(1);
     expect(submissions[0]).toContain(`/api/operations/${operation.clientOperationId}/reconcile`);
-    // The native summary still closes and reopens the panel after the banner opened it.
-    await page.locator('.diagnostics > summary').click();
+    // Header controls can still close and reopen a panel first opened by the banner.
+    if (mobile) await panel(page).getByRole('button', { name: '关闭', exact: true }).click();
+    else await page.locator('.diagnostics > summary').click();
     await expect(panel(page)).not.toBeVisible();
-    await page.locator('.diagnostics > summary').click();
+    await openHeaderDiagnostics(page);
     await expect(panel(page)).toBeVisible();
   });
 }

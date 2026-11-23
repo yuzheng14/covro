@@ -144,8 +144,11 @@ for (const width of [1280, 390, 320]) {
       animations: 'disabled',
     });
     await fork.press('Enter');
+    if (width < 760) {
+      await expect(page.locator('.sidebar')).not.toBeInViewport();
+      await page.getByRole('button', { name: '更多操作', exact: true }).click();
+    }
     await expect(page.getByRole('button', { name: '返回原会话', exact: true })).toBeVisible();
-    if (width < 760) await expect(page.locator('.sidebar')).not.toBeInViewport();
   });
 }
 
@@ -169,8 +172,9 @@ test.describe('touch sidebar', () => {
       animations: 'disabled',
     });
     await fork.tap();
-    await expect(page.getByRole('button', { name: '返回原会话', exact: true })).toBeVisible();
     await expect(page.locator('.sidebar')).not.toBeInViewport();
+    await page.getByRole('button', { name: '更多操作', exact: true }).tap();
+    await expect(page.getByRole('button', { name: '返回原会话', exact: true })).toBeVisible();
   });
 });
 

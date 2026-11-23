@@ -43,8 +43,12 @@ export async function exerciseDevPreview(page: Page, captureDirectory?: string) 
     await controlRuntime(page.request, { preview: { projectId, threadId } });
     return threadId;
   };
-  const open = async () => {
+  const openManager = async (narrow = false) => {
+    if (narrow) await page.locator('.topbar-more').click();
     await page.locator('.dev-preview-entry').click();
+  };
+  const open = async (narrow = false) => {
+    await openManager(narrow);
     await expect(page.locator('.dev-preview-services li')).toHaveCount(1);
   };
   const first = await create('fixture');
@@ -137,7 +141,7 @@ export async function exerciseDevPreview(page: Page, captureDirectory?: string) 
       await page.evaluate((locale) => localStorage.setItem('covro.locale', locale), locale);
       await page.reload();
       await select('fixture-other', second);
-      await open();
+      await open(name === 'narrow');
       await expect(page.locator('.dev-preview-dialog')).not.toContainText('dev_');
       const box = await page.locator('.dev-preview-dialog').boundingBox();
       expect(box!.x).toBeGreaterThanOrEqual(0);
@@ -165,7 +169,7 @@ export async function exerciseDevPreview(page: Page, captureDirectory?: string) 
   await page.locator('.compatibility-dialog button').last().click();
   await expect(page.locator('.compatibility-dialog')).not.toBeVisible();
   await select('fixture', first);
-  await page.locator('.dev-preview-entry').click();
+  await openManager();
   await expect(page.locator('.dev-preview-services li')).toHaveCount(0);
   expect((await page.request.get(atlas.url())).status()).toBe(410);
   await atlas.close();
