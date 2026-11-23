@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import type { Operation, ServerMessage, ThreadView } from '../../src/shared/types';
+import type { Operation, ThreadView } from '../../src/shared/types';
 import { confirmCompatibility, controlRuntime, projectGroup, testOrigin } from './helpers';
 
 const info = (page: Page) => page.getByRole('region', { name: '当前会话信息' });

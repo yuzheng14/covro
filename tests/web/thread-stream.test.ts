@@ -205,6 +205,54 @@ describe('HTTP snapshot and incremental replay', () => {
     expect(stream.cache.get('a')!.data.title).toBe('最新标题');
   });
 
+  it('rejects a stale refresh and recovers a missing detail event before publishing', async () => {
+    let finish!: (value: { data: ThreadView; cursor: Cursor }) => void;
+    const read = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue({
+        data: { ...thread('a'), title: 'Recovered' },
+        cursor: { serverEpoch: 'epoch', seq: 8 },
+      });
+    const { stream, socket, handlers } = start(read);
+    stream.select('a');
+    socket.snapshot('a', 1);
+    const refresh = stream.refresh('a');
+    socket.detail({
+      type: 'event',
+      kind: 'thread',
+      threadId: 'a',
+      cursor: { serverEpoch: 'epoch', seq: 3 },
+      previousThreadSeq: 1,
+      payload: { ...thread('a'), title: 'Live' },
+    });
+    finish({ data: { ...thread('a'), title: 'Stale' }, cursor: { serverEpoch: 'epoch', seq: 2 } });
+    await refresh;
+    expect(stream.view('a')?.title).toBe('Live');
+
+    socket.detail({
+      type: 'event',
+      kind: 'threadPatch',
+      threadId: 'a',
+      cursor: { serverEpoch: 'epoch', seq: 7 },
+      previousThreadSeq: 6,
+      payload: { thread: thread('a'), turns: [] },
+    });
+    expect(stream.view('a')).toBeUndefined();
+    await vi.waitFor(() => expect(socket.subscription('a').after?.seq).toBe(8));
+    socket.ready('a', 8);
+    expect(handlers.thread.mock.calls.map(([view]) => view.title)).toEqual([
+      'a',
+      'Live',
+      'Recovered',
+    ]);
+  });
+
   it('drops late recovery for evicted sessions and bounds subscriptions', async () => {
     let finish!: (value: { data: ThreadView; cursor: Cursor }) => void;
     let signal: AbortSignal | undefined;

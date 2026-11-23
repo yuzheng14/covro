@@ -119,9 +119,13 @@ test('shows progress received in the background and appends later live output on
 }, testInfo) => {
   // Preserve real gateway frames and hold B's updates after its second chunk until
   // the first return is observed, independent of Chromium scheduling under CI load.
-  let target: string | undefined;
+  const observed = { threadId: undefined as string | undefined };
   let progress = false;
   let release = () => {};
+  let finishSnapshotRead!: () => void;
+  const snapshotGate = new Promise<void>((resolve) => {
+    finishSnapshotRead = resolve;
+  });
   await page.routeWebSocket('**/ws?overview=1', (browser) => {
     const server = browser.connectToServer();
     const pending: string[] = [];
@@ -129,11 +133,12 @@ test('shows progress received in the background and appends later live output on
     release = () => {
       hold = false;
       for (const frame of pending.splice(0)) browser.send(frame);
+      finishSnapshotRead();
     };
     server.onMessage((raw) => {
       const frame = raw.toString();
       const event = JSON.parse(frame) as ServerMessage;
-      if (target && event.threadId === target) {
+      if (observed.threadId && event.threadId === observed.threadId) {
         if (hold) {
           pending.push(frame);
           return;
@@ -142,7 +147,8 @@ test('shows progress received in the background and appends later live output on
           !progress &&
           event.type === 'event' &&
           event.kind === 'threadPatch' &&
-          JSON.stringify(event.payload).includes('Copy & export')
+          JSON.stringify(event.payload).includes('Copy & export') &&
+          !JSON.stringify(event.payload).includes('下一轮我会先选')
         ) {
           progress = true;
           hold = true;
@@ -155,7 +161,11 @@ test('shows progress received in the background and appends later live output on
   const c = await newSession(page);
   const a = await newSession(page);
   const b = await newSession(page);
-  target = b;
+  observed.threadId = b;
+  await page.route(`**/api/threads/${b}/snapshot`, async (route) => {
+    await snapshotGate;
+    await route.continue();
+  });
   await run(request, c, '会话 C · 独立运行 [context-compact-hold]');
   await run(request, a, '会话 A · 检查配置 [context-compact-hold]');
   await run(request, b, '会话 B · 整理操作计划 [markdown]');
@@ -174,6 +184,7 @@ test('shows progress received in the background and appends later live output on
   await expect(body(page)).toContainText('Copy & export');
   await expect(body(page)).not.toContainText('独立运行');
   await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
+  await expect(state(page, b)).toHaveAccessibleName(/已完成/);
 });
 
 test('reconnects a background session after it finishes offline without submitting again', async ({
