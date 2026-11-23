@@ -5,7 +5,7 @@ import type { WSEvents, WSContext } from 'hono/ws';
 import type { WebSocketLike } from '@hono/node-server';
 import type { WebSocketServer, WebSocket } from 'ws';
 import { socketMessageSchema } from '../shared/validation.js';
-import { MAX_THREAD_SUBSCRIPTIONS, type ServerMessage, type ThreadView } from '../shared/types.js';
+import type { ServerMessage, ThreadView } from '../shared/types.js';
 import { AppError } from '../shared/errors.js';
 import type { GatewayService } from './service.js';
 import type { AppConfig } from './config.js';
@@ -148,8 +148,6 @@ export function socketHandlers(
         else clear(); // Preserve the legacy single-selection protocol.
         key = scoped ? input.threadId : '';
         remove(key);
-        if (subscriptions.size >= MAX_THREAD_SUBSCRIPTIONS)
-          throw new AppError('VALIDATION_FAILED', 'Too many thread subscriptions');
         slot = {};
         subscriptions.set(key, slot);
         const stop = await service.subscribe(
@@ -159,6 +157,8 @@ export function socketHandlers(
             if (subscriptions.get(key!) !== slot) return;
             if (message.type === 'event' && message.kind === 'runtime') return;
             send(ws, scoped ? { ...message, subscriptionId: scoped.subscriptionId } : message);
+            // An HTTP recovery will install its own subscription after the snapshot.
+            if (scoped && message.type === 'resync') remove(key!);
           },
           scoped ? true : input.incremental,
           Boolean(scoped),

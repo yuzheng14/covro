@@ -1,8 +1,6 @@
 import { t } from '../i18n';
 import { api, HttpError } from './api';
 import { applyThreadPatch, type ThreadPatch } from '../../shared/thread-patch';
-import { MAX_THREAD_SUBSCRIPTIONS } from '../../shared/types';
-import { isActive } from '../../shared/run-status';
 import type {
   Cursor,
   Operation,
@@ -245,7 +243,6 @@ interface Watch {
   projectId: string | null;
   subscriptionId?: number;
   ready: boolean;
-  running: boolean;
   minimum?: Cursor;
   read?: { controller: AbortController; promise: Promise<void> };
 }
@@ -258,6 +255,8 @@ export class ThreadStream {
   private attempt = 0;
   private stopped = true;
   private selected?: string;
+  private reconnectQueue?: Iterator<string>;
+  private reconnecting?: string;
   private blocked = false;
   private nextSubscriptionId = 0;
 
@@ -299,22 +298,31 @@ export class ThreadStream {
     this.selected = threadId;
     if (!threadId) return;
     const current = this.watches.get(threadId);
-    if (current) {
-      // Refresh recency without replacing the working subscription.
-      this.watches.delete(threadId);
-      this.watches.set(threadId, current);
-      this.retryWatch(threadId, current);
-    } else this.watch(threadId, projectId, false);
+    if (current) this.retryWatch(threadId, current);
+    else {
+      const watch: Watch = { projectId, ready: false };
+      this.watches.set(threadId, watch);
+      this.subscribe(threadId, watch);
+    }
     this.retry();
   }
-  observe(summary: ThreadSummary) {
-    const current = this.watches.get(summary.id);
-    const running = isActive(summary.status);
-    if (current) {
-      current.running ||= running;
-      if (summary.archived && summary.id !== this.selected) this.forget(summary.id);
-      else this.retryWatch(summary.id, current);
-    } else if (running && !summary.archived) this.watch(summary.id, summary.projectId, true);
+  observe(summary: ThreadSummary, cursor: Cursor) {
+    const watch = this.watches.get(summary.id);
+    if (!watch) return;
+    const cached = this.cache.get(summary.id);
+    if (
+      cached &&
+      Boolean(cached.data.archived) !== Boolean(summary.archived) &&
+      (cached.cursor.serverEpoch !== cursor.serverEpoch || cached.cursor.seq < cursor.seq)
+    ) {
+      // A lifecycle summary can reveal a missing detail change. Keep the visit and
+      // recover authoritative history before it can be reopened.
+      watch.read?.controller.abort();
+      watch.read = undefined;
+      watch.ready = false;
+      this.cache.invalidateDetail(summary.id);
+      this.subscribe(summary.id, watch);
+    } else this.retryWatch(summary.id, watch);
   }
   removeProject(projectId: string) {
     for (const [id, watch] of this.watches) if (watch.projectId === projectId) this.forget(id);
@@ -328,23 +336,11 @@ export class ThreadStream {
     this.cache.invalidateDetail(threadId);
     if (this.socket?.readyState === WebSocket.OPEN)
       this.socket.send(JSON.stringify({ type: 'unsubscribe', threadId }));
+    this.finishReconnect(threadId);
   }
   private retryWatch(threadId: string, watch: Watch) {
     if (!watch.ready && watch.subscriptionId === undefined && !watch.read)
       this.subscribe(threadId, watch);
-  }
-  private watch(threadId: string, projectId: string | null, running: boolean) {
-    if (this.watches.size >= MAX_THREAD_SUBSCRIPTIONS) {
-      const candidates = [...this.watches].filter(([id]) => id !== this.selected);
-      const evict =
-        candidates.find(([, watch]) => !watch.running) ??
-        (threadId === this.selected ? candidates[0] : undefined);
-      if (!evict) return;
-      this.forget(evict[0]);
-    }
-    const watch: Watch = { projectId, ready: false, running };
-    this.watches.set(threadId, watch);
-    this.subscribe(threadId, watch);
   }
   isWatching(threadId: string) {
     return this.watches.has(threadId);
@@ -369,6 +365,8 @@ export class ThreadStream {
     this.connect();
   };
   private resetWatches() {
+    this.reconnectQueue = undefined;
+    this.reconnecting = undefined;
     for (const watch of this.watches.values()) {
       watch.ready = false;
       watch.read?.controller.abort();
@@ -393,6 +391,24 @@ export class ThreadStream {
   private visible = () => {
     if (document.visibilityState === 'visible') this.resume();
   };
+  private reconnectNext() {
+    if (!this.reconnectQueue || this.reconnecting) return;
+    // Replay one background visit at a time. Selection can still start its own recovery.
+    for (let next = this.reconnectQueue.next(); !next.done; next = this.reconnectQueue.next()) {
+      const id = next.value;
+      const watch = this.watches.get(id);
+      if (!watch || watch.ready || watch.subscriptionId !== undefined || watch.read) continue;
+      this.reconnecting = id;
+      this.subscribe(id, watch);
+      return;
+    }
+    this.reconnectQueue = undefined;
+  }
+  private finishReconnect(threadId: string) {
+    if (this.reconnecting !== threadId) return;
+    this.reconnecting = undefined;
+    this.reconnectNext();
+  }
   private subscribe(threadId: string, watch: Watch) {
     if (this.socket?.readyState !== WebSocket.OPEN) return;
     const after = this.cache.get(threadId)?.cursor;
@@ -408,15 +424,10 @@ export class ThreadStream {
       }),
     );
   }
-  private publish(threadId: string, watch: Watch) {
+  private publish(threadId: string) {
+    if (this.selected !== threadId) return;
     const data = this.cache.get(threadId)?.data;
-    if (!data) return;
-    const lastTurn = data.turns.at(-1);
-    watch.running =
-      isActive(data.status) ||
-      Boolean(lastTurn && isActive(lastTurn.status)) ||
-      Boolean(data.execution && !data.execution.ended);
-    if (this.selected === threadId) this.handlers.thread(data);
+    if (data) this.handlers.thread(data);
   }
   private readSnapshot(threadId: string, watch: Watch, socket: WebSocket, minimum?: Cursor) {
     if (watch.read) return watch.read.promise;
@@ -441,7 +452,7 @@ export class ThreadStream {
         }
         if (minimum && snapshot.cursor.seq < minimum.seq)
           throw new Error('Thread snapshot precedes the recovery boundary');
-        if (this.cache.apply(message) && watch.ready) this.publish(threadId, watch);
+        if (this.cache.apply(message) && watch.ready) this.publish(threadId);
         if (!watch.ready) this.subscribe(threadId, watch);
       } catch (problem) {
         if (!current()) return;
@@ -451,7 +462,7 @@ export class ThreadStream {
         if (problem instanceof HttpError && problem.authenticationRequired) {
           this.blocked = true;
           socket.close();
-        }
+        } else this.finishReconnect(threadId);
       } finally {
         if (watch.read?.controller === controller) watch.read = undefined;
       }
@@ -495,11 +506,12 @@ export class ThreadStream {
       }
       watch.ready = true;
       watch.minimum = undefined;
-      this.publish(id, watch);
+      this.publish(id);
+      this.finishReconnect(id);
       return;
     }
     try {
-      if (this.cache.apply(value) && watch.ready) this.publish(id, watch);
+      if (this.cache.apply(value) && watch.ready) this.publish(id);
     } catch {
       recover();
     }
@@ -518,7 +530,10 @@ export class ThreadStream {
     socket.onopen = () => {
       if (this.socket !== socket) return socket.close();
       this.attempt = 0;
-      for (const [id, watch] of this.watches) this.subscribe(id, watch);
+      this.reconnectQueue = this.watches.keys();
+      const selected = this.selected ? this.watches.get(this.selected) : undefined;
+      if (this.selected && selected) this.subscribe(this.selected, selected);
+      this.reconnectNext();
       this.handlers.connection('connected');
     };
     socket.onmessage = (event) => {

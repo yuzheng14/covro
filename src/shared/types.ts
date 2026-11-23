@@ -563,8 +563,6 @@ export interface Cursor {
   serverEpoch: string;
   seq: number;
 }
-export const MAX_THREAD_SUBSCRIPTIONS = 8;
-
 export interface SubscribeMessage {
   type: 'subscribe';
   threadId: string;

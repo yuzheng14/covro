@@ -1,10 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  MAX_THREAD_SUBSCRIPTIONS,
-  type Cursor,
-  type ServerMessage,
-  type ThreadView,
-} from '../../src/shared/types';
+import { type Cursor, type ServerMessage, type ThreadView } from '../../src/shared/types';
 import { toThreadSummary } from '../../src/shared/thread-summary';
 import { ThreadStream } from '../../src/web/lib/realtime';
 
@@ -253,7 +248,45 @@ describe('HTTP snapshot and incremental replay', () => {
     ]);
   });
 
-  it('drops late recovery for evicted sessions and bounds subscriptions', async () => {
+  it('keeps previously opened sessions live after more than eight visits', () => {
+    const { stream, socket, handlers } = start();
+    stream.select('oldest');
+    socket.snapshot('oldest', 1);
+    const first = socket.subscription('oldest');
+    for (let i = 0; i < 12; i++) stream.select(`visit-${i}`);
+    socket.detail({
+      type: 'event',
+      kind: 'thread',
+      threadId: 'oldest',
+      cursor: { serverEpoch: 'epoch', seq: 2 },
+      payload: { ...thread('oldest'), title: 'Still synchronized' },
+    });
+    expect(handlers.thread).toHaveBeenCalledTimes(1);
+    stream.select('oldest');
+    expect(socket.subscription('oldest')).toEqual(first);
+    expect(socket.subscriptions()).toHaveLength(13);
+    expect(stream.view('oldest')?.title).toBe('Still synchronized');
+  });
+
+  it('reconnects every visit with serial background replay and foreground priority', () => {
+    const { stream, socket } = start();
+    for (const id of ['a', 'b', 'c']) {
+      stream.select(id);
+      socket.snapshot(id, 1);
+    }
+    socket.close();
+    stream.retry();
+    const reopened = FakeSocket.instances.at(-1)!;
+    reopened.open();
+    expect(reopened.subscriptions().map((entry) => entry.threadId)).toEqual(['c', 'a']);
+    reopened.ready('a', 1);
+    expect(reopened.subscriptions().map((entry) => entry.threadId)).toEqual(['c', 'a', 'b']);
+    reopened.ready('b', 1);
+    reopened.ready('c', 1);
+    expect(['a', 'b', 'c'].every((id) => stream.view(id))).toBe(true);
+  });
+
+  it('ignores overview-only sessions and aborts details when a project goes away', async () => {
     let finish!: (value: { data: ThreadView; cursor: Cursor }) => void;
     let signal: AbortSignal | undefined;
     const { stream, socket, handlers } = start((_id, input) => {
@@ -262,20 +295,33 @@ describe('HTTP snapshot and incremental replay', () => {
         finish = resolve;
       });
     });
-    stream.select('a');
-    socket.detail({ type: 'resync', threadId: 'a', cursor: { serverEpoch: 'epoch', seq: 1 } });
-    stream.select('b');
+    const cursor = { serverEpoch: 'epoch', seq: 1 };
+    stream.observe(toThreadSummary({ ...thread('unvisited'), status: 'running' }), cursor);
+    expect(socket.subscriptions()).toHaveLength(0);
+    stream.select('a', 'a');
+    socket.detail({ type: 'resync', threadId: 'a', cursor });
+    stream.select('b', 'b');
     expect(signal?.aborted).toBe(false);
-    for (let i = 1; i < MAX_THREAD_SUBSCRIPTIONS; i++) stream.select(`visit-${i}`);
+    stream.removeProject('a');
     expect(signal?.aborted).toBe(true);
-    finish({ data: thread('a'), cursor: { serverEpoch: 'epoch', seq: 3 } });
+    finish({ data: thread('a'), cursor });
     await Promise.resolve();
     expect(handlers.thread).not.toHaveBeenCalled();
     expect(stream.cache.get('a')).toBeUndefined();
-    expect(JSON.parse(socket.send.mock.calls.at(-2)![0])).toMatchObject({
-      type: 'unsubscribe',
-      threadId: 'a',
+  });
+
+  it('recovers a missing archive transition while keeping the visited session', () => {
+    const { stream, socket } = start();
+    stream.select('a');
+    socket.snapshot('a', 1);
+    stream.select('b');
+    stream.observe(toThreadSummary({ ...thread('a'), archived: true }), {
+      serverEpoch: 'epoch',
+      seq: 2,
     });
+    expect(stream.isWatching('a')).toBe(true);
+    expect(stream.view('a')).toBeUndefined();
+    expect(socket.subscription('a').after).toBeUndefined();
   });
 
   it('retries a failed detail read on revisit without disrupting the socket', async () => {

@@ -17,7 +17,6 @@ import type {
   ThreadView,
 } from '../../shared/types';
 import { toThreadSummary } from '../../shared/thread-summary';
-import { isActive } from '../../shared/run-status';
 import { submittedUserMessage } from '../../shared/user-message';
 import { messageConfirmed, withPendingMessages } from '../lib/pending-user-messages';
 import type { PendingUserMessage } from '../../shared/types';
@@ -269,12 +268,7 @@ export function useWorkspace() {
           read: (next) => api.threads(id, next, archived, signal),
           isCurrent: () => store.isCurrent(read),
         });
-        if (page && store.finishRead(read, page)) {
-          setProjectThreads(store.snapshot);
-          // Start watching a run that was already in progress when this page connected.
-          for (const summary of page.data)
-            if (isActive(summary.status)) streamRef.current?.observe(summary);
-        }
+        if (page && store.finishRead(read, page)) setProjectThreads(store.snapshot);
       } catch (problem) {
         const forbidden = problem instanceof HttpError && [401, 403, 404].includes(problem.status);
         if (forbidden && store.isCurrent(read)) void listCacheRef.current?.remove(id);
@@ -335,7 +329,7 @@ export function useWorkspace() {
       )
         return;
       if (projectStore.current.applySummary(summary, cursor)) {
-        streamRef.current?.observe(summary);
+        streamRef.current?.observe(summary, cursor);
         setProjectThreads(projectStore.current.snapshot);
         if (summary.archived && !projectStore.current.archived)
           forgetSelection(summary.id, scopeKey(summary.projectId));

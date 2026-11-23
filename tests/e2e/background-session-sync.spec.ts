@@ -217,3 +217,44 @@ test('reconnects a background session after it finishes offline without submitti
   await expect(page.locator('.turn-heading .status')).toHaveText('已完成');
   expect(writes).toEqual([]);
 });
+
+test('keeps the first visit synchronized after opening ten more sessions', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  const subscriptions: { type: string; threadId?: string }[] = [];
+  await page.routeWebSocket('**/ws?overview=1', (browser) => {
+    const server = browser.connectToServer();
+    browser.onMessage((raw) => {
+      subscriptions.push(JSON.parse(raw.toString()));
+      server.send(raw);
+    });
+  });
+  await page.reload();
+  const first = await newSession(page);
+  await run(request, first, '首个会话 · 已有历史 [title-fail]');
+  await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
+  const watches = () => subscriptions.filter((entry) => entry.threadId === first);
+  const initialWatchCount = watches().length;
+
+  for (let i = 0; i < 10; i++) await newSession(page);
+  expect(watches()).toHaveLength(initialWatchCount);
+
+  await run(request, first, '首个会话 · 后台更新 [markdown]');
+  await expect(state(page, first)).toHaveAccessibleName('执行中');
+  await expect(state(page, first)).toHaveAccessibleName(/已完成/);
+
+  const detailReads: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path === `/api/threads/${first}` || path === `/api/threads/${first}/snapshot`)
+      detailReads.push(path);
+  });
+  await row(page, first).click();
+  await expect(body(page).getByText('下一轮我会先选', { exact: false })).toHaveCount(1);
+  await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
+  expect(watches()).toHaveLength(initialWatchCount);
+  expect(detailReads).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('first-visit-after-ten-more.png') });
+});
