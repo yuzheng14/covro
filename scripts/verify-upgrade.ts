@@ -31,6 +31,7 @@ import type { UpdateRun } from '../src/shared/updates.js';
 import { transactionPaths } from '../src/updates/transaction.js';
 const metadata = JSON.parse(await readFile('package.json', 'utf8')) as { version: string };
 const [major, minor, patch] = metadata.version.split('-')[0]!.split('.');
+const gatewayStart = /runtime = await startGateway\([^;]+\);/;
 
 for (const mode of [
   'success',
@@ -123,13 +124,12 @@ for (const mode of [
       );
       const daemonFile = join(candidate, 'dist/cli/daemon.js');
       const daemon = await readFile(daemonFile, 'utf8');
-      const marker = 'runtime = await startGateway(config, { updates, maintenance, logger });';
-      if (!daemon.includes(marker)) throw new Error('Missing readiness fixture insertion point');
+      if (!gatewayStart.test(daemon)) throw new Error('Missing readiness fixture insertion point');
       await writeFile(
         daemonFile,
         daemon.replace(
-          marker,
-          `${marker}\nthrow new Error('Simulated candidate readiness failure');`,
+          gatewayStart,
+          (call) => `${call}\nthrow new Error('Simulated candidate readiness failure');`,
         ),
       );
     }
@@ -158,13 +158,13 @@ for (const mode of [
       await chmod(codexBinary, 0o700);
       const daemonFile = join(candidate, 'dist/cli/daemon.js');
       const daemon = await readFile(daemonFile, 'utf8');
-      const marker = 'runtime = await startGateway(config, { updates, maintenance, logger });';
-      if (!daemon.includes(marker)) throw new Error('Missing restart fixture insertion point');
+      if (!gatewayStart.test(daemon)) throw new Error('Missing restart fixture insertion point');
       await writeFile(
         daemonFile,
         daemon.replace(
-          marker,
-          `await (await import('node:fs/promises')).writeFile(${JSON.stringify(versionFile)}, 'codex-cli 99.0.0');\n${marker}`,
+          gatewayStart,
+          (call) =>
+            `await (await import('node:fs/promises')).writeFile(${JSON.stringify(versionFile)}, 'codex-cli 99.0.0');\n${call}`,
         ),
       );
     }
