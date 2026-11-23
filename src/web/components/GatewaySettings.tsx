@@ -23,6 +23,8 @@ import {
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Icon } from './Icon';
+import { ServiceRestartControl } from './ServiceRestart';
+import type { ServiceRestart } from '../hooks/useServiceRestart';
 
 const describeFailure = (error: unknown) =>
   error instanceof HttpError
@@ -31,7 +33,15 @@ const describeFailure = (error: unknown) =>
       ? error.message
       : t('settings:operation_failed_please_retry');
 
-export function GatewaySettings({ onClose: onDismiss }: { onClose: () => void }) {
+export function GatewaySettings({
+  onClose: onDismiss,
+  restart,
+  connected = false,
+}: {
+  onClose: () => void;
+  restart?: ServiceRestart;
+  connected?: boolean;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const onClose = () => {
     dialog.current?.close();
@@ -220,6 +230,13 @@ export function GatewaySettings({ onClose: onDismiss }: { onClose: () => void })
           <Icon name="close" size={17} />
         </Button>
       </div>
+      {restart && (
+        <ServiceRestartControl
+          restart={restart}
+          connected={connected}
+          editing={busy || dirty || !!review || !!imported}
+        />
+      )}
       <p className="gateway-intro">{t('settings:service_settings_apply_help')}</p>
       {error && (
         <div className="gateway-error" role="alert">

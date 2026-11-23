@@ -49,6 +49,8 @@ macOS 使用当前用户的 launchd，Linux 使用 `systemd --user`，`service i
 
 配置、数据库和项目文件不存放在 npm 安装目录，更新 npm 包不会替换业务数据。开发源码继续使用 `pnpm dev`，生产源码仍可使用 `pnpm build` 和 `pnpm start -- --config ...`。
 
+通过 Covro CLI 运行的 macOS 或 Linux 实例，可以在网页服务设置里预约[空闲后重启](service-restart.md)，重新加载 Covro 和 Codex 配置。
+
 ## 更新与发布渠道
 
 开发渠道可用 `npm install -g @covro/covro@dev` 安装。

@@ -711,6 +711,25 @@ svg {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+.service-restart {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.service-restart > :is(h3, p) {
+  margin: 0;
+}
+.service-restart .gateway-status {
+  width: 100%;
+}
+.service-restart details {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .gateway-status {
   display: grid;
   gap: 6px;
