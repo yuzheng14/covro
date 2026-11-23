@@ -38,8 +38,6 @@ import { BackgroundTasks } from './components/BackgroundTasks';
 import { useBackgroundTasks } from './hooks/useBackgroundTasks';
 import { ProjectDialog } from './components/ProjectDialog';
 import { NotificationSettings } from './components/NotificationSettings';
-import { ServiceRestartNotice } from './components/ServiceRestart';
-import { useServiceRestart } from './hooks/useServiceRestart';
 import { GatewaySettings } from './components/GatewaySettings';
 import { UpdateSettings } from './components/UpdateSettings';
 import { useConversationHistory } from './hooks/useConversationHistory';
@@ -105,7 +103,6 @@ export function App() {
   const [skillsRequest, setSkillsRequest] = useState(0);
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
   const [gatewaySettingsOpen, setGatewaySettingsOpen] = useState(false);
-  const serviceRestart = useServiceRestart(gatewaySettingsOpen, workspace.authRequired);
   useEffect(() => {
     const query = window.matchMedia(compactHeaderQuery);
     const update = () => {
@@ -852,13 +849,6 @@ export function App() {
             </div>
           )
         )}
-        {!workspace.authRequired && (
-          <ServiceRestartNotice
-            restart={serviceRestart}
-            connected={!offline}
-            onOpen={() => setGatewaySettingsOpen(true)}
-          />
-        )}
         {system && !system.ready && (
           <div className="error-banner persistent-banner" role="alert">
             {t('workspace:codex_is_unavailable', {
@@ -1311,11 +1301,7 @@ export function App() {
       )}
       {backupsOpen && <BackupSettings onClose={() => setBackupsOpen(false)} />}
       {gatewaySettingsOpen && (
-        <GatewaySettings
-          onClose={() => setGatewaySettingsOpen(false)}
-          restart={serviceRestart}
-          connected={!offline}
-        />
+        <GatewaySettings onClose={() => setGatewaySettingsOpen(false)} connected={!offline} />
       )}
       {updatesOpen && <UpdateSettings updates={updates} onClose={() => setUpdatesOpen(false)} />}
     </WorkspaceLayout>

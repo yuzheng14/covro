@@ -10,20 +10,18 @@ import { HttpError, request } from '../lib/api';
 
 const endpoint = '/api/service-restart';
 
-export function useServiceRestart(open: boolean, authRequired: boolean) {
+export function useServiceRestart() {
   const [status, setStatus] = useState<RestartStatus>();
+  const [connection, setConnection] = useState<'offline' | 'unreachable'>();
+  const [error, setError] = useState<'failed' | 'unknown'>();
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [unknown, setUnknown] = useState(false);
-  const [lostAt, setLostAt] = useState<number>();
-  const [visibleId, setVisibleId] = useState<string>();
   const pending = useRef<RestartRequest>(undefined);
   const submitting = useRef(false);
   const active = restartActive(status?.run);
 
   useEffect(() => {
-    if (authRequired) return;
     const controller = new AbortController();
+    let lostAt: number | undefined;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
@@ -34,17 +32,18 @@ export function useServiceRestart(open: boolean, authRequired: boolean) {
         );
         if (controller.signal.aborted) return;
         setStatus(next);
-        setLostAt(undefined);
-        if (restartActive(next.run)) setVisibleId(next.run?.id);
+        lostAt = undefined;
+        setConnection(undefined);
         if (pending.current && next.run && pending.current.afterId !== next.run.id) {
           pending.current = undefined;
-          setUnknown(false);
+          setError(undefined);
         }
       } catch {
-        if (!controller.signal.aborted) setLostAt((time) => time ?? Date.now());
+        if (controller.signal.aborted) return;
+        lostAt ??= Date.now();
+        setConnection(Date.now() - lostAt >= restartRecoveryMs ? 'unreachable' : 'offline');
       } finally {
-        if (!controller.signal.aborted)
-          timer = setTimeout(() => void poll(), open || active || unknown ? 750 : 5000);
+        if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 750);
       }
     };
     void poll();
@@ -52,22 +51,33 @@ export function useServiceRestart(open: boolean, authRequired: boolean) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [active, authRequired, open, unknown]);
+  }, []);
 
-  async function run(action: () => Promise<void>, starting: boolean) {
-    if (submitting.current) return;
+  async function submit(cancel = false) {
+    const run = status?.run;
+    if (submitting.current || !status?.supported || connection) return;
+    if (cancel ? run?.phase !== 'waiting' : active) return;
     submitting.current = true;
     setBusy(true);
-    setFailed(false);
+    setError(undefined);
     try {
-      await action();
-    } catch (error) {
-      if (starting && !(error instanceof HttpError && error.status < 500)) {
-        if (pending.current) setUnknown(true);
+      if (cancel && run) {
+        setStatus(await request<RestartStatus>(`${endpoint}/cancel`, { id: run.id }));
       } else {
-        if (starting) pending.current = undefined;
-        setUnknown(false);
-        setFailed(true);
+        const input = (pending.current ??= {
+          clientOperationId: crypto.randomUUID(),
+          afterId: run?.id ?? null,
+        });
+        const receipt = await request<Operation>(endpoint, input);
+        if (receipt.status !== 'acknowledged')
+          throw new HttpError(409, receipt.error ?? { code: 'RESTART_FAILED', message: '' });
+      }
+    } catch (failure) {
+      if (!cancel && !(failure instanceof HttpError && failure.status < 500)) {
+        if (pending.current) setError('unknown');
+      } else {
+        if (!cancel) pending.current = undefined;
+        setError('failed');
       }
     } finally {
       submitting.current = false;
@@ -75,39 +85,14 @@ export function useServiceRestart(open: boolean, authRequired: boolean) {
     }
   }
 
-  const refresh = async () => setStatus(await request<RestartStatus>(endpoint));
   return {
     status,
     active,
     busy,
-    failed,
-    unknown,
-    disconnected: lostAt !== undefined,
-    unreachable: lostAt !== undefined && Date.now() - lostAt >= restartRecoveryMs,
-    showInWorkspace: !!status?.run && status.run.id === visibleId,
-    dismiss: () => setVisibleId(undefined),
-    start: () =>
-      run(async () => {
-        if (!status?.supported || active) return;
-        const input = (pending.current ??= {
-          clientOperationId: crypto.randomUUID(),
-          afterId: status.run?.id ?? null,
-        });
-        const receipt = await request<Operation>(endpoint, input);
-        if (receipt.status !== 'acknowledged')
-          throw new HttpError(409, receipt.error ?? { code: 'RESTART_FAILED', message: '' });
-        const result = receipt.result as { restartId: string };
-        setVisibleId(result.restartId);
-        pending.current = undefined;
-        setUnknown(false);
-        // The POST acknowledges the intent. Only the durable run reports restart progress.
-        await refresh().catch(() => {});
-      }, true),
-    cancel: () =>
-      run(async () => {
-        if (status?.run?.phase !== 'waiting') return;
-        setStatus(await request<RestartStatus>(`${endpoint}/cancel`, { id: status.run.id }));
-      }, false),
+    error,
+    disconnected: connection !== undefined,
+    unreachable: connection === 'unreachable',
+    submit,
   };
 }
 
