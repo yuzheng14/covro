@@ -147,8 +147,7 @@ test('shows progress received in the background and appends later live output on
           !progress &&
           event.type === 'event' &&
           event.kind === 'threadPatch' &&
-          JSON.stringify(event.payload).includes('Copy & export') &&
-          !JSON.stringify(event.payload).includes('下一轮我会先选')
+          JSON.stringify(event.payload).includes('部署步骤')
         ) {
           progress = true;
           hold = true;
@@ -168,23 +167,25 @@ test('shows progress received in the background and appends later live output on
   });
   await run(request, c, '会话 C · 独立运行 [context-compact-hold]');
   await run(request, a, '会话 A · 检查配置 [context-compact-hold]');
-  await run(request, b, '会话 B · 整理操作计划 [markdown]');
-  await expect(body(page).getByText('我建议优先做下面几组，按当前支持情况排序：')).toBeVisible();
+  await run(request, b, '会话 B · 记录验收命令 [code-copy]');
+  await expect(body(page)).toContainText('下面的路径、命令和 Markdown 原文');
   await row(page, a).click();
   await expect(state(page, c)).toHaveAccessibleName('执行中');
   await expect.poll(() => progress).toBe(true);
   await row(page, b).click();
-  await expect(body(page)).toContainText('Copy & export');
+  await expect(body(page)).toContainText('部署步骤');
   await expect(page.locator('.turn-heading .status').last()).toHaveText('执行中');
-  await expect(body(page)).not.toContainText('下一轮我会先选');
+  await expect(body(page)).not.toContainText('include=content&format=markdown');
   await page.screenshot({ path: testInfo.outputPath('b-in-progress.png') });
   for (const id of [c, a, b, a, c, b]) await row(page, id).click();
   release();
-  await expect(body(page).getByText('下一轮我会先选', { exact: false })).toHaveCount(1);
-  await expect(body(page)).toContainText('Copy & export');
+  await expect(
+    body(page).getByText('include=content&format=markdown', { exact: false }),
+  ).toHaveCount(1);
+  await expect(body(page)).toContainText('部署步骤');
   await expect(body(page)).not.toContainText('独立运行');
   await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
-  await expect(state(page, b)).toHaveAccessibleName(/已完成/);
+  await expect(row(page, b)).toHaveAccessibleName(/已完成/);
 });
 
 test('reconnects a background session after it finishes offline without submitting again', async ({
