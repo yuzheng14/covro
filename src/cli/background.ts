@@ -19,7 +19,10 @@ import { launchRuntime, type LaunchRuntime } from './runtime-launch.js';
 const exec = promisify(execFile);
 export async function acquireLifecycle(location: CovroPaths, wait = true) {
   await mkdir(location.state, { recursive: true, mode: 0o700 });
-  return lockfile.lock(location.state, {
+  // proper-lockfile tracks leases by target path, even with different lockfilePath values.
+  // The daemon already owns an instance lease on location.state in this process.
+  return lockfile.lock(join(location.state, 'lifecycle'), {
+    realpath: false,
     lockfilePath: join(location.state, 'lifecycle.lock'),
     stale: 10_000,
     update: 2_000,
