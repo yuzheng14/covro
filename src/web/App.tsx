@@ -603,7 +603,7 @@ export function App() {
             </Button>
             <div>
               <div className="breadcrumb">
-                <span className="breadcrumb-project" title={project?.name}>
+                <span className="breadcrumb-project">
                   {project?.name ?? t('common:unassigned')}
                 </span>
                 <Icon name="chevron" size={12} />
