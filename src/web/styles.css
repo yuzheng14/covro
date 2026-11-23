@@ -950,7 +950,7 @@ svg {
   font-size: 10px;
   margin-bottom: 6px;
 }
-.breadcrumb span {
+.breadcrumb-scope {
   color: #a5aab0;
 }
 .topbar h1 {
@@ -3339,7 +3339,7 @@ dd {
     font-size: 10px;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-width: 950px) and (max-height: 500px) and (pointer: coarse) {
   .mobile-only {
     display: inline-flex;
   }
@@ -3365,18 +3365,57 @@ dd {
     border: 0;
     background: #18261e44;
   }
+
   .topbar {
-    min-height: 78px;
-    padding: 15px 15px 14px 10px;
-    gap: 10px;
-    flex-wrap: wrap;
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 4px;
+    row-gap: 0;
+    min-height: 0;
+    padding: 4px 8px;
   }
-  .topbar h1 {
-    font-size: 13px;
-    max-width: calc(100vw - 220px);
+  .topbar-title {
+    gap: 4px;
+  }
+  .topbar-title h1 {
+    max-width: none;
+  }
+  .topbar-title .button-icon,
+  .topbar-status .button-icon {
+    width: 44px;
+    height: 44px;
+    flex: none;
+  }
+  .topbar-title > .control-hint {
+    flex: none;
+  }
+  .topbar .breadcrumb {
+    margin-bottom: 0;
+    gap: 4px;
+    min-height: 16px;
+    font-size: 11px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .breadcrumb-project {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topbar .breadcrumb :is(svg, .breadcrumb-scope) {
+    display: none;
+  }
+  .thread-title-trigger {
+    /* Share the 44px tap target with the project line above the title. */
+    min-height: 44px;
+    margin-top: -16px;
+    padding-top: 16px;
   }
   .topbar:has(.thread-title-editing) .topbar-title {
-    flex-basis: 100%;
+    grid-column: 1 / -1;
+  }
+  .topbar:has(.thread-title-editing) .topbar-status {
+    display: none;
   }
   .thread-title-fields input {
     font-size: 16px;
@@ -3386,26 +3425,107 @@ dd {
     width: 44px;
     height: 44px;
   }
+
   .topbar-status {
-    margin-left: auto;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 7px;
+    gap: 2px;
+    justify-content: flex-end;
+    align-self: start;
   }
-  .breadcrumb {
-    font-size: 9px;
+  .topbar-status > .connection-badge,
+  .diagnostics > summary,
+  .topbar-attention:empty {
+    display: none;
   }
+  .topbar-attention {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    padding: 2px 6px 4px 48px;
+  }
+  .topbar-attention .status {
+    padding: 3px 7px;
+    border-radius: 5px;
+    color: #805219;
+    background: #f7efdc;
+    font-size: 12px;
+    white-space: normal;
+  }
+  .topbar-diagnostics {
+    position: relative;
+    color: #805219;
+  }
+  .topbar-diagnostics .count-badge {
+    position: absolute;
+    top: 2px;
+    right: 1px;
+    color: inherit;
+    font-size: 10px;
+  }
+  .topbar-tools[popover] {
+    position: fixed;
+    inset: auto 8px auto auto;
+    margin: 0;
+    width: min(248px, calc(100vw - 16px));
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface, #fff);
+    color: inherit;
+    box-shadow: 0 12px 32px #1a382426;
+  }
+  .topbar-tools[popover]:not(:popover-open) {
+    display: none;
+  }
+  .topbar-tools[popover]:popover-open {
+    display: grid;
+    gap: 0;
+  }
+  .topbar-tools[popover] > .button {
+    justify-content: flex-start;
+    min-height: 44px;
+    color: inherit;
+    gap: 10px;
+    font-size: 13px;
+    text-align: start;
+    white-space: normal;
+  }
+  .topbar-tools[popover] > .dev-preview-entry > span:not(.dev-preview-count) {
+    display: inline;
+  }
+  .topbar-tools[popover] > .button:focus-visible {
+    outline-offset: -2px;
+  }
+
   .diagnostics-panel {
-    top: 73px;
-    right: 12px;
-    padding: 15px;
+    top: calc(100% + 4px);
+    right: 8px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(var(--input-viewport-height, 100dvh) - 110px);
+    padding: 14px;
+    overscroll-behavior: contain;
   }
-  .connection-badge {
-    font-size: 9px;
+  .diagnostics-heading {
+    flex-wrap: wrap;
+    gap: 6px;
   }
-  .diagnostics > summary {
-    font-size: 9px;
+  .diagnostics-actions {
+    display: flex;
+    align-items: center;
+    margin-inline-start: auto;
   }
+  .diagnostics-actions .button {
+    min-height: 44px;
+  }
+  .app-shell[data-mobile-input-focused] .topbar {
+    flex-shrink: 1;
+    min-height: 44px;
+    overflow-y: auto;
+  }
+}
+@media (max-width: 760px) {
   .conversation-content {
     padding: 25px 20px;
   }

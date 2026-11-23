@@ -52,6 +52,7 @@ export function Diagnostics({
   busy,
   open,
   onOpenChange,
+  onDismiss,
   refreshing,
 }: {
   system?: SystemInfo;
@@ -71,6 +72,7 @@ export function Diagnostics({
   busy: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onDismiss?: () => void;
   refreshing: boolean;
 }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -155,7 +157,7 @@ export function Diagnostics({
     );
   };
   useEffect(() => {
-    if (open && !focusedOperationId) panel.current?.focus();
+    if (open && !focusedOperationId) panel.current?.focus({ preventScroll: true });
   }, [open, focusedOperationId]);
   return (
     <details
@@ -176,13 +178,31 @@ export function Diagnostics({
         role="region"
         aria-label={t('errors:diagnostics_details')}
         aria-busy={refreshing}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && onDismiss) {
+            event.preventDefault();
+            onDismiss();
+          }
+        }}
       >
         <div className="diagnostics-heading">
           <h2>{t('errors:execution_status')}</h2>
-          <Button variant="ghost" size="sm" disabled={refreshing} onClick={onRefresh}>
-            <Icon name="refresh" size={14} />
-            {refreshing ? t('common:checking') : t('errors:refresh_status')}
-          </Button>
+          <div className="diagnostics-actions">
+            <Button variant="ghost" size="sm" disabled={refreshing} onClick={onRefresh}>
+              <Icon name="refresh" size={14} />
+              {refreshing ? t('common:checking') : t('errors:refresh_status')}
+            </Button>
+            {onDismiss && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t('common:close')}
+                onClick={onDismiss}
+              >
+                <Icon name="close" size={16} />
+              </Button>
+            )}
+          </div>
         </div>
         <section className="operation-section" aria-label={t('errors:current_session_information')}>
           <h3>{t('errors:current_session')}</h3>

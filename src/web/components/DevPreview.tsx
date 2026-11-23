@@ -115,6 +115,7 @@ export function DevPreview({ threadId }: { threadId?: string }) {
       </Button>
       {open && (
         <CommandDialog
+          portal
           open
           title={t('preview:dev_title')}
           onClose={() => setOpen(false)}

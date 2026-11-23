@@ -22,6 +22,8 @@
   "finish_the_task_and_resolve_pending_requests_before": "タスクを終了し、保留中のリクエストを処理するとアーカイブできます",
   "session_state_needs_checking_archiving_is_temporarily_unavailable": "セッションの状態確認が必要なため、現在はアーカイブできません",
   "open_projects_and_sessions": "プロジェクトとセッションを開く",
+  "more_actions": "その他の操作",
+  "diagnostics_with_count": "診断（{{v0}}）",
   "workspace": "ワークスペース",
   "new_session": "新しいセッション",
   "start_your_next_task": "次のタスクを始めましょう",

@@ -72,29 +72,8 @@
   overflow-wrap: anywhere;
 }
 @media (max-width: 760px) {
-  /* Let the toolbar yield space to the composer when the keyboard leaves a short viewport.
-     Its controls remain reachable by scrolling instead of clipping the send action. */
-  .app-shell[data-mobile-input-focused] .topbar {
-    flex-shrink: 1;
-    min-height: 44px;
-    overflow-y: auto;
-  }
-  .topbar-title {
-    flex-basis: 100%;
-  }
-  .topbar-status {
-    flex-basis: 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-  }
-  .topbar-tools {
-    flex-wrap: wrap;
-    max-width: 100%;
-  }
   .background-task-notice {
-    top: 170px;
+    top: 110px;
     right: 16px;
   }
 }

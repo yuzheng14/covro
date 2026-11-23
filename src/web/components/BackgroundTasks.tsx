@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { t } from '../i18n';
 import type { BackgroundTaskState } from '../hooks/useBackgroundTasks';
 import { cloneProgress, cloneRunning, cloneProgressLabel } from '../lib/project-clone-labels';
@@ -39,6 +40,7 @@ export function BackgroundTasks({
         {running > 0 && <span className="background-task-count">{running}</span>}
       </Button>
       <CommandDialog
+        portal
         open={open}
         title={t('sidebar:background_tasks')}
         onClose={() => setOpen(false)}
@@ -70,24 +72,26 @@ export function BackgroundTasks({
           ))}
         </ul>
       </CommandDialog>
-      {tasks.notice && (
-        <div className="background-task-notice" role="status" aria-live="polite">
-          <span>
-            {tasks.notice.name || t('sidebar:import_clone')} · {cloneProgress(tasks.notice)}
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => details(tasks.notice!.id)}>
-            {t('sidebar:tasks_view')}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t('common:close')}
-            onClick={tasks.dismiss}
-          >
-            <Icon name="close" size={14} />
-          </Button>
-        </div>
-      )}
+      {tasks.notice &&
+        createPortal(
+          <div className="background-task-notice" role="status" aria-live="polite">
+            <span>
+              {tasks.notice.name || t('sidebar:import_clone')} · {cloneProgress(tasks.notice)}
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => details(tasks.notice!.id)}>
+              {t('sidebar:tasks_view')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t('common:close')}
+              onClick={tasks.dismiss}
+            >
+              <Icon name="close" size={14} />
+            </Button>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

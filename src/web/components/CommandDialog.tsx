@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { t } from '../i18n';
 import { Button } from './ui/button';
 import { Icon } from './Icon';
@@ -10,6 +11,7 @@ export function CommandDialog({
   children,
   wide = false,
   className = '',
+  portal = false,
 }: {
   open: boolean;
   title: string;
@@ -17,6 +19,7 @@ export function CommandDialog({
   children: ReactNode;
   wide?: boolean;
   className?: string;
+  portal?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const id = useId();
@@ -24,14 +27,18 @@ export function CommandDialog({
     if (open && !dialog.current?.open) dialog.current?.showModal();
     if (!open) dialog.current?.close();
   }, [open]);
-  return (
+  const dismiss = () => {
+    dialog.current?.close();
+    onClose();
+  };
+  const content = (
     <dialog
       ref={dialog}
       className={`project-dialog command-dialog${wide ? ' command-dialog-wide' : ''} ${className}`}
       aria-labelledby={id}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        dismiss();
       }}
     >
       <div className="project-dialog-heading">
@@ -41,7 +48,7 @@ export function CommandDialog({
           variant="ghost"
           size="icon"
           aria-label={t('commands:closeDialog')}
-          onClick={onClose}
+          onClick={dismiss}
         >
           <Icon name="close" size={17} />
         </Button>
@@ -49,4 +56,5 @@ export function CommandDialog({
       {children}
     </dialog>
   );
+  return portal ? createPortal(content, document.body) : content;
 }

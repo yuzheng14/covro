@@ -22,6 +22,8 @@
   "finish_the_task_and_resolve_pending_requests_before": "Finish the task and resolve pending requests before archiving",
   "session_state_needs_checking_archiving_is_temporarily_unavailable": "Session state needs checking; archiving is temporarily unavailable",
   "open_projects_and_sessions": "Open projects and sessions",
+  "more_actions": "More actions",
+  "diagnostics_with_count": "Diagnostics ({{v0}})",
   "workspace": "Workspace",
   "new_session": "New session",
   "start_your_next_task": "Start your next task",

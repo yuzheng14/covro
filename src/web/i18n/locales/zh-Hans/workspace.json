@@ -22,6 +22,8 @@
   "finish_the_task_and_resolve_pending_requests_before": "任务结束并处理完待办后可归档",
   "session_state_needs_checking_archiving_is_temporarily_unavailable": "会话状态待核对，暂时无法归档",
   "open_projects_and_sessions": "打开项目与会话",
+  "more_actions": "更多操作",
+  "diagnostics_with_count": "状态诊断（{{v0}}）",
   "workspace": "工作空间",
   "new_session": "新会话",
   "start_your_next_task": "开始你的下一项任务",
