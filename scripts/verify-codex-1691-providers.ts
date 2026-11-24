@@ -102,7 +102,7 @@ try {
   for (const provider of [
     'amazon-bedrock',
     'amazon-bedrock-runtime',
-    ...(['0.170.0', '0.171.0'].includes(expectedVersion) ? ['gcp'] : []),
+    ...(['0.170.0', '0.171.0', '0.172.0'].includes(expectedVersion) ? ['gcp'] : []),
   ]) {
     for (const optOut of [false, true]) {
       const home = join(root, `${provider}-${optOut}`);

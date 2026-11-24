@@ -199,6 +199,9 @@ describe('bounded capacity recovery', () => {
     'inferenceHookDenied',
     'bioPolicy',
     'sessionBudgetExceeded',
+    'apiKeySpendLimitExceeded',
+    'projectSpendLimitExceeded',
+    'organizationSpendLimitExceeded',
   ])('does not retry %s even when its text resembles capacity advice', async (code) => {
     const ctx = await setup();
     ctx.fail(MODEL_CAPACITY_MESSAGE, code);

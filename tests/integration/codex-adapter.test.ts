@@ -84,7 +84,7 @@ describe('verified protocol adapter with a real subprocess', () => {
     'does not infer effort or Fast from another catalog model when the effective model is %s',
     async (configModel) => {
       const { adapter, requests } = await fixture({
-        codexVersion: '0.171.0',
+        codexVersion: '0.172.0',
         configModel,
       });
       await expect(adapter.createThread('/tmp', { serviceTier: 'fast' })).rejects.toMatchObject({
@@ -99,7 +99,7 @@ describe('verified protocol adapter with a real subprocess', () => {
   );
   it('keeps a resumed provider catalog on every page and validates effort and Fast against that provider', async () => {
     const { adapter, requests } = await fixture({
-      codexVersion: '0.171.0',
+      codexVersion: '0.172.0',
       modelProvider: 'current',
       threadModelProviders: ['old'],
       modelPageSize: 1,
@@ -153,7 +153,7 @@ describe('verified protocol adapter with a real subprocess', () => {
   });
   it('keeps history readable when its provider catalog fails, without borrowing the default catalog', async () => {
     const { adapter, requests } = await fixture({
-      codexVersion: '0.171.0',
+      codexVersion: '0.172.0',
       modelProvider: 'current',
       threadModelProviders: ['old'],
       providerModelFailure: 'old',
@@ -171,7 +171,7 @@ describe('verified protocol adapter with a real subprocess', () => {
   });
   it('does not persist a foreign provider selection as the new-session default, even for a shared model name', async () => {
     const { adapter, requests } = await fixture({
-      codexVersion: '0.171.0',
+      codexVersion: '0.172.0',
       modelProvider: 'current',
     });
     expect(

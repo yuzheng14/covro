@@ -91,9 +91,9 @@
     "vitest": "5.0.3"
   },
   "covroCodex": {
-    "recommended": "0.171.0",
+    "recommended": "0.172.0",
     "verified": [
-      "0.171.0"
+      "0.172.0"
     ],
     "unsupported": []
   },

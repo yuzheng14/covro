@@ -60,7 +60,7 @@ it('routes local documents through the authenticated preview and leaves external
     createElement(FilePreviewProvider, {
       threadId: 'thread',
       children: createElement(MarkdownContent, {
-        text: '[本地](file:///work/plan.md) [下一页](next.md) [外部](https://example.com/README.md) [危险](javascript:alert%281%29)',
+        text: '[本地](file:///work/plan.md) [下一页](next.md) [外部](https://example.com/README.md) [危险](javascript:alert%281%29) [历史会话](codex://threads/saved-thread)',
         baseFile: '/work/docs/readme.md',
       }),
     }),
@@ -70,4 +70,7 @@ it('routes local documents through the authenticated preview and leaves external
   expect(html).toContain('href="https://example.com/README.md"');
   expect(html).not.toContain('javascript:');
   expect(html).not.toContain('href="file:');
+  expect(html).toContain('历史会话');
+  expect(html).not.toContain('codex://');
+  expect(html).not.toContain('saved-thread');
 });

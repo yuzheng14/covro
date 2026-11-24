@@ -125,7 +125,7 @@ export type {
 export { CodexError } from './transport.js';
 
 export const VERIFIED_CODEX_VERSION = CODEX_COMPATIBILITY.recommended;
-const LIVE_SETTINGS_CODEX_VERSION = '0.171.0';
+const VERIFIED_ADAPTER_CODEX_VERSION = '0.172.0';
 const CAPABILITIES = [
   'command/exec',
   'command/exec/terminate',
@@ -634,7 +634,7 @@ export class CodexAdapter implements CodexClient {
     return { provider, models };
   }
   private async reportedCatalog(provider: string): Promise<Pick<RuntimeSettings, 'modelCatalog'>> {
-    if (this.state.codexVersion !== '0.171.0') return {};
+    if (this.state.codexVersion !== VERIFIED_ADAPTER_CODEX_VERSION) return {};
     try {
       return { modelCatalog: await this.modelCatalog(provider) };
     } catch {
@@ -643,7 +643,8 @@ export class CodexAdapter implements CodexClient {
     }
   }
   private async settingsContext(cwd: string, id?: string): Promise<RuntimeSettings | undefined> {
-    if (this.state.codexVersion !== '0.171.0') return id ? this.permissionState.get(id) : undefined;
+    if (this.state.codexVersion !== VERIFIED_ADAPTER_CODEX_VERSION)
+      return id ? this.permissionState.get(id) : undefined;
     if (id) {
       const current = this.permissionState.get(id);
       if (current?.modelProvider) return current;
@@ -662,10 +663,10 @@ export class CodexAdapter implements CodexClient {
     current?: RuntimeSettings,
   ): Promise<void> {
     if (!hasModelSettings(settings)) return;
-    if (this.state.codexVersion === '0.171.0' && !current?.modelProvider)
+    if (this.state.codexVersion === VERIFIED_ADAPTER_CODEX_VERSION && !current?.modelProvider)
       throw new CodexError('PROTOCOL_INCOMPATIBLE', "Codex did not report this session's provider");
     const models =
-      this.state.codexVersion === '0.171.0'
+      this.state.codexVersion === VERIFIED_ADAPTER_CODEX_VERSION
         ? (await this.modelCatalog(current!.modelProvider!)).models
         : this.state.models;
     const selectedModel = settings.model ?? current?.model;
@@ -678,7 +679,7 @@ export class CodexAdapter implements CodexClient {
       effort != null &&
       !(
         model?.reasoningEfforts ??
-        (selectedModel || this.state.codexVersion === '0.171.0'
+        (selectedModel || this.state.codexVersion === VERIFIED_ADAPTER_CODEX_VERSION
           ? []
           : models.flatMap((entry) => entry.reasoningEfforts))
       ).includes(effort)
@@ -687,7 +688,9 @@ export class CodexAdapter implements CodexClient {
     const tier = settings.serviceTier !== undefined ? settings.serviceTier : current?.serviceTier;
     if (
       tier === 'fast' &&
-      (model ? !model.serviceTiers?.includes('fast') : this.state.codexVersion === '0.171.0')
+      (model
+        ? !model.serviceTiers?.includes('fast')
+        : this.state.codexVersion === VERIFIED_ADAPTER_CODEX_VERSION)
     )
       throw new AppError('VALIDATION_ERROR', '所选模型不支持 Fast');
   }
@@ -1132,9 +1135,9 @@ export class CodexAdapter implements CodexClient {
       }
       this.liveCapabilities.set(threadId ?? '', {
         fast:
-          this.state.codexVersion === LIVE_SETTINGS_CODEX_VERSION &&
+          this.state.codexVersion === VERIFIED_ADAPTER_CODEX_VERSION &&
           features.find((entry) => entry.name === 'step_model_switching')?.enabled === true,
-        reviewer: this.state.codexVersion === LIVE_SETTINGS_CODEX_VERSION,
+        reviewer: this.state.codexVersion === VERIFIED_ADAPTER_CODEX_VERSION,
       });
       const configFeatures = config?.features;
       const explicit = isRecord(configFeatures) ? configFeatures.guardian_approval : undefined;
@@ -1393,8 +1396,8 @@ export class CodexAdapter implements CodexClient {
     turnId: string,
     settings: LiveSettings,
   ): Promise<Partial<Omit<LiveSettingsState, 'turnId'>>> {
-    // Exact experimental 0.171.0 contract; stable generation intentionally omits this method.
-    if (this.state.codexVersion !== LIVE_SETTINGS_CODEX_VERSION)
+    // Exact experimental contract for the verified adapter version; stable generation intentionally omits this method.
+    if (this.state.codexVersion !== VERIFIED_ADAPTER_CODEX_VERSION)
       throw new AppError('PROTOCOL_INCOMPATIBLE', '执行中配置更新尚未核验此 Codex 版本');
     const epoch = this.epoch;
     const current = this.permissionState.get(id);
@@ -1589,7 +1592,7 @@ export class CodexAdapter implements CodexClient {
             modelCatalog:
               catalog?.provider === provider
                 ? catalog
-                : this.state.codexVersion === '0.171.0' && provider
+                : this.state.codexVersion === VERIFIED_ADAPTER_CODEX_VERSION && provider
                   ? { provider, models: [], unavailable: true }
                   : undefined,
             ...reportedCollaborationMode(

@@ -49,7 +49,7 @@ You need **Node.js 24.19 or later in the 24.x line** and an installed, signed-in
 
 <!-- codex-compatibility:start -->
 
-Recommended Codex CLI: **0.171.0**. Verified versions: `0.171.0`.
+Recommended Codex CLI: **0.172.0**. Verified versions: `0.172.0`.
 
 <!-- codex-compatibility:end -->
 

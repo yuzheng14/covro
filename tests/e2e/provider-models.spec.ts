@@ -7,8 +7,7 @@ import {
   openModelSettings,
 } from './helpers';
 
-// Earlier stack layers retain the old verified baseline until native validation completes.
-test.skip(CODEX_COMPATIBILITY.recommended !== '0.171.0', 'Requires the target protocol layer');
+test.skip(CODEX_COMPATIBILITY.recommended !== '0.172.0', 'Requires the target protocol layer');
 
 test('uses the session provider for model and effort choices, without changing new-session defaults', async ({
   page,

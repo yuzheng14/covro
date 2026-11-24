@@ -1,8 +1,8 @@
-/** Native 0.166.0 error/admission probes. Fresh homes, local HTTP stub, no account or inference. */
+/** Native error and admission probes using fresh homes and a loopback Responses stub. */
 import assert from 'node:assert/strict';
 import { spawn, execFile } from 'node:child_process';
 import { once } from 'node:events';
-import { createServer } from 'node:http';
+import { createServer, type ServerResponse } from 'node:http';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -14,6 +14,8 @@ import type { TurnStartResponse } from '../src/codex/generated/v2/TurnStartRespo
 import { chromium, expect } from '@playwright/test';
 import { parseConfig } from '../src/server/config.js';
 import { startGateway } from '../src/server/main.js';
+import type { ErrorNotification } from '../src/codex/generated/v2/ErrorNotification.js';
+import type { TurnCompletedNotification } from '../src/codex/generated/v2/TurnCompletedNotification.js';
 
 const args = process.argv.slice(2);
 const versionIndex = args.indexOf('--expected-version');
@@ -32,16 +34,56 @@ assert.equal(
 const root = await mkdtemp(join(tmpdir(), 'covro-166-probes-'));
 const children: ReturnType<typeof spawn>[] = [];
 const checks: string[] = [];
-let failureCode = 'model_not_found';
+type Failure = { code: string; expected: string; openStream?: 'error' | 'response.failed' };
+let failure: Failure | undefined;
 let requests = 0;
 const message = 'Isolated model deployment is unavailable';
+const openResponses = new Set<ServerResponse>();
 const server = createServer(async (request, response) => {
   for await (const chunk of request) void chunk;
   requests++;
   response.writeHead(200, { 'content-type': 'text/event-stream' });
-  response.end(
-    `event: response.failed\ndata: ${JSON.stringify({ type: 'response.failed', response: { id: 'probe', status: 'failed', error: { code: failureCode, message } } })}\n\n`,
-  );
+  if (!failure) {
+    const item = {
+      type: 'message',
+      id: 'recovery-answer',
+      role: 'assistant',
+      phase: 'final_answer',
+      content: [{ type: 'output_text', text: 'Local recovery completed' }],
+    };
+    for (const event of [
+      { type: 'response.created', response: { id: 'recovery' } },
+      { type: 'response.output_item.done', output_index: 0, item },
+      {
+        type: 'response.completed',
+        response: { id: 'recovery', status: 'completed', output: [item] },
+      },
+    ]) {
+      response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    }
+    response.end();
+    return;
+  }
+  const error = {
+    code: failure.code,
+    message,
+    ...(failure.openStream ? { headers: { 'Retry-After': '1' } } : {}),
+  };
+  const event =
+    failure.openStream === 'error'
+      ? { type: 'error', error }
+      : {
+          type: 'response.failed',
+          response: { id: 'probe', status: 'failed', error },
+        };
+  const frame = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+  if (failure.openStream) {
+    openResponses.add(response);
+    response.once('close', () => openResponses.delete(response));
+    response.write(frame);
+  } else {
+    response.end(frame);
+  }
 });
 server.listen(0, '127.0.0.1');
 await once(server, 'listening');
@@ -97,56 +139,114 @@ try {
     await configure(home);
     const { rpc, notifications, child } = await start(home);
     let lastThread = '';
-    let hookThread = '';
-    const failures = [
-      ['model_not_found', 'modelNotFound'],
-      ['policy_capacity_unavailable', 'policyCapacityUnavailable'],
-      ...(expectedVersion === '0.171.0' ? [['bio_policy', 'bioPolicy']] : []),
-      ...(['0.169.0', '0.169.1', '0.170.0', '0.171.0'].includes(expectedVersion)
-        ? [
-            ['inference_hook_denied', 'inferenceHookDenied'],
-            ['budget_reached', 'sessionBudgetExceeded'],
-          ]
-        : []),
+    let screenshotThread = '';
+    const failures: Failure[] = [
+      { code: 'model_not_found', expected: 'modelNotFound' },
+      { code: 'policy_capacity_unavailable', expected: 'policyCapacityUnavailable' },
     ];
-    for (const [code, expected] of failures) {
-      failureCode = code!;
+    if (['0.171.0', '0.172.0'].includes(expectedVersion)) {
+      failures.push({ code: 'bio_policy', expected: 'bioPolicy' });
+    }
+    if (['0.169.0', '0.169.1', '0.170.0', '0.171.0', '0.172.0'].includes(expectedVersion)) {
+      failures.push(
+        { code: 'inference_hook_denied', expected: 'inferenceHookDenied' },
+        { code: 'budget_reached', expected: 'sessionBudgetExceeded' },
+      );
+    }
+    if (expectedVersion === '0.172.0') {
+      failures.push(
+        { code: 'bio_policy', expected: 'bioPolicy', openStream: 'error' },
+        { code: 'cyber_policy', expected: 'cyberPolicy', openStream: 'error' },
+        {
+          code: 'api_key_spend_limit_exceeded',
+          expected: 'apiKeySpendLimitExceeded',
+          openStream: 'error',
+        },
+        {
+          code: 'organization_spend_limit_exceeded',
+          expected: 'organizationSpendLimitExceeded',
+          openStream: 'response.failed',
+        },
+        {
+          code: 'project_spend_limit_exceeded',
+          expected: 'projectSpendLimitExceeded',
+          openStream: 'error',
+        },
+      );
+    }
+    const completed = (turnId: string) =>
+      notifications
+        .filter((event) => event.method === 'turn/completed')
+        .map((event) => event.params as TurnCompletedNotification)
+        .find((event) => event.turn.id === turnId)?.turn;
+    const persistedFailures: {
+      threadId: string;
+      turnId: string;
+      error: ErrorNotification['error'];
+    }[] = [];
+    for (const scenario of failures) {
+      failure = scenario;
+      const { expected, openStream } = scenario;
       const before = requests;
       const { thread } = await rpc.request<ThreadStartResponse>('thread/start', {
         cwd: root,
         historyMode,
+        ...(openStream
+          ? { config: { model_providers: { probe: { stream_max_retries: 1 } } } }
+          : {}),
       });
       lastThread = thread.id;
-      if (expected === 'inferenceHookDenied') hookThread = thread.id;
-      const { turn } = await rpc.request<TurnStartResponse>('turn/start', {
-        threadId: thread.id,
-        input: [{ type: 'text', text: 'Probe terminal model failure', text_elements: [] }],
-      });
-      await wait(() =>
-        notifications.some(
-          (e) =>
-            e.method === 'turn/completed' &&
-            (e.params as { turn: { id: string } }).turn.id === turn.id,
-        ),
-      );
-      const live = notifications.findLast((e) => e.method === 'error')!.params as {
-        willRetry: boolean;
-        error: { codexErrorInfo: string; message: string };
-      };
-      assert.equal(live.error.codexErrorInfo, expected);
-      assert.equal(live.willRetry, false);
-      if (expected === 'modelNotFound') assert.equal(live.error.message, message);
-      const stored = await rpc.request<ThreadReadResponse>('thread/read', {
-        threadId: thread.id,
-        includeTurns: true,
-      });
-      assert.equal(stored.thread.turns.at(-1)?.status, 'failed');
-      assert.deepEqual(stored.thread.turns.at(-1)?.error, live.error);
-      assert.equal(requests - before, 1, 'Terminal native error must not retry without advice');
-      checks.push(`${historyMode}: ${expected} is terminal once and preserved in history`);
+      if (expected === 'inferenceHookDenied' || expected === 'projectSpendLimitExceeded')
+        screenshotThread = thread.id;
+      const startTurn = (text: string) =>
+        rpc.request<TurnStartResponse>('turn/start', {
+          threadId: thread.id,
+          input: [{ type: 'text', text, text_elements: [] }],
+        });
+      const { turn } = await startTurn('Probe terminal model failure');
+      await wait(() => Boolean(completed(turn.id)));
+      const live = notifications
+        .filter((event) => event.method === 'error')
+        .map((event) => event.params as ErrorNotification)
+        .filter((event) => event.threadId === thread.id && event.turnId === turn.id);
+      assert.equal(live.length, 1, 'Terminal native error must be delivered once');
+      const [notification] = live;
+      assert(notification);
+      assert.equal(notification.error.codexErrorInfo, expected);
+      assert.equal(notification.willRetry, false);
+      if (expected === 'modelNotFound') assert.equal(notification.error.message, message);
+      assert.equal(completed(turn.id)?.status, 'failed');
+      assert.deepEqual(completed(turn.id)?.error, notification.error);
+      assert.equal(requests - before, 1, 'Terminal native error must not retry');
+      persistedFailures.push({ threadId: thread.id, turnId: turn.id, error: notification.error });
+      if (openStream) {
+        assert.equal(openResponses.size, 0, 'Codex must close the stream without an upstream EOF');
+        failure = undefined;
+        const next = await startTurn('Probe recovery in the same thread');
+        await wait(() => Boolean(completed(next.turn.id)));
+        assert.equal(completed(next.turn.id)?.status, 'completed');
+        assert.equal(requests - before, 2, 'The next turn makes one new request');
+        checks.push(
+          `${historyMode}: ${expected} closes a held-open ${openStream} stream despite Retry-After and the next turn succeeds`,
+        );
+      }
     }
     await stop(child);
-    if (historyMode === 'paginated' && outputIndex >= 0 && hookThread) {
+    const cold = await start(home);
+    for (const { threadId, turnId, error } of persistedFailures) {
+      const stored = await cold.rpc.request<ThreadReadResponse>('thread/read', {
+        threadId,
+        includeTurns: true,
+      });
+      const failed = stored.thread.turns.find((turn) => turn.id === turnId);
+      assert.equal(failed?.status, 'failed');
+      assert.deepEqual(failed.error, error);
+      checks.push(
+        `${historyMode}: ${error.codexErrorInfo} is terminal once and preserved in cold history`,
+      );
+    }
+    await stop(cold.child);
+    if (historyMode === 'paginated' && outputIndex >= 0 && screenshotThread) {
       const output = resolve(args[outputIndex + 1]!);
       await mkdir(output, { recursive: true });
       const gateway = await startGateway(
@@ -169,8 +269,10 @@ try {
           locale: 'zh-CN',
         });
         await page.goto('http://127.0.0.1:8996');
-        await page.locator(`[data-thread-id="${hookThread}"]`).click();
-        await expect(page.locator('.turn-heading .status').last()).toHaveText('失败');
+        await page.locator(`[data-thread-id="${screenshotThread}"]`).click();
+        await expect(page.locator('.turn-heading .status').filter({ hasText: '失败' })).toHaveCount(
+          1,
+        );
         await expect(page.locator('.composer-resume-status')).toHaveCount(0);
         await expect(page.getByTestId('capacity-retry-status')).toHaveCount(0);
         await page.screenshot({ path: join(output, 'terminal-error-desktop.png'), fullPage: true });
@@ -184,7 +286,7 @@ try {
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         await page.screenshot({ path: join(output, 'terminal-error-mobile.png'), fullPage: true });
         checks.push(
-          'production browser: persisted inferenceHookDenied remains failed without a capacity retry at 1280px and 390px',
+          'production browser: persisted terminal error remains failed without a capacity retry at 1280px and 390px',
         );
       } finally {
         await browser.close();

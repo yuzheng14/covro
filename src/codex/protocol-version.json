@@ -1,5 +1,5 @@
 {
-  "version": "codex-cli 0.171.0",
-  "generatedAt": "2026-11-20T06:32:43.816Z",
+  "version": "codex-cli 0.172.0",
+  "generatedAt": "2026-11-24T03:36:11.114Z",
   "command": "codex app-server generate-ts --out ./src/codex/generated"
 }
