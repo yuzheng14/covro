@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.12.0](https://github.com/yuzheng14/covro/compare/v0.11.0...v0.12.0) (2026-11-24)
+
+
+### Features
+
+* **codex:** validate Codex CLI 0.172.0 compatibility ([#375](https://github.com/yuzheng14/covro/issues/375)) ([e0fc768](https://github.com/yuzheng14/covro/commit/e0fc7680e1bb8c3c2c385f3709063922a258664c)), closes [#374](https://github.com/yuzheng14/covro/issues/374)
+* **service:** restart the managed Covro daemon when idle ([#369](https://github.com/yuzheng14/covro/issues/369)) ([fd643a7](https://github.com/yuzheng14/covro/commit/fd643a7fc33e7497634f2696aa26c847297c7a64))
+* **settings:** expose and track manual service restarts ([#370](https://github.com/yuzheng14/covro/issues/370)) ([78cb9e9](https://github.com/yuzheng14/covro/commit/78cb9e96d31fd2a40c7fddfa07221c6e73defdf2)), closes [#362](https://github.com/yuzheng14/covro/issues/362)
+
+
+### Bug Fixes
+
+* **backups:** compact the source database before snapshots ([#365](https://github.com/yuzheng14/covro/issues/365)) ([c6ad918](https://github.com/yuzheng14/covro/commit/c6ad91867207a2416905b22d3140750b88655c0e))
+* **mobile:** compact the conversation header ([#368](https://github.com/yuzheng14/covro/issues/368)) ([7bd0d85](https://github.com/yuzheng14/covro/commit/7bd0d853c7dad0f6b305ee0be7fa6abd6a9dbe94)), closes [#363](https://github.com/yuzheng14/covro/issues/363)
+
+
+### Performance Improvements
+
+* **session:** keep background conversations synchronized ([#367](https://github.com/yuzheng14/covro/issues/367)) ([99bf924](https://github.com/yuzheng14/covro/commit/99bf9249b012a3c57e27cf3b4b3a65dc090c837b)), closes [#364](https://github.com/yuzheng14/covro/issues/364)
+
 ## [0.11.0](https://github.com/yuzheng14/covro/compare/v0.10.0...v0.11.0) (2026-11-20)
 
 
