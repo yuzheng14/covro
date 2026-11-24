@@ -148,19 +148,21 @@ svg {
   height: var(--input-viewport-height, 100dvh);
   overflow: hidden;
 }
-.app-shell[data-mobile-input-focused] {
-  position: relative;
+.app-shell[data-mobile-input-viewport] {
+  /* VisualViewport offsets are relative to the layout viewport, even when the document scrolls. */
+  position: fixed;
   top: var(--input-viewport-top, 0px);
+  inset-inline: 0;
 }
-.app-shell[data-mobile-input-focused] .conversation-area {
+.app-shell[data-mobile-input-viewport] .conversation-area {
   min-height: 0;
 }
-.app-shell[data-mobile-input-focused] .bottom-region {
+.app-shell[data-mobile-input-viewport] .bottom-region {
   /* Let the conversation shrink before clipping the send controls. */
   max-height: 100%;
   flex-shrink: 1;
 }
-.app-shell[data-mobile-input-focused] .composer-note {
+.app-shell[data-mobile-input-viewport] .composer-note {
   display: none;
 }
 .sidebar {
@@ -1258,6 +1260,12 @@ svg {
   flex: 1;
   min-height: 100px;
 }
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+  .main-panel:has(.composer-region[data-mobile-input]) .conversation-area {
+    /* A short landscape viewport can run out of room even after the keyboard closes. */
+    min-height: 0;
+  }
+}
 .conversation-viewport {
   --conversation-sticky-offset: 0px;
   --prompt-sticky-height: 40px;
@@ -2066,7 +2074,10 @@ svg {
   overflow-y: auto;
 }
 .composer-region {
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-bottom: max(
+    12px,
+    calc(env(safe-area-inset-bottom, 0px) - var(--input-viewport-bottom-inset, 0px))
+  );
 }
 .composer-resume-status {
   display: flex;
@@ -3420,7 +3431,7 @@ dd {
   .topbar {
     --topbar-attention-inset: 48px;
   }
-  .app-shell[data-mobile-input-focused] .topbar[data-compact] {
+  .app-shell[data-mobile-input-viewport] .topbar[data-compact] {
     flex-shrink: 1;
     min-height: 44px;
     overflow-y: auto;
