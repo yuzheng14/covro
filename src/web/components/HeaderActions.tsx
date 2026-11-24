@@ -3,9 +3,6 @@ import { Ellipsis } from 'lucide-react';
 import { t } from '../i18n';
 import { Button } from './ui/button';
 
-export const compactHeaderQuery =
-  '(max-width: 760px), (max-width: 950px) and (max-height: 500px) and (pointer: coarse)';
-
 /** Keep the same controls mounted when the toolbar becomes a native popover. */
 export function HeaderActions({
   compact,
@@ -28,23 +25,32 @@ export function HeaderActions({
     const top = anchor.bottom + 6;
     const viewport = window.visualViewport;
     const viewportBottom = viewport ? viewport.offsetTop + viewport.height : innerHeight;
-    popup.style.top = `${top}px`;
-    popup.style.maxHeight = `${Math.max(0, viewportBottom - top - 8)}px`;
+    popup.style.setProperty('--topbar-tools-top', `${top}px`);
+    popup.style.setProperty('--topbar-tools-right', `${Math.max(8, innerWidth - anchor.right)}px`);
+    popup.style.setProperty(
+      '--topbar-tools-max-height',
+      `${Math.max(0, viewportBottom - top - 8)}px`,
+    );
   }, [trigger]);
 
   useEffect(() => {
     if (!compact) return;
     const popup = panel.current;
     const viewport = window.visualViewport;
+    const header = popup?.closest('.topbar');
+    const resize = new ResizeObserver(position);
+    if (header) resize.observe(header, { box: 'border-box' });
     window.addEventListener('resize', position);
     viewport?.addEventListener('resize', position);
     viewport?.addEventListener('scroll', position);
     return () => {
+      resize.disconnect();
       window.removeEventListener('resize', position);
       viewport?.removeEventListener('resize', position);
       viewport?.removeEventListener('scroll', position);
-      popup?.style.removeProperty('top');
-      popup?.style.removeProperty('max-height');
+      popup?.style.removeProperty('--topbar-tools-top');
+      popup?.style.removeProperty('--topbar-tools-right');
+      popup?.style.removeProperty('--topbar-tools-max-height');
     };
   }, [compact, position]);
 
@@ -54,6 +60,7 @@ export function HeaderActions({
         <Button
           ref={trigger}
           className="topbar-more"
+          data-compact-action=""
           variant="ghost"
           size="icon"
           aria-label={t('workspace:more_actions')}

@@ -63,10 +63,14 @@ test('wide screens split chat and document; copy preserves the entire source and
   page,
 }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
+  const more = page.getByRole('button', { name: '更多操作', exact: true });
+  await expect(more).toHaveCount(0);
   await fileLink(page).click();
   await expect(
     preview(page).getByRole('heading', { name: 'Markdown 文件预览', exact: true }),
   ).toBeVisible();
+  await expect(more).toBeVisible();
+  expect(await page.evaluate(() => innerWidth)).toBe(1600);
   await expect(preview(page).locator('table')).toContainText('会话与文档分屏');
   const panel = (await preview(page).boundingBox())!;
   const main = (await page.locator('.main-panel').boundingBox())!;
@@ -90,6 +94,7 @@ test('wide screens split chat and document; copy preserves the entire source and
   await expect(preview(page).getByRole('heading', { name: '下一份文档' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(preview(page)).toHaveCount(0);
+  await expect(more).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: '任务内容', exact: true })).toHaveValue(
     '边看文档边补充要求',
   );

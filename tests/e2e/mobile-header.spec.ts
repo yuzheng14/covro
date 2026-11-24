@@ -79,6 +79,89 @@ test('compact tools keep keyboard order and restore focus after dismissal and di
   await expect(toolbar(page)).not.toBeVisible();
 });
 
+test('intermediate viewports fit the header with a long title and preserve focus through resize', async ({
+  page,
+}) => {
+  await saveConversationHistory(page);
+  const id = await page.evaluate(() => localStorage.getItem('codex-web.selected:fixture'));
+  const title = 'Accessibility and internationalization review for the workspace activity feed';
+  const rename = await page.request.post(`/api/threads/${id}/rename`, {
+    headers: { Origin: testOrigin },
+    data: { clientOperationId: randomUUID(), name: title },
+  });
+  expect(rename.ok()).toBe(true);
+  await page.route('**/github-repository', (route) =>
+    route.fulfill({ json: { url: 'https://github.com/example/design-system' } }),
+  );
+
+  const header = page.locator('.topbar');
+  const titleControl = header.getByRole('button', { name: '重命名会话', exact: true });
+  const repository = header.getByRole('link', { name: '打开 GitHub 仓库' });
+  const task = toolbar(page).getByRole('button', { name: '后台任务', exact: true });
+  for (const [locale, label] of [
+    ['en', 'More actions'],
+    ['ja', 'その他の操作'],
+    ['ko', '추가 작업'],
+    ['zh-Hans', '更多操作'],
+  ]) {
+    await page.evaluate((locale) => localStorage.setItem('covro.locale', locale!), locale);
+    await page.reload();
+    await expect(header.locator('h1')).toHaveText(title);
+    await expect(
+      header.locator('a[href="https://github.com/example/design-system"]'),
+    ).toBeVisible();
+    for (const width of [760, 761, 762, 964, 965, 966]) {
+      await page.setViewportSize({ width, height: 844 });
+      const trigger = header.getByRole('button', { name: label, exact: true });
+      if (width <= 762) await expect(trigger).toBeVisible();
+      await expect
+        .poll(() =>
+          header.evaluate((element) => {
+            const bounds = element.getBoundingClientRect();
+            const title = element.querySelector('.topbar-title')!.getBoundingClientRect();
+            const status = element.querySelector('.topbar-status')!.getBoundingClientRect();
+            return (
+              title.right <= status.left &&
+              status.right <= bounds.right &&
+              element.scrollWidth === element.clientWidth &&
+              document.documentElement.scrollWidth === innerWidth &&
+              title.top < status.bottom &&
+              status.top < title.bottom
+            );
+          }),
+        )
+        .toBe(true);
+      expect(await page.evaluate(() => innerWidth)).toBe(width);
+    }
+  }
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(task).toBeVisible();
+  await task.focus();
+  await page.setViewportSize({ width: 761, height: 844 });
+  await expect(more(page)).toBeFocused();
+  await expect(repository).toBeVisible();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await expect(task).toBeFocused();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(task).toBeFocused();
+  await expect(more(page)).toHaveCount(0);
+  await page.setViewportSize({ width: 761, height: 844 });
+  await expect(toolbar(page)).not.toBeVisible();
+  await titleControl.click();
+  await expect(header.getByRole('textbox', { name: '会话名称' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(titleControl).toBeFocused();
+
+  await page.setViewportSize({ width: 760, height: 844 });
+  await header.getByRole('button', { name: '打开项目与会话' }).click();
+  await expect(page.locator('.sidebar-open')).toBeVisible();
+  await page.setViewportSize({ width: 761, height: 844 });
+  await expect(page.locator('.sidebar-open')).toHaveCount(0);
+  await expect(more(page)).toBeVisible();
+});
+
 test('pending approvals and several unresolved operations stay visible through disconnect', async ({
   page,
   request,

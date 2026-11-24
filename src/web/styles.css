@@ -945,6 +945,7 @@ svg {
   position: relative;
 }
 .topbar {
+  --topbar-title-basis: 180px;
   min-height: 84px;
   padding: 20px 32px;
   border-bottom: 1px solid var(--border);
@@ -956,10 +957,13 @@ svg {
 }
 .topbar-title {
   display: flex;
-  flex: 1;
+  flex: 1 1 var(--topbar-title-basis);
   align-items: center;
   min-width: 0;
   gap: 10px;
+}
+.topbar-title > .button-icon {
+  flex-shrink: 0;
 }
 .topbar-title > div {
   min-width: 0;
@@ -972,6 +976,12 @@ svg {
   color: #899199;
   font-size: 10px;
   margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.breadcrumb-project {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .breadcrumb-scope {
   color: #a5aab0;
@@ -987,9 +997,28 @@ svg {
 }
 .topbar-status {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 17px;
   font-size: 11px;
+}
+/* Measure the same controls at their desktop size, even while their popover is open. */
+.topbar[data-measuring] .topbar-status {
+  position: absolute;
+  width: max-content;
+}
+.topbar[data-measuring] [data-compact-action] {
+  position: absolute;
+}
+.topbar[data-measuring] .topbar-tools[popover] {
+  display: flex;
+  position: fixed;
+  inset: auto;
+  width: max-content;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 .thread-title-editor {
   min-width: 0;
@@ -3388,20 +3417,28 @@ dd {
     border: 0;
     background: #18261e44;
   }
-
   .topbar {
-    position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    column-gap: 4px;
-    row-gap: 0;
-    min-height: 0;
-    padding: 4px 8px;
+    --topbar-attention-inset: 48px;
   }
+  .app-shell[data-mobile-input-focused] .topbar[data-compact] {
+    flex-shrink: 1;
+    min-height: 44px;
+    overflow-y: auto;
+  }
+}
+.topbar[data-compact]:not([data-measuring]) {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 4px;
+  row-gap: 0;
+  min-height: 0;
+  padding: 4px 8px;
+
   .topbar-title {
     gap: 4px;
   }
-  .topbar-title h1 {
+  h1 {
     max-width: none;
   }
   .topbar-title .button-icon,
@@ -3413,19 +3450,13 @@ dd {
   .topbar-title > .control-hint {
     flex: none;
   }
-  .topbar .breadcrumb {
+  .breadcrumb {
     margin-bottom: 0;
     gap: 4px;
     min-height: 16px;
     font-size: 11px;
-    overflow: hidden;
-    white-space: nowrap;
   }
-  .breadcrumb-project {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .topbar .breadcrumb :is(svg, .breadcrumb-scope) {
+  .breadcrumb :is(svg, .breadcrumb-scope) {
     display: none;
   }
   .thread-title-trigger {
@@ -3434,10 +3465,10 @@ dd {
     margin-top: -16px;
     padding-top: 16px;
   }
-  .topbar:has(.thread-title-editing) .topbar-title {
+  &:has(.thread-title-editing) .topbar-title {
     grid-column: 1 / -1;
   }
-  .topbar:has(.thread-title-editing) .topbar-status {
+  &:has(.thread-title-editing) .topbar-status {
     display: none;
   }
   .thread-title-fields input {
@@ -3454,7 +3485,7 @@ dd {
     justify-content: flex-end;
     align-self: start;
   }
-  .topbar-status > .connection-badge,
+  .topbar-status > :is(.connection-badge, .status, .topbar-source),
   .diagnostics > summary,
   .topbar-attention:empty {
     display: none;
@@ -3464,7 +3495,7 @@ dd {
     display: flex;
     flex-wrap: wrap;
     gap: 4px 8px;
-    padding: 2px 6px 4px 48px;
+    padding: 2px 6px 4px var(--topbar-attention-inset, 6px);
   }
   .topbar-attention .status {
     padding: 3px 7px;
@@ -3487,9 +3518,10 @@ dd {
   }
   .topbar-tools[popover] {
     position: fixed;
-    inset: auto 8px auto auto;
+    inset: var(--topbar-tools-top, auto) var(--topbar-tools-right, 8px) auto auto;
     margin: 0;
     width: min(248px, calc(100vw - 16px));
+    max-height: var(--topbar-tools-max-height, none);
     overflow: auto;
     overscroll-behavior: contain;
     padding: 4px;
@@ -3541,11 +3573,6 @@ dd {
   }
   .diagnostics-actions .button {
     min-height: 44px;
-  }
-  .app-shell[data-mobile-input-focused] .topbar {
-    flex-shrink: 1;
-    min-height: 44px;
-    overflow-y: auto;
   }
 }
 @media (max-width: 760px) {
@@ -4953,24 +4980,6 @@ dd {
   margin-bottom: 0;
 }
 
-/* A desktop preview narrows the workspace without changing the viewport breakpoint. */
-@media (min-width: 761px) {
-  .topbar {
-    flex-wrap: wrap;
-  }
-  .topbar-title {
-    flex: 1 1 180px;
-  }
-  .topbar-status {
-    flex: 0 1 auto;
-    max-width: 100%;
-    flex-wrap: wrap;
-  }
-  .breadcrumb {
-    white-space: nowrap;
-    overflow: hidden;
-  }
-}
 .gateway-error pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

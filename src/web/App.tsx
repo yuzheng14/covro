@@ -18,7 +18,7 @@ import { Sidebar } from './components/Sidebar';
 import { FilePreviewProvider } from './components/FilePreviewProvider';
 import { Conversation } from './components/Conversation';
 import { ThreadTitle } from './components/ThreadTitle';
-import { HeaderActions, compactHeaderQuery } from './components/HeaderActions';
+import { HeaderActions } from './components/HeaderActions';
 import { GithubRepositoryLink } from './components/GithubRepositoryLink';
 import { Composer } from './components/Composer';
 import { ActionCard } from './components/ActionCard';
@@ -43,6 +43,7 @@ import { UpdateSettings } from './components/UpdateSettings';
 import { useConversationHistory } from './hooks/useConversationHistory';
 import { useUpdates } from './hooks/useUpdates';
 import { useShell } from './hooks/useShell';
+import { overlaySidebarQuery, useCompactHeader } from './hooks/useCompactHeader';
 import { useMobileInputViewport } from './hooks/useMobileInputViewport';
 import { usesMobileInput } from './lib/mobile-input';
 import { ShellPanel } from './components/ShellPanel';
@@ -95,18 +96,18 @@ export function App() {
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const { isUnreadCompletion, markCompletedRead } = useThreadReadState();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [compactHeader, setCompactHeader] = useState(() => matchMedia(compactHeaderQuery).matches);
+  const header = useRef<HTMLElement>(null);
+  const compactHeader = useCompactHeader(header);
   const moreActions = useRef<HTMLButtonElement>(null);
   const diagnosticsTrigger = useRef<HTMLButtonElement>(null);
-  const mobileDiagnosticsReturn = useRef<HTMLButtonElement | null>(null);
+  const compactDiagnosticsReturn = useRef<HTMLButtonElement | null>(null);
   const [composerFocusRequest, setComposerFocusRequest] = useState(0);
   const [skillsRequest, setSkillsRequest] = useState(0);
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
   const [gatewaySettingsOpen, setGatewaySettingsOpen] = useState(false);
   useEffect(() => {
-    const query = window.matchMedia(compactHeaderQuery);
+    const query = window.matchMedia(overlaySidebarQuery);
     const update = () => {
-      setCompactHeader(query.matches);
       if (!query.matches) setSidebarOpen(false);
     };
     update();
@@ -138,23 +139,23 @@ export function App() {
   const attention = thread ? pendingAttention(thread) : [];
   const hasAsyncQuestions = attention.some((request) => request.target.kind === 'question');
   const diagnosticCount = workspace.operations.length;
-  const showMobileDiagnostics =
+  const showCompactDiagnostics =
     diagnosticCount > 0 ||
     workspace.connection === 'disconnected' ||
     workspace.connection === 'authenticationRequired' ||
     (system && !system.ready) ||
     thread?.status === 'unknown';
-  const openMobileDiagnostics = (from: HTMLButtonElement | null) => {
-    mobileDiagnosticsReturn.current = from;
+  const openCompactDiagnostics = (from: HTMLButtonElement | null) => {
+    compactDiagnosticsReturn.current = from;
     setFocusedOperationId(undefined);
     setDiagnosticsOpen(true);
   };
-  const closeMobileDiagnostics = () => {
+  const closeCompactDiagnostics = () => {
     setDiagnosticsOpen(false);
-    const previous = mobileDiagnosticsReturn.current;
+    const previous = compactDiagnosticsReturn.current;
     const fallback = diagnosticsTrigger.current ?? moreActions.current;
     (previous?.isConnected ? previous : fallback)?.focus({ preventScroll: true });
-    mobileDiagnosticsReturn.current = null;
+    compactDiagnosticsReturn.current = null;
   };
   const historyForbidden =
     workspace.authRequired ||
@@ -590,7 +591,7 @@ export function App() {
         onClose={() => setSidebarOpen(false)}
       />
       <main className={`main-panel${shellOpen && !shellCollapsed ? ' shell-visible' : ''}`}>
-        <header className="topbar">
+        <header ref={header} className="topbar" data-compact={compactHeader || undefined}>
           <div className="topbar-title">
             <Button
               className="mobile-only"
@@ -645,12 +646,13 @@ export function App() {
             />
           </div>
           <div className="topbar-status">
-            {compactHeader && showMobileDiagnostics && (
+            {compactHeader && showCompactDiagnostics && (
               <Button
                 ref={diagnosticsTrigger}
                 variant="ghost"
                 size="icon"
                 className="topbar-diagnostics"
+                data-compact-action=""
                 aria-label={
                   diagnosticCount
                     ? t('workspace:diagnostics_with_count', { v0: diagnosticCount })
@@ -659,8 +661,8 @@ export function App() {
                 aria-controls="diagnostics-panel"
                 aria-expanded={diagnosticsOpen}
                 onClick={() => {
-                  if (diagnosticsOpen) closeMobileDiagnostics();
-                  else openMobileDiagnostics(diagnosticsTrigger.current);
+                  if (diagnosticsOpen) closeCompactDiagnostics();
+                  else openCompactDiagnostics(diagnosticsTrigger.current);
                 }}
               >
                 <CircleAlert size={18} aria-hidden="true" />
@@ -676,7 +678,7 @@ export function App() {
               trigger={moreActions}
               onOpen={() => {
                 setDiagnosticsOpen(false);
-                mobileDiagnosticsReturn.current = null;
+                compactDiagnosticsReturn.current = null;
               }}
             >
               <BackgroundTasks
@@ -698,7 +700,11 @@ export function App() {
                 }
                 onClick={() => setSkillsRequest((value) => value + 1)}
               >
-                {compactHeader && <Icon name="skill" size={16} />}
+                {compactHeader && (
+                  <span data-compact-action="" aria-hidden="true">
+                    <Icon name="skill" size={16} />
+                  </span>
+                )}
                 {t('composer:skills_title')}
               </Button>
               <Button
@@ -725,6 +731,7 @@ export function App() {
               </Button>
               {compactHeader && thread?.forkedFromId && (
                 <Button
+                  data-compact-action=""
                   variant="ghost"
                   size="sm"
                   onClick={() => {
@@ -737,23 +744,25 @@ export function App() {
               )}
               {compactHeader && (
                 <Button
+                  data-compact-action=""
                   variant="ghost"
                   size="sm"
                   aria-controls="diagnostics-panel"
-                  onClick={() => openMobileDiagnostics(moreActions.current)}
+                  onClick={() => openCompactDiagnostics(moreActions.current)}
                 >
                   <Icon name="settings" size={16} />
                   {t('common:diagnostics')}
                 </Button>
               )}
             </HeaderActions>
-            {!compactHeader && hasAsyncQuestions && thread?.status !== 'waitingInput' && (
+            {hasAsyncQuestions && thread?.status !== 'waitingInput' && (
               <Status status="waitingInput" offline={offline} />
             )}
-            {!compactHeader && thread && <Status status={thread.status} offline={offline} />}
+            {thread && <Status status={thread.status} offline={offline} />}
             <ConnectionBadge connection={workspace.connection} />
-            {!compactHeader && thread?.forkedFromId && (
+            {thread?.forkedFromId && (
               <ControlHint
+                className="topbar-source"
                 id="thread-source-hint"
                 content={t('workspace:return_to_original_session')}
               >
@@ -788,7 +797,7 @@ export function App() {
               busy={workspace.busy}
               open={diagnosticsOpen}
               onOpenChange={setDiagnosticsOpen}
-              onDismiss={compactHeader ? closeMobileDiagnostics : undefined}
+              onDismiss={compactHeader ? closeCompactDiagnostics : undefined}
               refreshing={checkingStatus}
               onDiscardMissing={workspace.discardMissingOperation}
               onRefresh={() => {
