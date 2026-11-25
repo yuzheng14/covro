@@ -155,6 +155,8 @@ test('previews reuse fresh images immediately and revalidate stale images in the
   const imageRequests = new Set<string>();
   const imageUrls = new Set<string>();
   const statuses: number[] = [];
+  // Extra-info events can arrive before Chromium identifies the matching request.
+  const earlyStatuses = new Map<string, number>();
   network.on('Network.requestWillBeSent', ({ requestId, request: imageRequest }) => {
     const url = new URL(imageRequest.url);
     if (
@@ -162,11 +164,17 @@ test('previews reuse fresh images immediately and revalidate stale images in the
       url.searchParams.get('path') === './assets/发布 图表.png'
     ) {
       imageRequests.add(requestId);
+      const earlyStatus = earlyStatuses.get(requestId);
+      if (earlyStatus !== undefined) {
+        statuses.push(earlyStatus);
+        earlyStatuses.delete(requestId);
+      }
       imageUrls.add(imageRequest.url);
     }
   });
   network.on('Network.responseReceivedExtraInfo', ({ requestId, statusCode }) => {
     if (imageRequests.has(requestId)) statuses.push(statusCode);
+    else earlyStatuses.set(requestId, statusCode);
   });
 
   await send(page);
