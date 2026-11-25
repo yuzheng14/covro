@@ -437,6 +437,11 @@ describe('workspace overview transport', () => {
 
   it('closes the socket before freezing and refreshes snapshots when the page resumes', () => {
     const { stream, socket, handlers } = start();
+    window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: false }));
+    expect(handlers.refresh).not.toHaveBeenCalled();
+    window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+    expect(handlers.refresh).toHaveBeenCalledOnce();
+    handlers.refresh.mockClear();
     document.dispatchEvent(new Event('freeze'));
     expect(socket.close).toHaveBeenCalledOnce();
     expect(handlers.connection).toHaveBeenLastCalledWith('disconnected');

@@ -564,7 +564,7 @@ export function App() {
           );
         }}
         onRefresh={() => {
-          void workspace.refreshProjects().then(workspace.refreshProjectsThreads);
+          void workspace.refreshProjects(true);
         }}
         onAddProject={openAddProject}
         onManageProject={(project) => {
