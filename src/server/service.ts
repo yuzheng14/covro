@@ -2637,7 +2637,7 @@ export class GatewayService {
     const index = this.questionHistory(history.id);
     if (index && !history.historyTruncated) index.observed = history.turns.map(questionEvidence);
     const current = this.projection.get(history.id);
-    if (history.historyMode !== 'paginated' || !current) {
+    if (!current || (history.historyMode !== 'paginated' && !current.history)) {
       this.projection.thread(history, true);
       return;
     }
