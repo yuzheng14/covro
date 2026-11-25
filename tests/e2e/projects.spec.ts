@@ -265,9 +265,10 @@ test('project overview drafts and execution settings remain independent before a
     .getByRole('button', { name: '另一个项目', exact: true })
     .click();
   await expect(input).toHaveValue('');
+  // Wait for the other project's reported default after switching away from A's override.
   await expect(page.getByRole('combobox', { name: '权限模式', exact: true })).toHaveAttribute(
     'data-value',
-    '',
+    'read-only',
   );
   await input.fill('项目 B 概览草稿');
   await chooseSetting(page, '权限模式', '请求批准');

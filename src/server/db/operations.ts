@@ -2,7 +2,7 @@ import { nullLogger, type Logger } from '../../logging/logger.js';
 import { errorFields } from '../../logging/fields.js';
 import { createHash } from 'node:crypto';
 import { and, asc, eq, getTableColumns, isNull, ne, or } from 'drizzle-orm';
-import type { AppDatabase } from './index.js';
+import type { AppDatabase, AppTransaction } from './index.js';
 import { executionMarkers, operations, pendingUserMessages, threadLinks } from './schema.js';
 import type { ApiError, ItemView, PendingUserMessage } from '../../shared/types.js';
 
@@ -145,6 +145,7 @@ export class OperationStore {
     id: string,
     marker?: { threadId: string; workspaceKey: string; codexEpoch: string },
     message?: Pick<PendingUserMessage, 'threadId' | 'turnId' | 'item'>,
+    beforeDispatch?: (tx: AppTransaction) => void,
   ): void {
     this.database.transaction((tx) => {
       if (marker) {
@@ -162,6 +163,7 @@ export class OperationStore {
             occupied.threadId,
           );
       }
+      beforeDispatch?.(tx);
       const updated = tx
         .update(operations)
         .set({ state: 'dispatching', updatedAt: Date.now() })

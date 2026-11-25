@@ -1,3 +1,4 @@
+import { parseSessionLoop } from '../../shared/session-loop';
 import { UNASSIGNED_SCOPE } from '../../shared/workspace-scope';
 import { displayMessage } from '../i18n/messages';
 import { errorMessage } from './error-message';
@@ -42,6 +43,7 @@ export type SlashCommandName =
   | 'approve'
   | 'recap'
   | 'goal'
+  | 'loop'
   | 'review'
   | 'rename'
   | 'export';
@@ -97,6 +99,8 @@ export function validateSlashCommand(input: string, commands: SlashCommand[]): s
   if (command.name === 'rename') {
     const problem = threadNameError(parsed.arguments);
     if (problem) return problem;
+  } else if (command.name === 'loop') {
+    if (parsed.arguments && !parseSessionLoop(parsed.arguments)) return t('commands:loopInvalid');
   } else if (
     parsed.arguments &&
     command.name !== 'plan' &&
@@ -132,6 +136,7 @@ export interface SlashCommandContext {
   selectPlan?: (task: string) => Promise<boolean>;
   initialize?: () => Promise<boolean>;
   openDiff?: () => void;
+  openLoops?: () => void;
   openGoal?: (argumentsText: string) => void;
   openRecap?: (value: { summary: string; partial: boolean; readAt: number }) => void;
   chooseDenial?: () => Promise<string | undefined>;
@@ -173,6 +178,12 @@ const definitions: { name: SlashCommandName; description: string }[] = [
     name: 'review',
     get description() {
       return t('commands:reviewDescription');
+    },
+  },
+  {
+    name: 'loop',
+    get description() {
+      return t('commands:loopDescription');
     },
   },
   {
@@ -243,6 +254,13 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
     return t('commands:your_login_expired_log_in_again_and_retry');
   if (context.connection !== 'connected')
     return t('commands:you_are_offline_wait_for_the_connection_to');
+  if (name === 'loop') {
+    if (!context.thread || !context.openLoops)
+      return context.selectedId
+        ? t('commands:session_loading_try_again_shortly')
+        : t('commands:select_a_session_first');
+    return undefined;
+  }
   if (name === 'diff') {
     if (!context.openDiff) return t('commands:diffUnavailable');
     if (context.selectedId && !context.thread)
@@ -494,6 +512,7 @@ function operationResult(name: SlashCommandName, operation?: Operation): SlashCo
 function commandUsage(name: SlashCommandName): string {
   if (name === 'rename') return t('commands:rename_name');
   if (name === 'goal') return t('commands:goalCommandUsage');
+  if (name === 'loop') return t('commands:loopUsage');
   if (name === 'plan') return t('commands:planUsage');
   if (name === 'review') return t('commands:reviewUsage');
   return t('commands:no_arguments', { v0: name });
@@ -568,6 +587,20 @@ export function createSlashCommands(getContext: () => SlashCommandContext): Slas
       const thread = context.thread;
       const path = `/api/threads/${encodeURIComponent(thread?.id ?? '')}`;
       try {
+        if (name === 'loop') {
+          if (argumentsText) {
+            const loop = parseSessionLoop(argumentsText);
+            if (!loop) return { error: true, message: t('commands:loopInvalid') };
+            const operation = await context.run('loop', thread!.id, `${path}/loops`, {
+              ...loop,
+              settings: context.settings,
+            });
+            if (operation?.status !== 'acknowledged')
+              return { error: true, message: t('commands:loopUnconfirmed') };
+          }
+          context.openLoops!();
+          return { message: t(argumentsText ? 'commands:loopCreated' : 'commands:loopOpened') };
+        }
         if (name === 'goal') {
           context.openGoal!(argumentsText);
           return {

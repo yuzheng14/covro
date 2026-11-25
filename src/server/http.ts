@@ -579,6 +579,26 @@ export function createApp({
     );
     return c.json(op, status(op));
   });
+  app.get('/api/threads/:threadId/loops', async (c) =>
+    c.json(await service.listSessionLoops(id(c.req.param('threadId')))),
+  );
+  app.post('/api/threads/:threadId/loops', async (c) =>
+    c.json(
+      await service.createSessionLoop(
+        id(c.req.param('threadId')),
+        await parse(c, schemas.createSessionLoopSchema),
+      ),
+    ),
+  );
+  app.post('/api/threads/:threadId/loops/:loopId', async (c) =>
+    c.json(
+      await service.controlSessionLoop(
+        id(c.req.param('threadId')),
+        id(c.req.param('loopId')),
+        await parse(c, schemas.mutateSessionLoopSchema),
+      ),
+    ),
+  );
   app.post('/api/threads/:threadId/turns', async (c) => {
     const op = await service.startTurn(
       id(c.req.param('threadId')),

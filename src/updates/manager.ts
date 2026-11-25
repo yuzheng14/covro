@@ -8,6 +8,7 @@ import {
 } from '../shared/codex-compatibility.js';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { copyFile, mkdir, open } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import lockfile from 'proper-lockfile';
@@ -163,6 +164,19 @@ export class UpdateManager implements UpdateController {
       throw error;
     }
   }
+  /** The worker replaces this receipt atomically. Check it at scheduled turn admission. */
+  isPending(): boolean {
+    if (!this.context) return false;
+    try {
+      const run = JSON.parse(
+        readFileSync(join(this.context.directory, 'run.json'), 'utf8'),
+      ) as UpdateRun;
+      return updateActive(run);
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code !== 'ENOENT';
+    }
+  }
+
   async status(): Promise<UpdateStatus> {
     const { available, codexTarget, codexError, target, runtimeError, checkedAt, checkError } =
       this;

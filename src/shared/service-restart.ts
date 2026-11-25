@@ -42,6 +42,7 @@ export interface RestartStatus {
 }
 
 export interface RestartController {
+  isPending?(): boolean;
   status(): RestartStatus;
   start(input: RestartRequest): Promise<{ restartId: string }>;
   cancel(id: string): Promise<RestartStatus>;

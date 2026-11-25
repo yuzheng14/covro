@@ -6214,3 +6214,40 @@ dd {
   font-size: 13px;
   line-height: 1.65;
 }
+
+.session-loop-list,
+.session-loop-create {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.session-loop-list {
+  margin-bottom: 0.75rem;
+}
+
+.session-loop-row {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.session-loop-row p {
+  margin: 0.2rem 0;
+  overflow-wrap: anywhere;
+}
+
+.session-loop-prompt {
+  white-space: pre-wrap;
+  font-weight: 600;
+}
+
+.session-loop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.session-loop-create > button {
+  justify-self: start;
+}

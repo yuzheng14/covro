@@ -7,6 +7,7 @@ import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './schema.js';
 
 export type AppDatabase = BetterSQLite3Database<typeof schema> & { $client: Database.Database };
+export type AppTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
 
 /** The caller must hold the data directory instance lock before opening/migrating. */
 export function openDatabase(filename: string): { database: AppDatabase; close: () => void } {
