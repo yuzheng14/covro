@@ -8,8 +8,10 @@ import { GatewayService } from '../../src/server/service';
 import {
   LOOP_MIN_INTERVAL,
   parseSessionLoop,
+  parseSessionLoopCommand,
   type SessionLoop,
 } from '../../src/shared/session-loop';
+import { captureLogger } from '../fixtures/logging';
 import { harness, operationId } from './domain-helpers';
 
 let now = 1_000_000;
@@ -24,8 +26,8 @@ afterEach(() => {
   for (const fn of close.splice(0)) fn();
 });
 
-async function setup(maintenancePending?: () => boolean) {
-  const ctx = harness(undefined, { maintenancePending });
+async function setup(maintenancePending?: () => boolean, logger?: Parameters<typeof harness>[0]) {
+  const ctx = harness(logger, { maintenancePending });
   close.push(ctx.close);
   const create = await ctx.service.createThread('project', { clientOperationId: operationId() });
   const id = (create.result as { threadId: string }).threadId;
@@ -44,7 +46,15 @@ async function setup(maintenancePending?: () => boolean) {
     expect(await ctx.service.createSessionLoop(id, command)).toEqual(created);
     return created.result as SessionLoop;
   };
-  return { ...ctx, id, createLoop };
+  const createAdaptive = async () => {
+    const created = await ctx.service.createSessionLoop(id, {
+      clientOperationId: operationId(),
+      mode: 'adaptive',
+      prompt: 'Check CI and stop when it passes',
+    });
+    return created.result as SessionLoop;
+  };
+  return { ...ctx, id, createLoop, createAdaptive };
 }
 
 it('parses exact intervals and rejects unsupported durations and missing prompts', () => {
@@ -424,4 +434,224 @@ it('lists persisted loops across scopes without hydrating cold sessions or expos
   } finally {
     await restarted.shutdown();
   }
+});
+
+function finishAdaptive(ctx: Awaited<ReturnType<typeof setup>>, output: string) {
+  const turn = ctx.codex.threads.get(ctx.id)!.turns.at(-1)!;
+  turn.items.push({ id: 'decision', type: 'agentMessage', phase: 'final_answer', text: output });
+  ctx.codex.complete(ctx.id, turn.id);
+  return turn;
+}
+
+const continueAfter = (delaySeconds: number) =>
+  JSON.stringify({
+    action: 'continue',
+    delaySeconds,
+    summary: 'CI is running',
+    reason: 'Wait for the remaining checks',
+  });
+const stopDecision = JSON.stringify({
+  action: 'stop',
+  delaySeconds: null,
+  summary: 'CI passed',
+  reason: 'All checks passed',
+});
+
+it('parses prompt-only loops while preserving validation of fixed durations', () => {
+  expect(parseSessionLoopCommand('Check CI and stop when it passes')).toEqual({
+    mode: 'adaptive',
+    prompt: 'Check CI and stop when it passes',
+  });
+  expect(parseSessionLoopCommand('2 checks are pending')).toMatchObject({ mode: 'adaptive' });
+  expect(parseSessionLoopCommand('5m Check CI')).toEqual({
+    intervalMs: 300_000,
+    prompt: 'Check CI',
+  });
+  for (const malformed of ['', '5m', '0m Check CI', '30s Check CI', '1.5m Check CI'])
+    expect(parseSessionLoopCommand(malformed)).toBeUndefined();
+});
+
+it('schedules variable delays from completed runs and stops exactly once', async () => {
+  const ctx = await setup();
+  const start = vi.spyOn(ctx.codex, 'startTurn');
+  const loop = await ctx.createAdaptive();
+  expect(loop).toMatchObject({ mode: 'adaptive', intervalMs: null, nextRunAt: now });
+  await ctx.service.tickSessionLoops();
+  expect(start.mock.calls[0]).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ required: ['summary', 'reason', 'action', 'delaySeconds'] }),
+    ]),
+  );
+  expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+    runs: 1,
+    nextRunAt: null,
+    lastResult: 'running',
+  });
+
+  for (const delaySeconds of [90, 480]) {
+    now += 30_000;
+    const turn = finishAdaptive(ctx, continueAfter(delaySeconds));
+    await ctx.service.tickSessionLoops();
+    const next = now + delaySeconds * 1_000;
+    expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+      nextRunAt: next,
+      lastDecision: { action: 'continue', delaySeconds, reason: 'Wait for the remaining checks' },
+    });
+    now = next - 1;
+    ctx.codex.emit({ type: 'turn', threadId: ctx.id, turn: structuredClone(turn) });
+    await ctx.service.tickSessionLoops();
+    expect((await ctx.service.listSessionLoops(ctx.id))[0]?.nextRunAt).toBe(next);
+    now++;
+    await ctx.service.tickSessionLoops();
+  }
+  finishAdaptive(ctx, stopDecision);
+  await ctx.service.tickSessionLoops();
+  now += 24 * 60 * LOOP_MIN_INTERVAL;
+  await ctx.service.tickSessionLoops();
+  expect(start).toHaveBeenCalledTimes(3);
+  expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+    runs: 3,
+    status: 'completed',
+    nextRunAt: null,
+    lastDecision: { action: 'stop', summary: 'CI passed' },
+  });
+});
+
+it.each(['pause', 'cancel', 'resume'] as const)(
+  'keeps a late adaptive stop from overriding %s',
+  async (action) => {
+    const ctx = await setup();
+    const loop = await ctx.createAdaptive();
+    await ctx.service.tickSessionLoops();
+    const control = (action: 'pause' | 'cancel' | 'resume', version: number) =>
+      ctx.service.controlSessionLoop(ctx.id, loop.id, {
+        clientOperationId: operationId(),
+        action,
+        version,
+      });
+    await control(action === 'resume' ? 'pause' : action, 0);
+    if (action === 'resume') await control('resume', 1);
+    finishAdaptive(ctx, stopDecision);
+    await ctx.service.tickSessionLoops();
+    expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+      status: action === 'resume' ? 'active' : action === 'pause' ? 'paused' : 'cancelled',
+      lastDecision: null,
+      runs: action === 'resume' ? 2 : 1,
+    });
+  },
+);
+
+it.each(['missing', 'malformed', 'short delay', 'long delay', 'failed', 'interrupted'] as const)(
+  'pauses an adaptive loop on a %s result',
+  async (kind) => {
+    const logging = captureLogger();
+    const ctx = await setup(undefined, logging.logger);
+    await ctx.createAdaptive();
+    await ctx.service.tickSessionLoops();
+    const turn = ctx.codex.threads.get(ctx.id)!.turns.at(-1)!;
+    const status = kind === 'failed' || kind === 'interrupted' ? kind : 'completed';
+    if (status !== 'completed') {
+      turn.status = status;
+      ctx.codex.threads.get(ctx.id)!.status = status;
+      ctx.codex.emit({ type: 'turn', threadId: ctx.id, turn: structuredClone(turn) });
+    } else if (kind === 'missing') {
+      ctx.codex.complete(ctx.id, turn.id);
+    } else {
+      finishAdaptive(
+        ctx,
+        kind === 'malformed'
+          ? 'Invalid confidential answer'
+          : continueAfter(kind === 'short delay' ? 59 : 86_401),
+      );
+    }
+    await ctx.service.tickSessionLoops();
+    const reason = status === 'completed' ? 'invalid_decision' : 'run_failed';
+    expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+      status: 'paused',
+      reason,
+      nextRunAt: null,
+      lastResult: status,
+    });
+    const logged = logging.records.find((entry) => entry.event === 'loop.adaptive_paused');
+    expect(logged).toMatchObject({ threadId: ctx.id, turnId: turn.id, outcome: 'paused', reason });
+    expect(JSON.stringify(logging.records)).not.toMatch(
+      /Invalid confidential answer|Wait for the remaining checks|Check CI/,
+    );
+  },
+);
+
+it('restores one overdue adaptive run after restart and yields to maintenance', async () => {
+  let pending = false;
+  const ctx = await setup(() => pending);
+  await ctx.createAdaptive();
+  await ctx.service.tickSessionLoops();
+  pending = true;
+  finishAdaptive(ctx, continueAfter(60));
+  await ctx.service.tickSessionLoops();
+  now += 5 * LOOP_MIN_INTERVAL;
+  await ctx.service.tickSessionLoops();
+  expect(ctx.service.restartBlockers()).toEqual([]);
+  expect(ctx.codex.starts).toBe(2);
+  await ctx.service.shutdown();
+  ctx.codex.reset();
+  const restarted = new GatewayService({
+    store: ctx.store,
+    projects: ctx.projects,
+    codex: ctx.codex,
+  });
+  await restarted.tickSessionLoops();
+  await restarted.tickSessionLoops();
+  expect(ctx.codex.starts).toBe(3);
+  expect((await restarted.listSessionLoops(ctx.id))[0]).toMatchObject({
+    runs: 2,
+    lastResult: 'running',
+    nextRunAt: null,
+  });
+  await restarted.shutdown();
+});
+
+it('waits for an outstanding approval before starting an adaptive loop', async () => {
+  const ctx = await setup();
+  const loop = await ctx.createAdaptive();
+  const approval = {
+    actionId: 'approval',
+    codexEpoch: ctx.codex.epoch,
+    rpcId: 42,
+    kind: 'command',
+    threadId: ctx.id,
+    status: 'pending',
+    title: 'Approve command',
+    options: [{ id: 'accept', label: 'Allow' }],
+  } satisfies import('../../src/shared/types').PendingAction;
+  ctx.codex.emit({ type: 'action', action: approval });
+  await ctx.service.tickSessionLoops();
+  expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({ id: loop.id, runs: 0 });
+
+  ctx.codex.emit({ type: 'actionResolved', actionId: approval.actionId });
+  await ctx.service.tickSessionLoops();
+  expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({ id: loop.id, runs: 1 });
+});
+
+it('recovers an unfinished adaptive run from terminal history without replaying it', async () => {
+  const ctx = await setup();
+  await ctx.createAdaptive();
+  await ctx.service.tickSessionLoops();
+  await ctx.service.shutdown();
+  finishAdaptive(ctx, continueAfter(300));
+  now += 10 * LOOP_MIN_INTERVAL;
+  ctx.codex.reset();
+  const restarted = new GatewayService({
+    store: ctx.store,
+    projects: ctx.projects,
+    codex: ctx.codex,
+  });
+  await restarted.tickSessionLoops();
+  expect(ctx.codex.starts).toBe(2);
+  expect((await restarted.listSessionLoops(ctx.id))[0]).toMatchObject({
+    runs: 1,
+    lastResult: 'completed',
+    lastDecision: { action: 'continue', delaySeconds: 300 },
+    nextRunAt: now + 300_000,
+  });
+  await restarted.shutdown();
 });

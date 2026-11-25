@@ -253,6 +253,7 @@ export function mapItem(item: ThreadItem): ItemView {
         id: item.id,
         type: item.type,
         text: item.text,
+        ...(item.phase ? { phase: item.phase } : {}),
         ...(moderation === undefined ? {} : { moderation }),
         ...(item.delivery ? { delivery: item.delivery } : {}),
         ...(item.questions?.length ? { questions: structuredClone(item.questions) } : {}),

@@ -6236,6 +6236,10 @@ dd {
   overflow-wrap: anywhere;
 }
 
+.session-loop-summary {
+  white-space: pre-wrap;
+}
+
 .session-loop-prompt {
   white-space: pre-wrap;
   font-weight: 600;

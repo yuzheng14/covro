@@ -158,9 +158,9 @@
   "goal_usageLimited": "Usage limited",
   "goal_budgetLimited": "Budget limited",
   "goal_complete": "Complete",
-  "loopDescription": "Create or manage fixed-interval session loops",
-  "loopUsage": "/loop [interval prompt]",
-  "loopInvalid": "Use a whole interval from 1m to 1d and a prompt, such as /loop 5m Check CI.",
+  "loopDescription": "Create or manage fixed or adaptive session loops",
+  "loopUsage": "/loop [[interval] prompt]",
+  "loopInvalid": "Enter a prompt. Fixed intervals must be whole numbers from 1m to 1d, as in /loop 5m Check CI.",
   "loopUnconfirmed": "Loop submission could not be confirmed. Open /loop to check.",
   "loopCreated": "Loop created",
   "loopOpened": "Session loops opened",
@@ -190,5 +190,9 @@
   "loopReason_archived": "Session archived",
   "loopReason_unavailable": "Session or configuration unavailable",
   "loopReason_uncertain": "Last dispatch needs checking",
-  "loopReason_deleted": "Session deleted"
+  "loopReason_deleted": "Session deleted",
+  "loopAdaptive": "Adaptive interval",
+  "loopDeciding": "Next run decided after this turn",
+  "loopReason_invalid_decision": "This run returned no valid scheduling decision",
+  "loopReason_run_failed": "This run did not finish successfully"
 }

@@ -1,4 +1,4 @@
-import { parseSessionLoop } from '../../shared/session-loop';
+import { parseSessionLoopCommand } from '../../shared/session-loop';
 import { UNASSIGNED_SCOPE } from '../../shared/workspace-scope';
 import { displayMessage } from '../i18n/messages';
 import { errorMessage } from './error-message';
@@ -100,7 +100,8 @@ export function validateSlashCommand(input: string, commands: SlashCommand[]): s
     const problem = threadNameError(parsed.arguments);
     if (problem) return problem;
   } else if (command.name === 'loop') {
-    if (parsed.arguments && !parseSessionLoop(parsed.arguments)) return t('commands:loopInvalid');
+    if (parsed.arguments && !parseSessionLoopCommand(parsed.arguments))
+      return t('commands:loopInvalid');
   } else if (
     parsed.arguments &&
     command.name !== 'plan' &&
@@ -589,7 +590,7 @@ export function createSlashCommands(getContext: () => SlashCommandContext): Slas
       try {
         if (name === 'loop') {
           if (argumentsText) {
-            const loop = parseSessionLoop(argumentsText);
+            const loop = parseSessionLoopCommand(argumentsText);
             if (!loop) return { error: true, message: t('commands:loopInvalid') };
             const operation = await context.run('loop', thread!.id, `${path}/loops`, {
               ...loop,

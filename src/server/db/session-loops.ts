@@ -3,6 +3,7 @@ import { AppError } from '../../shared/errors.js';
 import type {
   SessionLoop,
   SessionLoopAction,
+  SessionLoopDecision,
   SessionLoopReason,
   SessionLoopResult,
 } from '../../shared/session-loop.js';
@@ -15,6 +16,7 @@ export function sessionLoopView({
   workspaceKey: _workspaceKey,
   settings: _settings,
   lastOperationId: _lastOperationId,
+  runVersion: _runVersion,
   ...view
 }: SessionLoopRow): SessionLoop {
   return view;
@@ -82,7 +84,7 @@ export class SessionLoopStore {
         status,
         reason: null,
         version: row.version + 1,
-        ...(action === 'resume' ? { nextRunAt: now + row.intervalMs } : {}),
+        ...(action === 'resume' ? { nextRunAt: now + (row.intervalMs ?? 0) } : {}),
       })
       .where(and(eq(sessionLoops.id, row.id), eq(sessionLoops.version, row.version)))
       .run();
@@ -98,7 +100,8 @@ export class SessionLoopStore {
         lastResult: 'running',
         lastOperationId: operationId,
         lastTurnId: null,
-        nextRunAt: now + row.intervalMs,
+        nextRunAt: row.intervalMs === null ? null : now + row.intervalMs,
+        runVersion: row.version,
       })
       .where(
         and(
@@ -123,6 +126,7 @@ export class SessionLoopStore {
           eq(sessionLoops.id, loopId),
           eq(sessionLoops.lastOperationId, previousId),
           eq(sessionLoops.status, 'active'),
+          sql`(${sessionLoops.mode} = 'fixed' OR ${sessionLoops.runVersion} = ${sessionLoops.version})`,
         ),
       )
       .run();
@@ -139,6 +143,40 @@ export class SessionLoopStore {
         and(eq(sessionLoops.id, row.id), eq(sessionLoops.lastOperationId, row.lastOperationId)),
       )
       .run();
+  }
+
+  settleAdaptive(
+    row: SessionLoopRow,
+    result: Exclude<SessionLoopResult, 'running' | 'unknown'>,
+    turnId: string | null,
+    decision: SessionLoopDecision | undefined,
+    now: number,
+  ): 'continued' | 'completed' | 'paused' | 'superseded' | undefined {
+    if (!row.lastOperationId) return;
+    const run = and(
+      eq(sessionLoops.id, row.id),
+      eq(sessionLoops.lastOperationId, row.lastOperationId),
+      inArray(sessionLoops.lastResult, ['running', 'unknown']),
+    );
+    const finished = { lastResult: result, lastTurnId: turnId ?? row.lastTurnId };
+    if (row.status === 'active' && row.runVersion === row.version) {
+      const status = decision?.action === 'continue' ? 'active' : decision ? 'completed' : 'paused';
+      const updated = this.db
+        .update(sessionLoops)
+        .set({
+          ...finished,
+          lastDecision: decision ?? null,
+          status,
+          reason: decision ? null : result === 'completed' ? 'invalid_decision' : 'run_failed',
+          nextRunAt: decision?.action === 'continue' ? now + decision.delaySeconds * 1_000 : null,
+          version: status === 'active' ? row.version : row.version + 1,
+        })
+        .where(and(run, eq(sessionLoops.status, 'active'), eq(sessionLoops.version, row.version)))
+        .run();
+      if (updated.changes) return status === 'active' ? 'continued' : status;
+    }
+    const updated = this.db.update(sessionLoops).set(finished).where(run).run();
+    if (updated.changes) return 'superseded';
   }
 
   suspend(row: SessionLoopRow, reason: SessionLoopReason): void {
@@ -171,7 +209,13 @@ export class SessionLoopStore {
     this.db
       .update(sessionLoops)
       .set({ nextRunAt: sql`${now} + ${sessionLoops.intervalMs}` })
-      .where(and(eq(sessionLoops.status, 'active'), lt(sessionLoops.nextRunAt, now)))
+      .where(
+        and(
+          eq(sessionLoops.mode, 'fixed'),
+          eq(sessionLoops.status, 'active'),
+          lt(sessionLoops.nextRunAt, now),
+        ),
+      )
       .run();
   }
 }

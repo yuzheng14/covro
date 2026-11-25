@@ -139,6 +139,7 @@ export interface CodexClient {
     images?: string[],
     skills?: import('../shared/skills.js').SkillReference[],
     clientUserMessageId?: string,
+    outputSchema?: import('./generated/serde_json/JsonValue.js').JsonValue,
   ): Promise<TurnView>;
   /** Native inline review scoped to this session's working directory. */
   startReview(id: string, target?: ReviewTarget): Promise<TurnView>;

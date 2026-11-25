@@ -2894,7 +2894,38 @@ function receive(request: ClientRequest): void {
               ? 'errors'
               : 'normal',
         );
-      else if (prompt.includes('[json-files]')) markdownReply(thread, turn, 'json');
+      else if (
+        (request.params.outputSchema as { properties?: { delaySeconds?: unknown } } | null)
+          ?.properties?.delaySeconds
+      ) {
+        const stop = prompt.includes('站点恢复后结束');
+        const item: ThreadItem = {
+          id: randomUUID(),
+          type: 'agentMessage',
+          text: JSON.stringify({
+            action: stop ? 'stop' : 'continue',
+            delaySeconds: stop ? null : 300,
+            summary: stop ? '站点已恢复访问。' : '当前 PR 的构建仍在运行。',
+            reason: stop ? '健康检查已全部通过。' : '构建尚未结束，五分钟后复查。',
+          }),
+          moderation: null,
+          phase: 'final_answer',
+          memoryCitation: null,
+          delivery: null,
+          questions: null,
+        };
+        finishes.set(
+          turn.id,
+          setTimeout(() => {
+            turn.items.push(item);
+            notify({
+              method: 'item/completed',
+              params: { threadId: thread.id, turnId: turn.id, item, completedAtMs: Date.now() },
+            });
+            complete(thread, turn);
+          }, 100),
+        );
+      } else if (prompt.includes('[json-files]')) markdownReply(thread, turn, 'json');
       else if (prompt.includes('[diff-preview')) diffPreviewScenario(thread, turn, prompt);
       else if (prompt.includes('[text-files]')) markdownReply(thread, turn, 'text');
       else if (prompt.includes('[markdown-files]')) markdownReply(thread, turn, 'files');

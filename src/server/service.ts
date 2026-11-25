@@ -86,6 +86,7 @@ import type {
   ThreadSummaryPage,
   ThreadMutationResult,
   ThreadView,
+  TurnView,
 } from '../shared/types.js';
 import {
   OperationStore,
@@ -118,6 +119,12 @@ import {
   type SessionLoopTask,
 } from '../shared/session-loop.js';
 import type { AppTransaction } from './db/index.js';
+import {
+  adaptiveLoopAnswer,
+  adaptiveLoopOutputSchema,
+  adaptiveLoopPrompt,
+  readAdaptiveLoopDecision,
+} from './adaptive-loop.js';
 import { SessionLoopStore, sessionLoopView, type SessionLoopRow } from './db/session-loops.js';
 
 function deferLiveToolOutput(item: ItemView): ItemView {
@@ -1859,7 +1866,11 @@ export class GatewayService {
             projectName,
             threadTitle: thread?.title || id,
             archived: thread?.archived ?? loop.reason === 'archived',
-            waiting: loop.status === 'active' && loop.nextRunAt <= now && busy,
+            waiting:
+              loop.status === 'active' &&
+              loop.nextRunAt !== null &&
+              loop.nextRunAt <= now &&
+              (busy || this.loopDispatchDeferred()),
           }));
       } catch (error) {
         // Removed projects, changed directories and unassigned allocations that
@@ -1907,9 +1918,10 @@ export class GatewayService {
           workspaceKey: workspace.workspaceKey,
           settings,
           prompt: input.prompt,
-          intervalMs: input.intervalMs,
+          mode: input.mode ?? 'fixed',
+          intervalMs: input.intervalMs ?? null,
           status: 'active',
-          nextRunAt: now + input.intervalMs,
+          nextRunAt: now + (input.intervalMs ?? 0),
         }),
       );
       return { result: sessionLoopView(this.loops.get(input.clientOperationId)!) };
@@ -2056,27 +2068,71 @@ export class GatewayService {
     }
     const turnId =
       (operation?.result as { turnId?: string } | null)?.turnId ?? marker?.turnId ?? row.lastTurnId;
-    const turn = turnId
+    let turn = turnId
       ? thread.turns.find((entry) => entry.id === turnId)
       : thread.turns.find((entry) =>
           entry.items.some((item) => item.type === 'userMessage' && item.clientId === operationId),
         );
     if (turn && isTerminal(turn.status)) {
-      this.loops.record(row, turn.status as SessionLoopResult, turn.id);
+      const status = turn.status as 'completed' | 'failed' | 'interrupted';
+      const completedTurnId = turn.id;
+      if (row.mode === 'adaptive' && status === 'completed') {
+        const answer = adaptiveLoopAnswer(turn);
+        if (!answer?.text || answer.truncated) {
+          // A projection built from notifications can miss or truncate the final item.
+          const history = this.normalize(
+            await (this.codex.readThreadPage?.(row.threadId) ??
+              this.codex.readThread(row.threadId)),
+          );
+          if (
+            history.id !== row.threadId ||
+            this.loopWorkspace(row.threadId).workspaceKey !== row.workspaceKey
+          )
+            return;
+          turn = history.turns.find((entry) => entry.id === completedTurnId) ?? turn;
+        }
+      }
+      this.completeLoopRun(row, status, completedTurnId, turn);
     } else if (operation?.reconciledAt != null) {
-      this.loops.record(row, 'reconciled', turnId ?? null);
+      this.completeLoopRun(row, 'reconciled', turnId ?? null);
     } else if (operation?.state === 'failed') {
-      this.loops.record(row, 'failed', turnId ?? null);
+      this.completeLoopRun(row, 'failed', turnId ?? null);
     } else if (operation?.state === 'unknown' || marker?.state === 'unknown') {
       this.loops.record(row, 'unknown', turnId ?? null);
       this.loops.suspend(row, 'uncertain');
     }
   }
 
+  private completeLoopRun(
+    row: SessionLoopRow,
+    result: Exclude<SessionLoopResult, 'running' | 'unknown'>,
+    turnId: string | null,
+    turn?: TurnView,
+  ): void {
+    if (row.mode === 'fixed') {
+      this.loops.record(row, result, turnId);
+      return;
+    }
+    const decision = result === 'completed' && turn ? readAdaptiveLoopDecision(turn) : undefined;
+    const outcome = this.loops.settleAdaptive(row, result, turnId, decision, Date.now());
+    if (!outcome) return;
+    const context = { threadId: row.threadId, operationId: row.lastOperationId, turnId, outcome };
+    if (outcome === 'paused')
+      this.logger.warn('loop.adaptive_paused', {
+        ...context,
+        reason: result === 'completed' ? 'invalid_decision' : 'run_failed',
+      });
+    else this.logger.info('loop.adaptive_settled', context);
+  }
+
   private recordLoopTurn(operationId: string, status: string, turnId: string): void {
     const row = this.loops.byRun(operationId);
-    if (row && !this.capacityRetries.pending(row.threadId))
-      this.loops.record(row, status as SessionLoopResult, turnId);
+    if (!row || this.capacityRetries.pending(row.threadId)) return;
+    // The terminal notification can omit the final answer. Keep the adaptive run
+    // unfinished until the scheduler reads its completed turn with full items.
+    if (row.mode === 'fixed') this.loops.record(row, status as SessionLoopResult, turnId);
+    else if (row.lastResult === 'running' || row.lastResult === 'unknown')
+      this.loops.record(row, row.lastResult, turnId);
   }
 
   private assertLoopIdle(thread: ThreadView, row: SessionLoopRow): void {
@@ -2153,7 +2209,7 @@ export class GatewayService {
           break;
         default: {
           const dispatched = this.loops.byRun(operationId);
-          if (dispatched) this.loops.record(dispatched, 'failed', null);
+          if (dispatched) this.completeLoopRun(dispatched, 'failed', null);
           else this.loops.suspend(row, 'unavailable');
         }
       }
@@ -2216,6 +2272,7 @@ export class GatewayService {
         : undefined;
       if (retryLoop && this.loopDispatchDeferred())
         throw new AppError('LOOP_WAITING', 'The service is busy', 409);
+      const adaptive = (loop ?? retryLoop)?.mode === 'adaptive';
       const claimLoop = loop
         ? (tx: AppTransaction) => this.loops.claim(tx, loop, input.clientOperationId, Date.now())
         : retryLoop && retry?.previousOperationId
@@ -2265,11 +2322,12 @@ export class GatewayService {
       const turn = await this.codex.startTurn(
         threadId,
         ownership.cwd,
-        message.text,
+        adaptive && message.text ? adaptiveLoopPrompt(message.text) : message.text,
         input.settings,
         input.images,
         skills.length ? skills : undefined,
         input.clientOperationId,
+        ...(adaptive ? [adaptiveLoopOutputSchema] : []),
       );
       this.store.attachTurn(input.clientOperationId, turn.id);
       this.turnBaselines.delete(input.clientOperationId);
