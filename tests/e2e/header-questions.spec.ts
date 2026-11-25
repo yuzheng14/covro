@@ -195,8 +195,10 @@ test('closing the list and switching sessions releases an in-flight location', a
   await page.goto('/');
   await confirmCompatibility(page);
   await createEmptyThread(page);
+  await send(page, 'Second session');
+  const destination = await page.locator('.thread-selected').getAttribute('data-thread-id');
+  await createEmptyThread(page);
   await send(page, '[async-questions] Locate while changing sessions');
-  const original = await page.locator('.thread-selected').getAttribute('data-thread-id');
   let release!: () => void;
   const deferredLocation = new Promise<void>((resolve) => {
     release = resolve;
@@ -217,8 +219,8 @@ test('closing the list and switching sessions releases an in-flight location', a
   await dialog(page).locator('.pending-question-link').first().click();
   await locationRequested;
   await page.keyboard.press('Escape');
-  await createEmptyThread(page);
-  await expect(page.locator('.thread-selected')).not.toHaveAttribute('data-thread-id', original!);
+  await page.locator(`.thread-link[data-thread-id="${destination}"]`).click();
+  await expect(page.locator('.thread-selected')).toHaveAttribute('data-thread-id', destination!);
   release();
   await expect(dialog(page)).toHaveCount(0);
   await expect(cards(page)).toHaveCount(0);

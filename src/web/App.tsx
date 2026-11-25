@@ -153,6 +153,30 @@ export function App() {
   }>();
   const questionFocus = useRef<PendingQuestion | undefined>(undefined);
   const questions = thread?.pendingQuestions;
+  const questionThreadId = thread?.id;
+  const questionHistoryCursor = thread?.history?.olderCursor;
+  useEffect(() => {
+    if (
+      !workspace.selectedId ||
+      questionThreadId !== workspace.selectedId ||
+      !questionHistoryCursor ||
+      questions?.history !== 'loading' ||
+      workspace.connection !== 'connected' ||
+      workspace.authRequired
+    )
+      return;
+    const controller = new AbortController();
+    // Let the session snapshot arrive before opening the independent history scan.
+    void api.pendingQuestions(workspace.selectedId, null, controller.signal).catch(() => {});
+    return () => controller.abort();
+  }, [
+    workspace.selectedId,
+    workspace.connection,
+    workspace.authRequired,
+    questions?.history,
+    questionHistoryCursor,
+    questionThreadId,
+  ]);
   const questionsOpen = Boolean(
     thread &&
     thread.id === workspace.selectedId &&
