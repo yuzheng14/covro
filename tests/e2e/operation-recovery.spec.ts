@@ -50,6 +50,9 @@ for (const mobile of [false, true]) {
     page,
     request,
   }, info) => {
+    await page.setViewportSize(
+      mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
+    );
     const first = await namedThread(request, 'fixture', '整理发布计划');
     const second = await namedThread(request, 'fixture-other', '检查仓库依赖');
     await page.evaluate(
@@ -71,9 +74,6 @@ for (const mobile of [false, true]) {
     await expect(page.locator('.turn')).toHaveCount(1);
     await input(page).fill('当前会话可以正常发送');
     await expect(send(page)).toBeEnabled();
-    await page.setViewportSize(
-      mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
-    );
     await openHeaderDiagnostics(page);
     const others = panel(page).getByRole('region', { name: '其他会话与操作' });
     // section landmarks require an accessible name; each card names the real source conversation.
