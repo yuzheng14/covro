@@ -309,6 +309,7 @@ export interface ThreadView {
   updatedAt?: number;
   actions: PendingAction[];
   historyTruncated?: boolean;
+  historyMode?: 'legacy' | 'paginated';
   /** Present on a paged history window; turns are in chronological order. */
   history?: { olderCursor: string | null };
   /** Native preview/history evidence, also available when a response omits turns. */

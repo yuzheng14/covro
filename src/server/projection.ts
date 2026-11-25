@@ -61,6 +61,8 @@ export class Projection {
     } else {
       const oldTurns = current.turns;
       const oldStatus = current.status;
+      const oldLatestId = current.turns.at(-1)?.id;
+      const known = incoming.history ? new Set(oldTurns.map((turn) => turn.id)) : undefined;
       const oldRuntimeSettings = current.runtimeSettings;
       const oldTitle = current.title;
       Object.assign(current, incoming, { turns: oldTurns, actions: current.actions });
@@ -74,6 +76,32 @@ export class Projection {
       if (oldRuntimeSettings?.model !== current.runtimeSettings?.model)
         this.invalidateContext(incoming.id, 'modelChanged');
       for (const turn of incoming.turns) this.turn(incoming.id, turn, preserveCurrent);
+      if (known) {
+        const materialized = new Map(current.turns.map((turn) => [turn.id, turn]));
+        const inserted = new Map<string, TurnView[]>();
+        const moved = new Set<string>();
+        let anchor: string | undefined;
+        // Recovery can fill an older page around turns received by the live stream.
+        for (const turn of incoming.turns.slice().reverse()) {
+          if (known.has(turn.id)) anchor = turn.id;
+          else if (anchor) {
+            const turns = inserted.get(anchor) ?? [];
+            turns.push(materialized.get(turn.id)!);
+            inserted.set(anchor, turns);
+            moved.add(turn.id);
+          }
+        }
+        if (moved.size) {
+          current.turns = current.turns.flatMap((turn) =>
+            moved.has(turn.id) ? [] : [...(inserted.get(turn.id)?.reverse() ?? []), turn],
+          );
+          if (!preserveCurrent) {
+            const latestId = current.turns.at(-1)?.id;
+            if (latestId === incoming.turns.at(-1)?.id) current.status = incoming.status;
+            else if (latestId === oldLatestId) current.status = oldStatus;
+          }
+        }
+      }
     }
     this.touch(incoming.id);
     return this.threads.get(incoming.id)!;

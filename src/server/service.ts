@@ -1095,19 +1095,24 @@ export class GatewayService {
     return { ...metadata, turns: [], actions: [] };
   }
 
-  private async refreshThreadDetail(threadId: string): Promise<ThreadView> {
+  async getThread(threadId: string): Promise<ThreadView> {
+    return this.threadView(await this.openThread(threadId, true));
+  }
+
+  private async openThread(threadId: string, waitForExecution: boolean): Promise<ThreadView> {
     const cached = this.projection.get(threadId);
-    await this.loadThread(threadId);
+    await this.loadThread(threadId, { raw: true, waitForExecution });
+    // The snapshot can render while recovery checks a durable reservation. A successful
+    // reconciliation is still published through the same replay boundary as live events.
+    const marker = this.store.activeForThread(threadId);
+    if (marker && !waitForExecution) void this.refreshExecution(marker);
     if (cached && this.codex.ready) await this.refreshThreadMetadata(threadId);
     const thread = this.projection.get(threadId)!;
     // A completed project can be removed while its metadata request is in flight.
     this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
     await this.refreshGoal(thread);
+    this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
     return thread;
-  }
-
-  async getThread(threadId: string): Promise<ThreadView> {
-    return this.threadView(await this.refreshThreadDetail(threadId));
   }
 
   getThreadAttention(threadId: string) {
@@ -1118,9 +1123,7 @@ export class GatewayService {
   }
 
   async getThreadSnapshot(threadId: string) {
-    await this.refreshThreadDetail(threadId);
-    const thread = this.projection.get(threadId)!;
-    this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+    const thread = await this.openThread(threadId, false);
     // Copy and cursor share one synchronous boundary; later events are replayable.
     return {
       data: this.threadView(thread),
@@ -1222,24 +1225,28 @@ export class GatewayService {
     return file;
   }
 
-  private async loadThread(threadId: string): Promise<ThreadView> {
+  private async loadThread(
+    threadId: string,
+    options?: { raw: true; waitForExecution: boolean },
+  ): Promise<ThreadView> {
+    const view = (thread: ThreadView) => (options?.raw ? thread : this.threadView(thread));
     const cached = this.projection.get(threadId);
     if (cached) {
       this.workspaces.assertOwnership(cached.projectId, cached.cwd, cached.id);
       const marker = this.store.activeForThread(threadId);
       if (marker && this.codex.ready) {
-        await this.refreshExecution(marker);
-        return this.threadView(cached);
+        if (options?.waitForExecution !== false) await this.refreshExecution(marker);
+        return view(cached);
       }
       // Managed ownership does not make an unknown projection authoritative.
       if (
         ((cached.managed || isActive(cached.status)) && cached.status !== 'unknown') ||
         !this.codex.ready
       )
-        return this.threadView(cached);
+        return view(cached);
     }
     const existing = this.reads.get(threadId);
-    if (existing) return this.threadView(await existing);
+    if (existing) return view(await existing);
     const revision = this.projection.revision(threadId);
     const loading = (async () => {
       const thread = this.normalize(
@@ -1259,7 +1266,7 @@ export class GatewayService {
     })();
     this.reads.set(threadId, loading);
     try {
-      return this.threadView(await loading);
+      return view(await loading);
     } finally {
       this.reads.delete(threadId);
     }
@@ -2686,19 +2693,23 @@ export class GatewayService {
     const revision = this.projection.revision(marker.threadId);
     const reading = (async () => {
       try {
-        const actual = await this.codex.readThread(marker.threadId);
-        const latest = this.store.activeForThread(marker.threadId);
-        // A delayed read cannot release a replacement execution or overwrite newer live events.
-        if (
-          !this.codex.ready ||
-          this.codex.epoch !== epoch ||
-          actual.id !== marker.threadId ||
-          latest?.operationId !== marker.operationId ||
-          latest.turnId !== marker.turnId ||
-          latest.codexEpoch !== marker.codexEpoch ||
-          this.projection.revision(marker.threadId) !== revision
-        )
-          return;
+        const current = () => {
+          const latest = this.store.activeForThread(marker.threadId);
+          // A delayed read cannot release a replacement execution or overwrite newer live events.
+          return this.codex.ready &&
+            this.codex.epoch === epoch &&
+            latest?.operationId === marker.operationId &&
+            latest.turnId === marker.turnId &&
+            latest.codexEpoch === marker.codexEpoch &&
+            this.projection.revision(marker.threadId) === revision
+            ? latest
+            : undefined;
+        };
+        const actual = await ((marker.turnId &&
+          this.codex.readExecutionHistory?.(marker.threadId, marker.turnId)) ||
+          this.codex.readThread(marker.threadId));
+        const latest = current();
+        if (!latest || actual.id !== marker.threadId) return;
         const link = this.store.getThreadLink(marker.threadId);
         const ownership = link
           ? this.workspaces.assertOwnership(link.projectId, actual.cwd, actual.id)
@@ -2714,25 +2725,32 @@ export class GatewayService {
               ),
             );
         const turn = candidates.length === 1 ? candidates[0] : undefined;
-        if (
-          turn &&
+        if (!turn) return;
+        const restoreActive =
           isActive(turn.status) &&
           latest.state === 'active' &&
-          this.projection.get(marker.threadId)?.status === 'unknown'
-        ) {
-          // A notLoaded status can hide an active managed turn. Restore its live controls
-          // only after the same identity, runtime and revision checks used for completion.
-          this.projection.thread(this.normalize(actual));
+          this.projection.get(marker.threadId)?.status === 'unknown';
+        const ended =
+          isTerminal(turn.status) &&
+          !isActive(actual.status) &&
+          !actual.turns.some((entry) => isActive(entry.status));
+        if (!restoreActive && !ended) return;
+
+        const page =
+          actual.historyMode === 'paginated' && this.codex.readThreadPage
+            ? await this.codex.readThreadPage(marker.threadId)
+            : actual;
+        if (!current() || page.id !== marker.threadId) return;
+        this.workspaces.assertOwnership(ownership.projectId, page.cwd, page.id);
+        // Only the recent display page enters the projection. Keep an older known turn's
+        // recovered status when it is already represented by a live event.
+        if (ended && (isActive(page.status) || page.turns.some((entry) => isActive(entry.status))))
+          return;
+        if (restoreActive) {
+          this.projection.thread(this.normalize(page));
           this.publishThread(marker.threadId);
           return;
         }
-        if (
-          !turn ||
-          !isTerminal(turn.status) ||
-          isActive(actual.status) ||
-          actual.turns.some((entry) => isActive(entry.status))
-        )
-          return;
         if (!marker.turnId) this.store.attachTurn(marker.operationId, turn.id);
         this.store.finishTurn(marker.threadId, turn.id, marker.codexEpoch);
         this.logger.info('execution.recovered', {
@@ -2742,12 +2760,22 @@ export class GatewayService {
           codexEpoch: marker.codexEpoch,
           reason: marker.turnId ? 'terminal_history' : 'native_message_identity',
         });
-        this.projection.thread(this.normalize(actual));
+        this.projection.thread(this.normalize(page));
+        if (
+          !page.turns.some((entry) => entry.id === turn.id) &&
+          this.projection.get(marker.threadId)?.turns.some((entry) => entry.id === turn.id)
+        )
+          this.projection.turn(marker.threadId, turn);
         this.projection.expireTurn(marker.threadId, turn.id);
         this.publishThread(marker.threadId);
         this.events.publish('operation', this.getOperation(marker.operationId), marker.threadId);
-      } catch {
+      } catch (error) {
         // Missing/unavailable history is not terminal evidence. Keep the durable reservation.
+        this.logger.debug('execution.recovery_read_failed', {
+          threadId: marker.threadId,
+          operationId: marker.operationId,
+          ...errorFields(error),
+        });
       }
     })();
     this.executionReads.set(marker.operationId, reading);

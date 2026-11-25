@@ -990,6 +990,41 @@ export class CodexAdapter implements CodexClient {
     );
   }
 
+  async readExecutionHistory(id: string, turnId: string): Promise<ThreadView> {
+    const sequence = ++this.archiveSequence;
+    const thread = await this.readThreadHeader(id);
+    if (thread.historyMode !== 'paginated') return this.readLegacyThread(id, sequence);
+    let cursor: string | null = null;
+    const seen = new Set<string>();
+    let latest: Thread['turns'][number] | undefined;
+    let target: Thread['turns'][number] | undefined;
+    let active: Thread['turns'][number] | undefined;
+    do {
+      const page: ThreadTurnsListResponse = await this.call('thread/turns/list', {
+        threadId: id,
+        cursor,
+        limit: 100,
+        sortDirection: 'desc',
+        itemsView: 'notLoaded',
+      });
+      latest ??= page.data[0];
+      target ??= page.data.find((turn) => turn.id === turnId);
+      active ??= page.data.find((turn) => turn.status === 'inProgress');
+      // Finding an active turn already precludes releasing the reservation. To confirm
+      // completion, exhaust the status pages so an earlier active turn also protects it.
+      if (target && (active || thread.status.type === 'active')) break;
+      cursor = page.nextCursor;
+      if (cursor && (seen.has(cursor) || seen.size >= 1000))
+        throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid turn pagination');
+      if (cursor) seen.add(cursor);
+    } while (cursor);
+    const turns = [...new Set([target, active])].filter(
+      (turn): turn is Thread['turns'][number] => turn !== undefined && turn !== latest,
+    );
+    if (latest) turns.push(latest);
+    return mapThread({ ...thread, turns });
+  }
+
   async readThread(id: string): Promise<ThreadView> {
     const sequence = ++this.archiveSequence;
     const thread = await this.readThreadHeader(id);

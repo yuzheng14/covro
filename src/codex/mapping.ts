@@ -91,6 +91,9 @@ export function mapThread(thread: Thread): ThreadView {
     title: thread.name || thread.preview || '新会话',
     // List/metadata responses omit turns. The native preview is history evidence.
     hasMessages: Boolean(thread.preview) || thread.turns.length > 0,
+    ...(thread.historyMode === 'legacy' || thread.historyMode === 'paginated'
+      ? { historyMode: thread.historyMode }
+      : {}),
     status,
     turns,
     managed: false,
