@@ -140,10 +140,13 @@ export class WorkspaceRegistry {
       const ownership = this.projects.assertOwnership(projectId, cwd);
       this.assertOutsideManaged(ownership.cwd);
       return {
-        ...ownership,
         projectId,
+        cwd: ownership.cwd,
         rootPath: ownership.project.rootPath,
         canonicalRoot: ownership.project.canonicalRoot,
+        get workspaceKey() {
+          return ownership.workspaceKey;
+        },
       };
     }
     const row = this.database

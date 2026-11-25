@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +11,8 @@ import { asyncQuestionId } from '../../src/shared/async-questions.js';
 import type { PendingAction, ServerMessage, ThreadPage } from '../../src/shared/types.js';
 import { databaseHarness } from './domain-db-helpers.js';
 import { deferred, DomainCodex, operationId, threadView } from './domain-helpers.js';
+
+vi.mock('node:child_process', { spy: true });
 
 const resources: ReturnType<typeof databaseHarness>[] = [];
 function setup() {
@@ -60,6 +63,20 @@ function approval(threadId: string, turnId: string): PendingAction {
 }
 
 describe('project conversation overview', () => {
+  it('validates listed sessions without resolving their Git checkout roots', async () => {
+    const { service, codex, first } = setup();
+    for (let i = 0; i < 30; i++) {
+      const thread = threadView(`history-${i}`, first);
+      codex.threads.set(thread.id, thread);
+    }
+    const calls = vi.mocked(execFileSync).mock.calls;
+    const boundary = calls.length;
+
+    expect((await service.listThreadSummaries('first')).data).toHaveLength(30);
+    expect((await service.listThreadSummaries('first')).data).toHaveLength(30);
+    expect(calls.slice(boundary).filter(([command]) => command === 'git')).toHaveLength(0);
+  });
+
   it('identifies completions by turn ID across renames and repeated update timestamps', async () => {
     const { service, codex, first } = setup();
     const overview: ServerMessage[] = [];

@@ -173,7 +173,10 @@ export class ProjectRegistry {
         name: config.name,
         rootPath,
         canonicalRoot,
-        workspaceKey: checkoutRoot(canonicalRoot) ?? canonicalRoot,
+        // Path validation is also used by reads that only need the project directory.
+        get workspaceKey() {
+          return checkoutRoot(canonicalRoot) ?? canonicalRoot;
+        },
         available: true,
       };
     } catch (error) {
@@ -327,7 +330,9 @@ export class ProjectRegistry {
     return {
       project,
       cwd: canonicalCwd,
-      workspaceKey: checkoutRoot(canonicalCwd) ?? project.canonicalRoot,
+      get workspaceKey() {
+        return checkoutRoot(canonicalCwd) ?? project.canonicalRoot;
+      },
     };
   }
 
