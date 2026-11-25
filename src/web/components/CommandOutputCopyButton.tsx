@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCopyText } from '../hooks/useCopyText';
 import { t } from '../i18n';
 import { Button } from './ui/button';
 import { ControlHint } from './ControlHint';
@@ -12,36 +12,7 @@ export function CommandOutputCopyButton({
   output: string;
   truncated?: boolean;
 }) {
-  const copying = useRef(false);
-  const mounted = useRef(true);
-  const resetTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const [feedback, setFeedback] = useState<'idle' | 'copied' | 'failed'>('idle');
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-      clearTimeout(resetTimer.current);
-    };
-  }, []);
-
-  async function copy() {
-    if (copying.current || !output) return;
-    copying.current = true;
-    clearTimeout(resetTimer.current);
-    setFeedback('idle');
-    try {
-      // The loaded output includes stdout/stderr in Codex's original order, even when hidden.
-      await navigator.clipboard.writeText(output);
-      if (!mounted.current) return;
-      setFeedback('copied');
-      resetTimer.current = setTimeout(() => setFeedback('idle'), 2000);
-    } catch {
-      if (mounted.current) setFeedback('failed');
-    } finally {
-      copying.current = false;
-    }
-  }
+  const { copy, feedback } = useCopyText();
 
   return (
     <>
@@ -52,7 +23,7 @@ export function CommandOutputCopyButton({
           className="command-output-copy-button"
           aria-label={t('conversation:copy_command_output')}
           disabled={!output}
-          onClick={() => void copy()}
+          onClick={() => void copy(output)}
         >
           <Icon name={feedback === 'copied' ? 'check' : 'copy'} size={16} />
         </Button>

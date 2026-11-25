@@ -12,6 +12,8 @@
   "checking": "確認中…",
   "unarchive": "アーカイブを解除",
   "technical_details": "技術的な詳細",
+  "copy_technical_details": "詳細をコピー",
+  "technical_details_copy_failed": "コピーできませんでした。詳細を選択して手動でコピーしてください。",
   "free_text_answer": "{{v0}}：自由入力",
   "enter_your_answer": "回答を入力",
   "confirm_selection": "選択を確定",

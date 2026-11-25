@@ -10,6 +10,7 @@ import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Icon } from './Icon';
 import { UpdateReleaseNotes } from './UpdateReleaseNotes';
+import { UpdateRunDetails } from './UpdateRunDetails';
 import { releasesUrl } from '../../shared/release-notes';
 import type { CodexTarget } from '../../shared/codex-identity';
 
@@ -409,11 +410,7 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
             {status.run.sourceChannel && ` · ${labels[status.run.sourceChannel]}`}
           </span>
           <p>{t(`updates:${status.run.phase}Description`)}</p>
-          <details>
-            <summary>{t('common:technical_details')}</summary>
-            <pre>{status.run.message}</pre>
-            {status.run.runtime && <pre>{JSON.stringify(status.run.runtime, null, 2)}</pre>}
-          </details>
+          <UpdateRunDetails run={status.run} />
           {active && <progress aria-label={t('updates:update_progress')} />}
         </section>
       )}

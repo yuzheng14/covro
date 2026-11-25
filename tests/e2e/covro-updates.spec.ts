@@ -4,7 +4,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ReleaseChannel, UpdateStatus } from '../../src/shared/updates';
+import type { ReleaseChannel, UpdateRun, UpdateStatus } from '../../src/shared/updates';
 import {
   chooseSelectOption,
   confirmCompatibility,
@@ -111,6 +111,144 @@ async function updatesFixture(page: Page) {
     },
   };
 }
+
+const failedRun: UpdateRun = {
+  id: 'failed-upgrade',
+  from: currentVersion,
+  target: nextVersion,
+  channel: 'stable',
+  sourceChannel: 'stable',
+  phase: 'failed',
+  message: 'npm install failed\n  stderr:\n\tregistry token: [REDACTED]\n',
+  startedAt: 1,
+  updatedAt: 2,
+};
+
+async function openUpdateFailure(page: Page, mobile = false) {
+  await page.goto('/');
+  await confirmCompatibility(page);
+  if (mobile) await page.getByRole('button', { name: '打开项目与会话', exact: true }).click();
+  await page.getByRole('button', { name: 'Covro 更新', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Covro 更新', exact: true });
+  await dialog.getByText('技术详情', { exact: true }).click();
+  return dialog.locator('.copyable-technical-details');
+}
+
+test('copies exactly the displayed upgrade diagnostics and pastes them into the composer', async ({
+  page,
+  context,
+}) => {
+  const fixture = await updatesFixture(page);
+  const runtime = {
+    node: '/example/bin/node',
+    nodeVersion: '24.19.0',
+    root: '/example/covro',
+    entry: '/example/covro/bin/covro.mjs',
+  };
+  const target = { ...runtime, npmConfig: { userconfig: 'must-not-copy' } };
+  fixture.state.run = { ...failedRun, runtime: { from: runtime, target } };
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const details = await openUpdateFailure(page);
+  const text = (await details.locator('pre').textContent())!;
+  const button = details.getByRole('button', { name: '复制详情', exact: true });
+  await button.press('Enter');
+  await expect(details.getByRole('status')).toHaveText('已复制');
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toBe(text);
+  expect(copied).toContain(
+    `Update ID: failed-upgrade\nPhase: failed\nCovro: ${currentVersion} → ${nextVersion}\nSource channel: stable\n\nError:\n${failedRun.message}`,
+  );
+  expect(copied).toContain(
+    `Runtime:\n${JSON.stringify({ from: runtime, target: runtime }, null, 2)}`,
+  );
+  expect(copied).not.toMatch(/npmConfig|must-not-copy/);
+  await page.getByRole('dialog').press('Escape');
+  const composer = page.getByRole('textbox', { name: '任务内容', exact: true });
+  await composer.press('ControlOrMeta+v');
+  await expect(composer).toHaveValue(text);
+});
+
+test.describe('touch copying', () => {
+  test.use({ viewport: { width: 320, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('reports unavailable and denied clipboard writes, then copies on retry', async ({
+    page,
+    context,
+  }) => {
+    const fixture = await updatesFixture(page);
+    fixture.state.run = { ...failedRun, phase: 'rolledBack' };
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const details = await openUpdateFailure(page, true);
+    const button = details.getByRole('button', { name: '复制详情', exact: true });
+    const feedback = details.getByRole('status');
+    for (const denied of [false, true]) {
+      await page.evaluate((denied) => {
+        Object.defineProperty(navigator, 'clipboard', {
+          configurable: true,
+          value: denied
+            ? {
+                writeText: async () => {
+                  throw new DOMException('Fixture denial', 'NotAllowedError');
+                },
+              }
+            : undefined,
+        });
+      }, denied);
+      await button.tap();
+      await expect(feedback).toHaveText('复制失败。请选中详情并手动复制。');
+      await expect(details.locator('pre')).toBeVisible();
+      await expect(details.locator('pre')).toHaveCSS('user-select', 'text');
+    }
+    await page.evaluate(() => Reflect.deleteProperty(navigator, 'clipboard'));
+    await button.tap();
+    await expect(feedback).toHaveText('已复制');
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copied).toBe(await details.locator('pre').textContent());
+    expect(copied).toContain('Phase: rolledBack');
+    expect(copied.endsWith(failedRun.message)).toBe(true);
+  });
+});
+
+test('late clipboard results stay with their original error and repeated clicks share one write', async ({
+  page,
+}) => {
+  const fixture = await updatesFixture(page);
+  fixture.state.run = failedRun;
+  const details = await openUpdateFailure(page);
+  await page.evaluate(() => {
+    const writes: Array<() => void> = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: () => new Promise<void>((resolve) => writes.push(resolve)) },
+    });
+    Object.defineProperty(window, 'diagnosticFixtureWrites', { value: writes });
+  });
+  const button = details.getByRole('button', { name: '复制详情', exact: true });
+  await button.dblclick();
+  const count = () =>
+    page.evaluate(
+      () => (Reflect.get(window, 'diagnosticFixtureWrites') as Array<() => void>).length,
+    );
+  expect(await count()).toBe(1);
+
+  fixture.state.run = { ...failedRun, id: 'next-error', message: 'The next update failed.' };
+  await page.getByRole('button', { name: '检查更新', exact: true }).click();
+  await expect(details).not.toHaveAttribute('open');
+  await details.getByText('技术详情', { exact: true }).click();
+  await expect(details.locator('pre')).toContainText('The next update failed.');
+  await button.click();
+  expect(await count()).toBe(2);
+  const finish = (index: number) =>
+    page.evaluate((index) => {
+      (Reflect.get(window, 'diagnosticFixtureWrites') as Array<() => void>)[index]!();
+    }, index);
+  await finish(0);
+  await expect(details.getByRole('status')).toBeEmpty();
+  await page.getByRole('dialog').press('Escape');
+  await finish(1);
+  await page.getByRole('button', { name: 'Covro 更新', exact: true }).click();
+  await details.getByText('技术详情', { exact: true }).click();
+  await expect(details.getByRole('status')).toBeEmpty();
+});
 
 for (const channel of ['beta', 'dev'] as const) {
   for (const viewport of [

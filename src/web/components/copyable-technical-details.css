@@ -1,0 +1,26 @@
+.technical-details-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.technical-details-copy [role='status'][data-state='copied'] {
+  color: var(--accent);
+}
+
+.technical-details-copy [role='status'][data-state='failed'] {
+  color: var(--destructive);
+}
+
+.copyable-technical-details pre {
+  user-select: text;
+}
+
+@media (pointer: coarse) {
+  .technical-details-copy .button {
+    min-height: 44px;
+  }
+}
