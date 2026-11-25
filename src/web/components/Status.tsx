@@ -31,12 +31,35 @@ export const runStatusLabels: Record<RunStatus, string> = {
 export function isActive(status?: RunStatus) {
   return status === 'running' || status === 'waitingApproval' || status === 'waitingInput';
 }
-export function Status({ status, offline = false }: { status: RunStatus; offline?: boolean }) {
-  return (
-    <span className={cn('status', `status-${status}`)}>
+export function Status({
+  status,
+  offline = false,
+  onClick,
+  label,
+}: {
+  status: RunStatus;
+  offline?: boolean;
+  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  label?: string;
+}) {
+  const className = cn('status', `status-${status}`);
+  const content = (
+    <>
       <span className="status-dot" />
       {offline && isActive(status) ? t('common:last_known') : ''}
-      {runStatusLabels[status]}
-    </span>
+      {label ?? runStatusLabels[status]}
+    </>
+  );
+  return onClick ? (
+    <button
+      type="button"
+      className={cn(className, 'status-trigger')}
+      aria-haspopup="dialog"
+      onClick={onClick}
+    >
+      {content}
+    </button>
+  ) : (
+    <span className={className}>{content}</span>
   );
 }

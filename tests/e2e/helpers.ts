@@ -74,6 +74,8 @@ export async function controlRuntime(
       | 'configLayers'
       | 'configOrigins'
       | 'threadSandbox'
+      | 'paginated'
+      | 'historyPageSize'
     >;
     preview?: { threadId: string; projectId: string };
     stopPreview?: string;

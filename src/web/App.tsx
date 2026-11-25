@@ -1,7 +1,15 @@
 import { UNASSIGNED_SCOPE } from '../shared/workspace-scope';
 import { displayMessage, messageDetails } from './i18n/messages';
 import { t, useInterfaceLocale } from './i18n';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { ArrowLeft, CircleAlert, Pencil } from 'lucide-react';
 import type { Settings, ThreadSummary, ReviewTarget } from '../shared/types';
 import { useCommandPrompt } from './hooks/useCommandPrompt';
@@ -17,6 +25,9 @@ import { useNewSessionShortcut } from './hooks/useNewSessionShortcut';
 import { Sidebar } from './components/Sidebar';
 import { FilePreviewProvider } from './components/FilePreviewProvider';
 import { Conversation } from './components/Conversation';
+import { PendingQuestionsDialog } from './components/PendingQuestionsDialog';
+import type { PendingQuestion, QuestionLocation } from '../shared/pending-questions';
+import { api } from './lib/api';
 import { ThreadTitle } from './components/ThreadTitle';
 import { HeaderActions } from './components/HeaderActions';
 import { GithubRepositoryLink } from './components/GithubRepositoryLink';
@@ -134,7 +145,101 @@ export function App() {
   };
   const { thread, system } = workspace;
   const attention = thread ? pendingAttention(thread) : [];
-  const hasAsyncQuestions = attention.some((request) => request.target.kind === 'question');
+  const [questionDialog, setQuestionDialog] = useState<string>();
+  const questionReturn = useRef<HTMLButtonElement | null>(null);
+  const [locatedQuestion, setLocatedQuestion] = useState<{
+    threadId: string;
+    location: QuestionLocation;
+  }>();
+  const questionFocus = useRef<PendingQuestion | undefined>(undefined);
+  const questions = thread?.pendingQuestions;
+  const questionThreadId = thread?.id;
+  const questionHistoryCursor = thread?.history?.olderCursor;
+  useEffect(() => {
+    if (
+      !workspace.selectedId ||
+      questionThreadId !== workspace.selectedId ||
+      !questionHistoryCursor ||
+      questions?.history !== 'loading' ||
+      workspace.connection !== 'connected' ||
+      workspace.authRequired
+    )
+      return;
+    const controller = new AbortController();
+    // Let the session snapshot arrive before opening the independent history scan.
+    void api.pendingQuestions(workspace.selectedId, null, controller.signal).catch(() => {});
+    return () => controller.abort();
+  }, [
+    workspace.selectedId,
+    workspace.connection,
+    workspace.authRequired,
+    questions?.history,
+    questionHistoryCursor,
+    questionThreadId,
+  ]);
+  const questionsOpen = Boolean(
+    thread &&
+    thread.id === workspace.selectedId &&
+    questionDialog === thread.id &&
+    !workspace.authRequired,
+  );
+  const canOpenQuestions = Boolean(
+    thread &&
+    !thread.archived &&
+    questions &&
+    (questions.count > 0 || questions.history === 'error'),
+  );
+  const openQuestions = (event: React.MouseEvent<HTMLButtonElement>) => {
+    questionReturn.current = event.currentTarget;
+    workspace.clearNotificationTarget();
+    setQuestionDialog(thread?.id);
+  };
+  const closeQuestions = () => setQuestionDialog(undefined);
+  useLayoutEffect(() => {
+    if (questionDialog && (questionDialog !== workspace.selectedId || workspace.authRequired)) {
+      questionReturn.current = null;
+      questionFocus.current = undefined;
+      setQuestionDialog(undefined);
+    }
+    if (
+      locatedQuestion &&
+      (locatedQuestion.threadId !== workspace.selectedId || workspace.authRequired)
+    )
+      setLocatedQuestion(undefined);
+  }, [questionDialog, locatedQuestion, workspace.selectedId, workspace.authRequired]);
+  const location = locatedQuestion?.threadId === thread?.id ? locatedQuestion?.location : undefined;
+  const focusQuestion = (question: PendingQuestion) => {
+    const card = [...document.querySelectorAll<HTMLElement>('[data-attention-id]')].find(
+      (entry) =>
+        entry.dataset.attentionKind === question.target.kind &&
+        entry.dataset.attentionId === question.target.id &&
+        (question.target.kind === 'question'
+          ? entry.closest<HTMLElement>('[data-turn-id]')?.dataset.turnId
+          : entry.dataset.actionTurnId) === question.turnId,
+    );
+    const field = [...(card?.querySelectorAll<HTMLElement>('[data-question-id]') ?? [])].find(
+      (entry) => entry.dataset.questionId === question.id,
+    );
+    const focus = field?.querySelector<HTMLElement>('[tabindex="-1"]');
+    if (!focus) return false;
+    focus.focus({ preventScroll: true });
+    focus.scrollIntoView({ block: 'center', inline: 'nearest' });
+    return true;
+  };
+  useLayoutEffect(() => {
+    if (questionsOpen || !questionReturn.current) return;
+    const from = questionReturn.current;
+    const target = questionFocus.current;
+    questionReturn.current = null;
+    questionFocus.current = undefined;
+    if (target && focusQuestion(target)) return;
+    (from.isConnected && from.getClientRects().length
+      ? from
+      : ([...(header.current?.querySelectorAll<HTMLElement>('.status-trigger') ?? [])].find(
+          (trigger) => trigger.getClientRects().length,
+        ) ?? header.current)
+    )?.focus({ preventScroll: true });
+  }, [questionsOpen]);
   const diagnosticCount = workspace.operations.length;
   const showCompactDiagnostics =
     diagnosticCount > 0 ||
@@ -490,8 +595,53 @@ export function App() {
     return operation?.status === 'acknowledged';
   }
 
+  const dismissQuestions = async (questionIds: string[]) => {
+    if (!thread) return false;
+    const result = await workspace.run(
+      'dismissQuestions',
+      thread.id,
+      `/api/threads/${encode(thread.id)}/questions/dismiss`,
+      { questionIds },
+    );
+    await workspace.refreshThread(thread.id);
+    return result?.status === 'acknowledged';
+  };
+  const questionControlsDisabled =
+    !canOperate ||
+    !thread?.managed ||
+    Boolean(thread.archived) ||
+    Boolean(waitingForConfirmation) ||
+    busyFor('send') ||
+    busyFor('steer') ||
+    busyFor('resume');
+  const locateQuestion = async (question: PendingQuestion, signal: AbortSignal) => {
+    if (!thread) return;
+    const result = await api.locateQuestion(thread.id, question, signal);
+    signal.throwIfAborted();
+    questionFocus.current = question;
+    if (question.target.kind === 'question') {
+      setLocatedQuestion({ threadId: thread.id, location: result });
+    }
+  };
+  const getHistoryCursor = (targetId: string) =>
+    history.getHistoryCursor(targetId) ??
+    (location?.turn?.id === targetId || location?.turn?.items.some((item) => item.id === targetId)
+      ? location?.cursor
+      : undefined);
+  const waitingQuestion = canOpenQuestions ? (
+    <Status
+      status="waitingInput"
+      offline={offline}
+      onClick={openQuestions}
+      label={
+        questions?.count === 0 && thread?.status !== 'waitingInput'
+          ? t('workspace:check_pending_questions')
+          : undefined
+      }
+    />
+  ) : null;
   return (
-    <WorkspaceLayout threadId={thread?.id} getHistoryCursor={history.getHistoryCursor}>
+    <WorkspaceLayout threadId={thread?.id} getHistoryCursor={getHistoryCursor}>
       <Sidebar
         system={system}
         backupsAvailable
@@ -589,7 +739,12 @@ export function App() {
         onClose={() => setSidebarOpen(false)}
       />
       <main className={`main-panel${shellOpen && !shellCollapsed ? ' shell-visible' : ''}`}>
-        <header ref={header} className="topbar" data-compact={compactHeader || undefined}>
+        <header
+          ref={header}
+          className="topbar"
+          tabIndex={-1}
+          data-compact={compactHeader || undefined}
+        >
           <div className="topbar-title">
             <Button
               className="mobile-only"
@@ -759,10 +914,10 @@ export function App() {
                 </Button>
               )}
             </HeaderActions>
-            {hasAsyncQuestions && thread?.status !== 'waitingInput' && (
-              <Status status="waitingInput" offline={offline} />
+            {waitingQuestion}
+            {thread && !(waitingQuestion && thread.status === 'waitingInput') && (
+              <Status status={thread.status} offline={offline} />
             )}
-            {thread && <Status status={thread.status} offline={offline} />}
             <ConnectionBadge connection={workspace.connection} />
             {thread?.forkedFromId && (
               <ControlHint
@@ -825,13 +980,25 @@ export function App() {
                 attention.some((request) => request.kind === 'approval')) && (
                 <Status status="waitingApproval" offline={offline} />
               )}
-              {(thread?.status === 'waitingInput' ||
-                attention.some((request) => request.kind === 'answer')) && (
-                <Status status="waitingInput" offline={offline} />
-              )}
+              {waitingQuestion ??
+                ((thread?.status === 'waitingInput' ||
+                  attention.some(
+                    (request) => request.kind === 'answer' && request.target.kind === 'action',
+                  )) && <Status status="waitingInput" offline={offline} />)}
             </div>
           )}
         </header>
+        {questionsOpen && thread && questions && (
+          <PendingQuestionsDialog
+            key={thread.id}
+            threadId={thread.id}
+            state={questions}
+            canDismiss={!questionControlsDisabled && !busyFor('dismissQuestions')}
+            onClose={closeQuestions}
+            onLocate={locateQuestion}
+            onDismiss={(id) => dismissQuestions([id])}
+          />
+        )}
         {system?.demo && (
           <div className="demo-banner">
             {t('workspace:simulation_mode_results_come_from_the_explicitly_enabled')}
@@ -976,6 +1143,7 @@ export function App() {
         )}
         <Conversation
           thread={history.thread}
+          locatedQuestion={location}
           retryControls={{
             disabled: !canOperate || !thread?.managed || Boolean(thread?.archived),
             busy: busyFor('retry') || busyFor('cancelRetry'),
@@ -1016,6 +1184,7 @@ export function App() {
             !sidebarOpen &&
             !projectDialog &&
             !diagnosticsOpen &&
+            !questionsOpen &&
             !workspace.authRequired &&
             !compatibilityDialogOpen
           }
@@ -1027,25 +1196,8 @@ export function App() {
           onAddProject={openAddProject}
           questionControls={{
             tracking: thread?.questionTracking,
-            onDismiss: async (questionIds) => {
-              if (!thread) return false;
-              const result = await workspace.run(
-                'dismissQuestions',
-                thread.id,
-                `/api/threads/${encode(thread.id)}/questions/dismiss`,
-                { questionIds },
-              );
-              await workspace.refreshThread();
-              return result?.status === 'acknowledged';
-            },
-            disabled:
-              !canOperate ||
-              !thread?.managed ||
-              Boolean(thread.archived) ||
-              Boolean(waitingForConfirmation) ||
-              busyFor('send') ||
-              busyFor('steer') ||
-              busyFor('resume'),
+            onDismiss: dismissQuestions,
+            disabled: questionControlsDisabled,
             onReply: async (replies) =>
               sendMessage(encodeQuestionReplies(replies), Boolean(activeTurn)),
           }}

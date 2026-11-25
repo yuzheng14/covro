@@ -495,6 +495,25 @@ export function createApp({
       ),
     ),
   );
+  app.get('/api/threads/:threadId/questions', async (c) =>
+    c.json(
+      await service.getPendingQuestions(
+        id(c.req.param('threadId')),
+        c.req.query('cursor'),
+        c.req.query('retry') === 'true',
+      ),
+    ),
+  );
+  app.get('/api/threads/:threadId/questions/location', async (c) =>
+    c.json(
+      await service.locateQuestion(id(c.req.param('threadId')), {
+        kind: c.req.query('kind'),
+        id: c.req.query('target'),
+        turnId: c.req.query('turn'),
+        questionId: c.req.query('question'),
+      }),
+    ),
+  );
   app.get('/api/threads/:threadId/snapshot', async (c) =>
     c.json(await service.getThreadSnapshot(id(c.req.param('threadId')))),
   );

@@ -1,6 +1,7 @@
 import { t } from '../i18n';
 import { useId, useRef, useState } from 'react';
 import type { AsyncQuestion, AsyncQuestionReply, ThreadView } from '../../shared/types';
+import { questionAnswer } from '../../shared/pending-questions';
 import { asyncQuestionId } from '../../shared/async-questions';
 import { Button } from './ui/button';
 import { Icon } from './Icon';
@@ -42,11 +43,8 @@ export function AsyncQuestionCard({
   const [texts, setTexts] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
-  const recorded = questions.map(
-    (q, index) =>
-      replies.find((reply) => reply.questionItemId === asyncQuestionId(itemId, index))?.answer ??
-      replies.find((reply) => reply.questionItemId === itemId && reply.question === q.title)
-        ?.answer,
+  const recorded = questions.map((q, index) =>
+    questionAnswer(replies, asyncQuestionId(itemId, index), itemId, q.title),
   );
   const dismissed = questions.map(
     (_, index) => tracking?.[asyncQuestionId(itemId, index)]?.status === 'dismissed',
@@ -136,9 +134,10 @@ export function AsyncQuestionCard({
             key={index}
             disabled={locked || settled[index]}
             aria-labelledby={`${id}-question-${index}`}
+            data-question-id={asyncQuestionId(itemId, index)}
           >
             <div className="async-question-item-heading">
-              <div className="async-question-title" id={`${id}-question-${index}`}>
+              <div className="async-question-title" id={`${id}-question-${index}`} tabIndex={-1}>
                 <MarkdownContent text={question.title} />
               </div>
               {!settled[index] && onDismiss && (

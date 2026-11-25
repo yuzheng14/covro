@@ -987,22 +987,24 @@ export class CodexAdapter implements CodexClient {
     };
   }
 
-  private async hydrateTurn(id: string, turn: Thread['turns'][number], deferOutput: boolean) {
+  private async readTurnItems(id: string, turnId: string, deferOutput: boolean) {
     let cursor: string | null = null;
     const seen = new Set<string>();
+    const items: Thread['turns'][number]['items'] = [];
     const deferred = new Set<string>();
-    turn.items = [];
     do {
       const page: Responses['thread/items/list'] = await this.call('thread/items/list', {
         threadId: id,
-        turnId: turn.id,
+        turnId,
         cursor,
         limit: 20,
         sortDirection: 'asc',
         ...(deferOutput ? { deferOutput: { commandExecution: true, mcpToolCall: true } } : {}),
       });
+      if (page.data.some((entry) => entry.turnId !== turnId))
+        throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Mismatched turn item page');
       for (const entry of page.data) {
-        turn.items.push(entry.item);
+        items.push(entry.item);
         if (entry.outputDeferred) deferred.add(entry.item.id);
       }
       cursor = page.nextCursor;
@@ -1010,6 +1012,21 @@ export class CodexAdapter implements CodexClient {
         throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid item pagination');
       if (cursor) seen.add(cursor);
     } while (cursor);
+    return { items, deferred };
+  }
+
+  async readThreadTurnItems(id: string, turnId: string) {
+    const { items, deferred } = await this.readTurnItems(id, turnId, this.canReadDeferredOutput());
+    return items.map((item) => {
+      const view = mapItem(item);
+      if (deferred.has(view.id)) view.outputDeferred = true;
+      return view;
+    });
+  }
+
+  private async hydrateTurn(id: string, turn: Thread['turns'][number], deferOutput: boolean) {
+    const { items, deferred } = await this.readTurnItems(id, turn.id, deferOutput);
+    turn.items = items;
     return deferred;
   }
 

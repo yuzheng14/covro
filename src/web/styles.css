@@ -6251,3 +6251,99 @@ dd {
 .session-loop-create > button {
   justify-self: start;
 }
+
+.status-trigger {
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.status-trigger:hover,
+.status-trigger:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.pending-questions-dialog {
+  width: min(34rem, calc(100vw - 24px));
+}
+
+.pending-questions-content {
+  min-width: 0;
+}
+
+.pending-question-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pending-question-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pending-question-row:last-child {
+  border-bottom: 0;
+}
+
+.pending-question-row > .button {
+  flex-shrink: 0;
+}
+
+.pending-question-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.pending-question-link:hover {
+  background: light-dark(#f1f3f5, var(--dark-surface-hover));
+}
+
+.pending-question-arrow {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--muted);
+}
+
+.pending-question-turn,
+.located-question-gap {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pending-question-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+
+.located-question-gap {
+  margin: 24px 0 0;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  text-align: center;
+}
+
+:is(.action-card, .async-question-card)
+  [data-question-id]:has(> legend:focus, .async-question-title:focus) {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}

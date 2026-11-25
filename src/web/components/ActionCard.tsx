@@ -40,6 +40,7 @@ export function ActionCard({
       aria-label={actionTitle(action)}
       data-attention-kind="action"
       data-attention-id={action.actionId}
+      data-action-turn-id={action.turnId}
       tabIndex={-1}
     >
       <div className="action-heading">
@@ -109,8 +110,12 @@ export function ActionCard({
           }}
         >
           {questions.map((question) => (
-            <fieldset key={question.id} disabled={disabled || !pending}>
-              <legend>{question.header}</legend>
+            <fieldset
+              key={question.id}
+              disabled={disabled || !pending}
+              data-question-id={question.id}
+            >
+              <legend tabIndex={-1}>{question.header}</legend>
               <p>{question.question}</p>
               {!pending ? (
                 <p className="async-question-answer">

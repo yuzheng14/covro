@@ -89,5 +89,13 @@
   "question_tracking_ended": "Skipped · no answer sent",
   "questions_handled": "Handled",
   "answer_receipt_pending": "Answer receipt pending",
-  "skip_all_questions_hint": "Skip every unanswered question in this group, including filled drafts. No answers are sent and the task continues."
+  "skip_all_questions_hint": "Skip every unanswered question in this group, including filled drafts. No answers are sent and the task continues.",
+  "pending_questions": "Pending questions",
+  "check_pending_questions": "Check pending questions",
+  "no_pending_questions": "No pending questions",
+  "question_turn_id": "Turn …{{id}}",
+  "question_current_request": "Current request",
+  "question_skip_unconfirmed": "Skip could not be confirmed. Check the session status before trying again.",
+  "question_history_incomplete": "Some earlier questions could not be loaded.",
+  "question_history_gap": "Some intervening turns are outside this view."
 }

@@ -160,6 +160,7 @@
   "SKILL_UNAVAILABLE": "A selected skill is no longer available in this workspace. Refresh and select it again.",
   "SKILLS_READ_FAILED": "Could not read skills. Refresh and try again.",
   "SKILL_STEER_UNSUPPORTED": "Codex 0.164.0 cannot apply a selected skill during an active task. Wait for it to finish, then send this draft.",
+  "QUESTION_LIST_CHANGED": "The pending questions have changed. Reload the list.",
   "QUESTION_EXPIRED": "This question is no longer available. Refresh the session.",
   "QUESTION_BUSY": "An answer is submitting or awaiting confirmation. Refresh its receipt before continuing.",
   "QUESTION_CONFLICT": "This question was handled or is already submitting. Refresh the session.",

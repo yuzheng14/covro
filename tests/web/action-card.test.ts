@@ -55,7 +55,7 @@ describe('interactive request labels', () => {
       if (kind === 'questions') {
         expect(html).not.toContain('<button');
         expect(html).not.toContain('<input');
-        expect(html).toContain('<fieldset disabled="">');
+        expect(html).toMatch(/<fieldset disabled=""[ >]/);
       } else {
         expect(html).toContain(`>${label}</button>`);
         expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled=""/);

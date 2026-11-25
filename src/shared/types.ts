@@ -279,6 +279,7 @@ export interface SessionTokenUsage {
   stale?: boolean;
 }
 export interface ThreadView {
+  pendingQuestions?: import('./pending-questions.js').PendingQuestionState;
   /** Covro-only tracking; never an upstream cancellation or answer. */
   questionTracking?: Record<
     string,
@@ -335,7 +336,7 @@ export type ThreadSummary = Pick<
   | 'historyVisible'
 > & {
   pendingActionCount: number;
-  /** Unanswered async question groups in loaded history; independent of execution status. */
+  /** Unanswered async question groups; independent of execution status. */
   pendingQuestionCount?: number;
   /** Stable identity of the latest known turn; absent when history is not loaded. */
   lastTurnId?: string;
