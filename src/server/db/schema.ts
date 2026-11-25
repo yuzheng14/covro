@@ -197,8 +197,6 @@ export const sessionLoops = sqliteTable(
       .notNull(),
     reason: text('reason').$type<import('../../shared/session-loop.js').SessionLoopReason>(),
     version: integer('version').notNull().default(0),
-    expiresAt: integer('expires_at').notNull(),
-    maxRuns: integer('max_runs').notNull(),
     runs: integer('runs').notNull().default(0),
     nextRunAt: integer('next_run_at').notNull(),
     lastStartedAt: integer('last_started_at'),

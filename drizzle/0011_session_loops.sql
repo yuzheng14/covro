@@ -8,8 +8,6 @@ CREATE TABLE `session_loops` (
 	`status` text NOT NULL,
 	`reason` text,
 	`version` integer DEFAULT 0 NOT NULL,
-	`expires_at` integer NOT NULL,
-	`max_runs` integer NOT NULL,
 	`runs` integer DEFAULT 0 NOT NULL,
 	`next_run_at` integer NOT NULL,
 	`last_started_at` integer,

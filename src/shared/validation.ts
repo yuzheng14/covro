@@ -2,13 +2,7 @@ import { z } from 'zod';
 import { imageDataBytes } from './images.js';
 import type { TaskMessage } from './types.js';
 import { threadNameError } from './thread-name.js';
-import {
-  LOOP_MAX_HOURS,
-  LOOP_MAX_INTERVAL,
-  LOOP_MAX_PROMPT,
-  LOOP_MAX_RUNS,
-  LOOP_MIN_INTERVAL,
-} from './session-loop.js';
+import { LOOP_MAX_INTERVAL, LOOP_MAX_PROMPT, LOOP_MIN_INTERVAL } from './session-loop.js';
 export const cursorSchema = z.string().min(1).max(4096);
 export const idSchema = z.string().min(1).max(256);
 const projectNameSchema = z.string().trim().min(1).max(100);
@@ -289,24 +283,16 @@ export const fileSearchQuerySchema = z
   )
   .refine((value) => !(value.threadId && value.draftId), 'Choose a session or a draft');
 
-export const createSessionLoopSchema = operationSchema
-  .extend({
-    prompt: z.string().trim().min(1).max(LOOP_MAX_PROMPT),
-    intervalMs: z
-      .number()
-      .int()
-      .min(LOOP_MIN_INTERVAL)
-      .max(LOOP_MAX_INTERVAL)
-      .multipleOf(LOOP_MIN_INTERVAL),
-    lifetimeHours: z.number().int().min(1).max(LOOP_MAX_HOURS).optional(),
-    maxRuns: z.number().int().min(1).max(LOOP_MAX_RUNS).optional(),
-    settings: settingsSchema.optional(),
-  })
-  .refine(
-    (input) =>
-      input.lifetimeHours === undefined ||
-      input.lifetimeHours * 60 * LOOP_MIN_INTERVAL > input.intervalMs,
-  );
+export const createSessionLoopSchema = operationSchema.extend({
+  prompt: z.string().trim().min(1).max(LOOP_MAX_PROMPT),
+  intervalMs: z
+    .number()
+    .int()
+    .min(LOOP_MIN_INTERVAL)
+    .max(LOOP_MAX_INTERVAL)
+    .multipleOf(LOOP_MIN_INTERVAL),
+  settings: settingsSchema.optional(),
+});
 
 export const mutateSessionLoopSchema = operationSchema.extend({
   action: z.enum(['pause', 'resume', 'cancel']),

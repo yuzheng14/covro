@@ -6241,20 +6241,11 @@ dd {
   font-weight: 600;
 }
 
-.session-loop-actions,
-.session-loop-fields {
+.session-loop-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-}
-
-.session-loop-actions {
   margin-top: 0.5rem;
-}
-
-.session-loop-fields > * {
-  flex: 1 1 8rem;
-  min-width: 0;
 }
 
 .session-loop-create > button {

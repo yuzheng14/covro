@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0aecd616-1212-4484-97e6-ef6c39ae343b",
+  "id": "48f1a544-16cb-4fda-9e28-9101242ca42f",
   "prevId": "77bd151d-e8e2-4765-aafc-bbc9d6a0f6f9",
   "tables": {
     "background_tasks": {
@@ -598,20 +598,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "max_runs": {
-          "name": "max_runs",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
         },
         "runs": {
           "name": "runs",

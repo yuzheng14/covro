@@ -30,6 +30,7 @@ test('creates a fixed loop and retains its controls and state after reload', asy
   const row = dialog.locator('.session-loop-row');
   await expect(row).toContainText('检查当前 PR 的 CI 状态');
   await expect(row).toContainText('每 5 分钟');
+  await expect(row).toContainText('0 次');
   await expect(row).toContainText('下次');
   await dialog.screenshot({ path: join(tmpdir(), 'covro-345-loop-scheduled.png') });
 
@@ -48,4 +49,10 @@ test('creates a fixed loop and retains its controls and state after reload', asy
   await row.getByRole('button', { name: '取消循环', exact: true }).click();
   await expect(row).toContainText('已取消');
   await dialog.screenshot({ path: join(tmpdir(), 'covro-345-loop-cancelled.png') });
+
+  await dialog.getByRole('button', { name: '新建循环', exact: true }).click();
+  await expect(dialog.getByRole('textbox', { name: '间隔', exact: true })).toHaveValue('5m');
+  await expect(dialog.getByRole('textbox', { name: '任务', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('spinbutton')).toHaveCount(0);
+  await dialog.screenshot({ path: join(tmpdir(), 'covro-345-loop-form.png') });
 });

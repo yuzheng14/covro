@@ -86,6 +86,7 @@ export interface UpdateStatus {
 export const updateActive = (run?: UpdateRun) =>
   Boolean(run && ['installing', 'waiting', 'stopping', 'verifying'].includes(run.phase));
 export interface UpdateController {
+  isPending?(): boolean;
   status(): Promise<UpdateStatus>;
   check(channel?: ReleaseChannel): Promise<UpdateStatus>;
   configure(settings: UpdateSettings): Promise<UpdateStatus>;

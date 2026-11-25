@@ -122,6 +122,10 @@ export class ServiceRestart implements RestartController {
     this.controller?.abort();
   }
 
+  isPending(): boolean {
+    return restartActive(this.record?.run);
+  }
+
   status() {
     const local = this.closed ? [] : (this.context?.service.restartBlockers() ?? []);
     return {

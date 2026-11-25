@@ -100,8 +100,6 @@ import { sessionCreationResult } from './session-creation.js';
 import type { RestartBlocker, RestartRequest } from '../shared/service-restart.js';
 import { createSessionLoopSchema, createSessionSchema } from '../shared/validation.js';
 import {
-  LOOP_DEFAULT_HOURS,
-  LOOP_DEFAULT_RUNS,
   type CreateSessionLoop,
   type SessionLoopAction,
   type SessionLoopResult,
@@ -119,6 +117,7 @@ export interface GatewayOptions {
   limits?: { eventBytes: number; itemBytes: number; wsBytes?: number };
   authMode?: SystemInfo['authMode'];
   demo?: boolean;
+  maintenancePending?: () => boolean;
 }
 
 /** Coordinates durable intent, upstream effects, and the recoverable browser projection. */
@@ -126,6 +125,7 @@ export class GatewayService {
   private readonly logger: Logger;
   private readonly capacityRetries: CapacityRetries;
   private readonly loops: SessionLoopStore;
+  private loopSchedulerStopped = false;
   private loopTimer?: ReturnType<typeof setInterval>;
   private loopTick?: Promise<void>;
   private loopsOffline = false;
@@ -358,7 +358,12 @@ export class GatewayService {
       blockers.add(activity);
       reason ??= detail;
     };
-    if (this.capacityRetries.active()) block('retry', '等待模型容量重试结束或取消');
+    // Queued retries from a loop yield to restarts and updates. An already dispatched turn
+    // still participates in the normal activity/operation checks below.
+    if (
+      this.capacityRetries.active((job) => kind === 'backup' || !this.scheduledCapacityRetry(job))
+    )
+      block('retry', '等待模型容量重试结束或取消');
     if (this.projectClones.hasActive) block('clone', '等待项目克隆完成或取消');
     if (this.shell.active()) block('shell', '等待 Shell 命令结束');
     if (
@@ -1483,7 +1488,6 @@ export class GatewayService {
   async listSessionLoops(threadId: string) {
     if (!this.store.getThreadLink(threadId)) await this.loadThread(threadId);
     const workspace = this.loopWorkspace(threadId);
-    this.loops.expire(Date.now());
     return this.loops.list(threadId, workspace.workspaceKey);
   }
 
@@ -1522,8 +1526,6 @@ export class GatewayService {
           prompt: input.prompt,
           intervalMs: input.intervalMs,
           status: 'active',
-          expiresAt: now + (input.lifetimeHours ?? LOOP_DEFAULT_HOURS) * 3_600_000,
-          maxRuns: input.maxRuns ?? LOOP_DEFAULT_RUNS,
           nextRunAt: now + input.intervalMs,
         }),
       );
@@ -1549,11 +1551,7 @@ export class GatewayService {
           ? row.status === 'active' || row.status === 'paused'
           : input.action === 'pause'
             ? row.status === 'active'
-            : row.status === 'paused' &&
-              row.runs < row.maxRuns &&
-              now + row.intervalMs < row.expiresAt &&
-              thread?.archived !== true &&
-              row.lastResult !== 'unknown');
+            : row.status === 'paused' && thread?.archived !== true && row.lastResult !== 'unknown');
       if (!canChange)
         throw new AppError('LOOP_CONFLICT', 'The loop has changed or cannot be resumed', 409);
       this.store.dispatch(input.clientOperationId, undefined, undefined, (tx) =>
@@ -1574,13 +1572,34 @@ export class GatewayService {
   }
 
   startLoopScheduler(): void {
-    if (this.loopTimer) return;
+    if (this.loopTimer || this.loopSchedulerStopped) return;
     this.loopTimer = setInterval(() => {
       void this.tickSessionLoops().catch((error) =>
         this.logger.warn('loop.scheduler_failed', errorFields(error)),
       );
     }, 1_000);
     this.loopTimer.unref();
+  }
+
+  stopLoopScheduler(): void {
+    this.loopSchedulerStopped = true;
+    if (this.loopTimer) clearInterval(this.loopTimer);
+  }
+
+  private loopDispatchDeferred(): boolean {
+    return (
+      this.loopSchedulerStopped ||
+      !this.accepting ||
+      this.maintenance ||
+      this.options.maintenancePending?.() === true
+    );
+  }
+
+  private scheduledCapacityRetry(job: CapacityAttempt): SessionLoopRow | undefined {
+    return (
+      this.loops.byRun(job.operationId) ??
+      (job.previousOperationId ? this.loops.byRun(job.previousOperationId) : undefined)
+    );
   }
 
   tickSessionLoops(): Promise<void> {
@@ -1591,9 +1610,8 @@ export class GatewayService {
   }
 
   private async runSessionLoops(): Promise<void> {
-    if (!this.accepting || this.maintenance) return;
+    if (this.loopSchedulerStopped || !this.accepting || this.maintenance) return;
     const now = Date.now();
-    this.loops.expire(now);
     if (!this.codex.ready || this.codex.diagnostics().authenticated === false) {
       this.loopsOffline = true;
       return;
@@ -1609,10 +1627,13 @@ export class GatewayService {
       group.unfinished.push(row);
       grouped.set(row.threadId, group);
     }
-    for (const row of this.loops.due(now)) {
-      const group = grouped.get(row.threadId) ?? { unfinished: [] };
-      group.due ??= row;
-      grouped.set(row.threadId, group);
+    const dueLoops = this.loops.due(now);
+    if (dueLoops.length && !this.loopDispatchDeferred()) {
+      for (const row of dueLoops) {
+        const group = grouped.get(row.threadId) ?? { unfinished: [] };
+        group.due ??= row;
+        grouped.set(row.threadId, group);
+      }
     }
     await Promise.all(
       [...grouped.values()].map(async ({ unfinished, due }) => {
@@ -1678,8 +1699,7 @@ export class GatewayService {
   }
 
   private assertLoopIdle(thread: ThreadView, row: SessionLoopRow): void {
-    if (!this.accepting || this.maintenance)
-      throw new AppError('LOOP_WAITING', 'The service is busy', 409);
+    if (this.loopDispatchDeferred()) throw new AppError('LOOP_WAITING', 'The service is busy', 409);
     if (
       this.manualStarts.has(thread.id) ||
       this.capacityRetries.pending(thread.id) ||
@@ -1696,6 +1716,7 @@ export class GatewayService {
   }
 
   private async runDueLoop(row: SessionLoopRow): Promise<void> {
+    if (this.loopDispatchDeferred()) return;
     const current = this.loops.get(row.id);
     if (
       current?.status !== 'active' ||
@@ -1717,6 +1738,7 @@ export class GatewayService {
           clientOperationId: randomUUID(),
           settings: row.settings,
         });
+      if (this.loopDispatchDeferred()) return;
       await this.dispatchTurn(
         thread.id,
         {
@@ -1741,7 +1763,9 @@ export class GatewayService {
         case 'THREAD_BUSY':
         case 'CODEX_UNAVAILABLE':
         case 'COMPATIBILITY_CONFIRMATION_REQUIRED':
-        case 'SERVICE_MAINTENANCE':
+        case 'RESTART_MAINTENANCE':
+        case 'UPDATE_MAINTENANCE':
+        case 'BACKUP_MAINTENANCE':
           break;
         case 'RESULT_UNKNOWN':
           this.loops.suspend(row, 'uncertain');
@@ -1809,6 +1833,8 @@ export class GatewayService {
       const retryLoop = retry?.previousOperationId
         ? this.loops.byRun(retry.previousOperationId)
         : undefined;
+      if (retryLoop && this.loopDispatchDeferred())
+        throw new AppError('LOOP_WAITING', 'The service is busy', 409);
       const claimLoop = loop
         ? (tx: AppTransaction) => this.loops.claim(tx, loop, input.clientOperationId, Date.now())
         : retryLoop && retry?.previousOperationId
@@ -2484,7 +2510,7 @@ export class GatewayService {
 
   async shutdown(): Promise<void> {
     this.accepting = false;
-    if (this.loopTimer) clearInterval(this.loopTimer);
+    this.stopLoopScheduler();
     await Promise.allSettled([...this.instructionWrites, ...this.defaultWrites]);
     this.capacityRetries.clearAll();
     await this.projectClones.close();

@@ -104,6 +104,7 @@ export async function startGateway(
       limits: config.limits,
       authMode: config.auth.mode,
       demo: config.demo,
+      maintenancePending: () => overrides.restart?.isPending?.() || updates.isPending?.() || false,
     });
     gateway = service;
     const authenticate = createAuthenticator(config);
@@ -159,6 +160,7 @@ export async function startGateway(
     const close = (): Promise<void> =>
       (closing ??= (async () => {
         logger.info('gateway.stopping');
+        service.stopLoopScheduler();
         for (const stop of stopHeartbeats) stop();
         preview?.close();
         gateway = undefined;

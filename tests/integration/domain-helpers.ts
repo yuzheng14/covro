@@ -11,7 +11,7 @@ import type {
   TurnView,
 } from '../../src/shared/types.js';
 import { ProjectRegistry } from '../../src/server/projects.js';
-import { GatewayService } from '../../src/server/service.js';
+import { GatewayService, type GatewayOptions } from '../../src/server/service.js';
 import { databaseHarness } from './domain-db-helpers.js';
 import type { Logger } from '../../src/logging/logger.js';
 
@@ -243,12 +243,12 @@ export class DomainCodex implements CodexClient {
   }
 }
 
-export function harness(logger?: Logger) {
+export function harness(logger?: Logger, options?: Pick<GatewayOptions, 'maintenancePending'>) {
   const { directory, filename, db, store, close } = databaseHarness(logger);
   const project = join(directory, 'project');
   mkdirSync(project);
   const codex = new DomainCodex();
   const projects = new ProjectRegistry([{ id: 'project', name: '测试项目', path: project }]);
-  const service = new GatewayService({ store, projects, codex, logger });
+  const service = new GatewayService({ store, projects, codex, logger, ...options });
   return { directory, project, filename, db, store, codex, projects, service, close };
 }

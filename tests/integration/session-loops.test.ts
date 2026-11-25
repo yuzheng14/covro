@@ -20,8 +20,8 @@ afterEach(() => {
   for (const fn of close.splice(0)) fn();
 });
 
-async function setup() {
-  const ctx = harness();
+async function setup(maintenancePending?: () => boolean) {
+  const ctx = harness(undefined, { maintenancePending });
   close.push(ctx.close);
   const create = await ctx.service.createThread('project', { clientOperationId: operationId() });
   const id = (create.result as { threadId: string }).threadId;
@@ -30,12 +30,11 @@ async function setup() {
     text: 'Save the conversation',
   });
   ctx.codex.complete(id, 'turn-1');
-  const createLoop = async (options = {}) => {
+  const createLoop = async () => {
     const command = {
       clientOperationId: operationId(),
       intervalMs: LOOP_MIN_INTERVAL,
       prompt: 'Check CI',
-      ...options,
     };
     const created = await ctx.service.createSessionLoop(id, command);
     expect(await ctx.service.createSessionLoop(id, command)).toEqual(created);
@@ -56,7 +55,7 @@ it('parses exact intervals and rejects unsupported durations and missing prompts
 
 it('gives manual sends priority and coalesces missed ticks into one run', async () => {
   const ctx = await setup();
-  await ctx.createLoop({ maxRuns: 2 });
+  await ctx.createLoop();
   now += 3 * LOOP_MIN_INTERVAL;
   await Promise.all([
     ctx.service.tickSessionLoops(),
@@ -82,8 +81,7 @@ it('gives manual sends priority and coalesces missed ticks into one run', async 
   expect(ctx.codex.starts).toBe(4);
   ctx.codex.complete(ctx.id, 'turn-4');
   expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
-    status: 'finished',
-    reason: 'limit',
+    status: 'active',
     runs: 2,
     lastResult: 'completed',
     lastTurnId: 'turn-4',
@@ -244,4 +242,83 @@ it('pauses on archive and waits for a manual resume after unarchiving', async ()
   now += LOOP_MIN_INTERVAL;
   await ctx.service.tickSessionLoops();
   expect(ctx.codex.starts).toBe(2);
+});
+
+it('keeps dispatching after more than seven days and a hundred runs', async () => {
+  const ctx = await setup();
+  await ctx.createLoop();
+  now += 8 * 24 * 60 * LOOP_MIN_INTERVAL;
+  for (let run = 1; run <= 101; run++) {
+    await ctx.service.tickSessionLoops();
+    ctx.codex.complete(ctx.id, `turn-${run + 1}`);
+    now += LOOP_MIN_INTERVAL;
+  }
+  expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+    status: 'active',
+    runs: 101,
+    lastResult: 'completed',
+  });
+});
+
+it.each(['restart', 'update'] as const)(
+  'yields when a %s starts waiting and keeps its schedule',
+  async (kind) => {
+    let pending = false;
+    const ctx = await setup(() => pending);
+    const loop = await ctx.createLoop();
+    now += LOOP_MIN_INTERVAL;
+    const tick = ctx.service.tickSessionLoops();
+    pending = true; // The request lands after the scheduler has selected a due task.
+    await tick;
+    expect(ctx.codex.starts).toBe(1);
+    expect(ctx.service.restartBlockers()).toEqual([]);
+    expect(ctx.service.prepareUpdate('update', false)).toEqual({ ready: true });
+
+    pending = false;
+    await ctx.service.tickSessionLoops();
+    expect(ctx.codex.starts).toBe(2);
+    pending = true;
+    expect(ctx.service.restartBlockers()).toContain('running');
+    now += 3 * LOOP_MIN_INTERVAL;
+    ctx.codex.complete(ctx.id, 'turn-2');
+    await ctx.service.tickSessionLoops();
+    expect(ctx.codex.starts).toBe(2);
+    if (kind === 'restart') expect(ctx.service.restartBlockers(true)).toEqual([]);
+    else expect(ctx.service.prepareUpdate()).toEqual({ ready: true });
+    expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+      id: loop.id,
+      status: 'active',
+      runs: 1,
+      lastResult: 'completed',
+    });
+  },
+);
+
+it('keeps a queued loop retry from blocking restart or starting another turn during the wait', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  let pending = false;
+  const ctx = await setup(() => pending);
+  await ctx.createLoop();
+  now += LOOP_MIN_INTERVAL;
+  await ctx.service.tickSessionLoops();
+  const thread = ctx.codex.threads.get(ctx.id)!;
+  const turn = thread.turns.at(-1)!;
+  Object.assign(turn, {
+    status: 'failed',
+    error: MODEL_CAPACITY_MESSAGE,
+    errorCode: 'serverOverloaded',
+  });
+  thread.status = 'failed';
+  ctx.codex.emit({ type: 'turn', threadId: ctx.id, turn: structuredClone(turn) });
+  expect((await ctx.service.getThread(ctx.id)).capacityRetry?.status).toBe('waiting');
+  pending = true;
+  expect(ctx.service.restartBlockers()).toEqual([]);
+  expect(ctx.service.prepareUpdate('update', false)).toEqual({ ready: true });
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(ctx.codex.starts).toBe(2);
+  await ctx.service.tickSessionLoops();
+  expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+    runs: 1,
+    lastResult: 'failed',
+  });
 });

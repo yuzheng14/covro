@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt, lte, sql } from 'drizzle-orm';
 import { AppError } from '../../shared/errors.js';
 import type {
   SessionLoop,
@@ -28,7 +28,7 @@ export class SessionLoopStore {
       .select()
       .from(sessionLoops)
       .where(and(eq(sessionLoops.threadId, threadId), eq(sessionLoops.workspaceKey, workspaceKey)))
-      .orderBy(asc(sessionLoops.expiresAt))
+      .orderBy(asc(sessionLoops.nextRunAt), asc(sessionLoops.id))
       .all()
       .map(sessionLoopView);
   }
@@ -41,13 +41,7 @@ export class SessionLoopStore {
     return this.db
       .select()
       .from(sessionLoops)
-      .where(
-        and(
-          eq(sessionLoops.status, 'active'),
-          lte(sessionLoops.nextRunAt, now),
-          lt(sessionLoops.runs, sessionLoops.maxRuns),
-        ),
-      )
+      .where(and(eq(sessionLoops.status, 'active'), lte(sessionLoops.nextRunAt, now)))
       .orderBy(asc(sessionLoops.nextRunAt), asc(sessionLoops.id))
       .all();
   }
@@ -105,7 +99,6 @@ export class SessionLoopStore {
           eq(sessionLoops.version, row.version),
           eq(sessionLoops.runs, row.runs),
           lte(sessionLoops.nextRunAt, now),
-          gt(sessionLoops.expiresAt, now),
         ),
       )
       .run();
@@ -122,7 +115,6 @@ export class SessionLoopStore {
           eq(sessionLoops.id, loopId),
           eq(sessionLoops.lastOperationId, previousId),
           eq(sessionLoops.status, 'active'),
-          gt(sessionLoops.expiresAt, Date.now()),
         ),
       )
       .run();
@@ -132,20 +124,9 @@ export class SessionLoopStore {
 
   record(row: SessionLoopRow, result: SessionLoopResult, turnId: string | null): void {
     if (!row.lastOperationId) return;
-    const done = result === 'completed' || result === 'failed' || result === 'interrupted';
     this.db
       .update(sessionLoops)
-      .set({
-        lastResult: result,
-        lastTurnId: turnId ?? row.lastTurnId,
-        ...(done
-          ? {
-              status: sql`case when ${sessionLoops.status} = 'active' and ${sessionLoops.runs} >= ${sessionLoops.maxRuns} then 'finished' else ${sessionLoops.status} end`,
-              reason: sql`case when ${sessionLoops.status} = 'active' and ${sessionLoops.runs} >= ${sessionLoops.maxRuns} then 'limit' else ${sessionLoops.reason} end`,
-              version: sql`case when ${sessionLoops.status} = 'active' and ${sessionLoops.runs} >= ${sessionLoops.maxRuns} then ${sessionLoops.version} + 1 else ${sessionLoops.version} end`,
-            }
-          : {}),
-      })
+      .set({ lastResult: result, lastTurnId: turnId ?? row.lastTurnId })
       .where(
         and(eq(sessionLoops.id, row.id), eq(sessionLoops.lastOperationId, row.lastOperationId)),
       )
@@ -175,16 +156,6 @@ export class SessionLoopStore {
       .update(sessionLoops)
       .set({ status: 'paused', reason: 'archived', version: sql`${sessionLoops.version} + 1` })
       .where(and(eq(sessionLoops.threadId, threadId), eq(sessionLoops.status, 'active')))
-      .run();
-  }
-
-  expire(now: number): void {
-    this.db
-      .update(sessionLoops)
-      .set({ status: 'finished', reason: 'limit', version: sql`${sessionLoops.version} + 1` })
-      .where(
-        and(inArray(sessionLoops.status, ['active', 'paused']), lte(sessionLoops.expiresAt, now)),
-      )
       .run();
   }
 

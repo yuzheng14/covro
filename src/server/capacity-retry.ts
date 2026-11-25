@@ -63,8 +63,8 @@ export class CapacityRetries {
   pending(threadId: string) {
     return ['waiting', 'retrying'].includes(this.view(threadId)?.status ?? '');
   }
-  active() {
-    return [...this.jobs.keys()].some((id) => this.pending(id));
+  active(include: (job: CapacityAttempt) => boolean = () => true) {
+    return [...this.jobs.values()].some((job) => this.pending(job.threadId) && include(job));
   }
 
   clear(threadId: string) {

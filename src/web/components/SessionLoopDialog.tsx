@@ -1,9 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
-  LOOP_DEFAULT_HOURS,
-  LOOP_DEFAULT_RUNS,
-  LOOP_MAX_HOURS,
-  LOOP_MAX_RUNS,
   parseSessionLoop,
   type SessionLoop,
   type SessionLoopAction,
@@ -74,14 +70,12 @@ export function SessionLoopDialog({
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const values = new FormData(event.currentTarget);
     const parsed = parseSessionLoop(`${interval} ${prompt}`);
-    const lifetimeHours = Number(values.get('lifetimeHours'));
-    if (!parsed || lifetimeHours * 3_600_000 <= parsed.intervalMs) {
+    if (!parsed) {
       setError(t('commands:loopInvalid'));
       return;
     }
-    if (await submit(path, { ...parsed, lifetimeHours, maxRuns: Number(values.get('maxRuns')) })) {
+    if (await submit(path, parsed)) {
       setCreating(false);
       setPrompt('');
     }
@@ -115,7 +109,7 @@ export function SessionLoopDialog({
                 {t('commands:loopCadence', {
                   minutes: loop.intervalMs / 60_000,
                 })}{' '}
-                · {t('commands:loopRuns', { runs: loop.runs, max: loop.maxRuns })}
+                · {t('commands:loopRuns', { runs: loop.runs })}
               </p>
               <p>
                 {loop.lastResult && (
@@ -128,8 +122,6 @@ export function SessionLoopDialog({
                   (pending
                     ? t('commands:loopWaiting')
                     : t('commands:loopNext', { time: loopDate(loop.nextRunAt) }))}
-                {loop.status === 'active' && ' · '}
-                {t('commands:loopExpires', { time: loopDate(loop.expiresAt) })}
               </p>
               {loop.reason && <p>{t(`commands:loopReason_${loop.reason}`)}</p>}
               {(loop.status === 'active' || loop.status === 'paused') && (
@@ -165,38 +157,14 @@ export function SessionLoopDialog({
       </div>
       {creating ? (
         <form onSubmit={(event) => void create(event)} className="session-loop-create">
-          <div className="session-loop-fields">
-            <label className="project-field">
-              <span>{t('commands:loopInterval')}</span>
-              <input
-                required
-                value={interval}
-                onChange={(event) => setIntervalText(event.target.value)}
-              />
-            </label>
-            <label className="project-field">
-              <span>{t('commands:loopHours')}</span>
-              <input
-                name="lifetimeHours"
-                type="number"
-                min={1}
-                max={LOOP_MAX_HOURS}
-                required
-                defaultValue={LOOP_DEFAULT_HOURS}
-              />
-            </label>
-            <label className="project-field">
-              <span>{t('commands:loopMaxRuns')}</span>
-              <input
-                name="maxRuns"
-                type="number"
-                min={1}
-                max={LOOP_MAX_RUNS}
-                required
-                defaultValue={LOOP_DEFAULT_RUNS}
-              />
-            </label>
-          </div>
+          <label className="project-field">
+            <span>{t('commands:loopInterval')}</span>
+            <input
+              required
+              value={interval}
+              onChange={(event) => setIntervalText(event.target.value)}
+            />
+          </label>
           <label className="project-field">
             <span>{t('commands:loopPrompt')}</span>
             <textarea
