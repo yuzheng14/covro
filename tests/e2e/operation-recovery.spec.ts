@@ -73,6 +73,7 @@ for (const mobile of [false, true]) {
     await page.setViewportSize(
       mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
     );
+    if (mobile) await expect(page.locator('.topbar')).toHaveAttribute('data-compact', 'true');
     await openHeaderDiagnostics(page);
     const others = panel(page).getByRole('region', { name: '其他会话与操作' });
     // section landmarks require an accessible name; each card names the real source conversation.
