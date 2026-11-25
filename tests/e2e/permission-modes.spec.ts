@@ -224,7 +224,8 @@ test('preserves mode drafts by project and conversation and never substitutes de
   await projectGroup(page, '另一个项目')
     .getByRole('button', { name: '另一个项目', exact: true })
     .click();
-  await expect(modeControl(page)).toHaveAttribute('data-value', '');
+  // The project overview uses its reported default once runtime settings arrive.
+  await expect(modeControl(page)).toHaveAttribute('data-value', 'read-only');
   await choose(page, 'ask');
   await projectGroup(page).getByRole('button', { name: '测试项目', exact: true }).click();
   await page.locator(`[data-thread-id="${first}"]`).click();
