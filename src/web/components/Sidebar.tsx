@@ -13,6 +13,7 @@ import { isActive } from './Status';
 import { ThreadLink } from './ThreadLink';
 import { ThreadListNavigation } from './ThreadListNavigation';
 import { ProjectOrderList } from './ProjectOrderList';
+import type { BrowserNotifications } from '../hooks/useBrowserNotifications';
 import { SidebarSettings } from './SidebarSettings';
 import { newSessionShortcut } from '../hooks/useNewSessionShortcut';
 
@@ -46,10 +47,12 @@ interface Props {
   offline: boolean;
   open: boolean;
   onClose: () => void;
-  onNotificationSettings: () => void;
-  onGatewaySettings: () => void;
-  onBackups?: () => void;
+  settingsOpen: boolean;
+  onSettingsOpenChange: (open: boolean) => void;
+  onNotificationPanelChange: (open: boolean) => void;
+  backupsAvailable?: boolean;
   notificationStatus: string;
+  notifications: BrowserNotifications;
   onUpdates: () => void;
   appVersion?: string;
   updateAvailable: boolean;
@@ -392,9 +395,11 @@ export function Sidebar(props: Props) {
             system={props.system}
             offline={props.offline}
             notificationStatus={props.notificationStatus}
-            onNotificationSettings={props.onNotificationSettings}
-            onGatewaySettings={props.onGatewaySettings}
-            onBackups={props.onBackups}
+            notifications={props.notifications}
+            settingsOpen={props.settingsOpen}
+            onSettingsOpenChange={props.onSettingsOpenChange}
+            onNotificationPanelChange={props.onNotificationPanelChange}
+            backupsAvailable={props.backupsAvailable}
           />
           <span className="sidebar-execution-location">
             <Server size={14} aria-hidden="true" />

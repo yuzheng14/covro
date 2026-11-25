@@ -1,11 +1,11 @@
 .collapsible-activity {
   --activity-sticky-offset: var(--conversation-sticky-offset, 0px);
-  --activity-surface: #fbfcfb;
+  --activity-surface: light-dark(#fbfcfb, var(--dark-surface));
   overflow: clip;
 }
 
 .collapsible-activity.activity-failed {
-  --activity-surface: #fff5f3;
+  --activity-surface: light-dark(#fff5f3, var(--dark-surface));
 }
 
 .collapsible-activity > summary {

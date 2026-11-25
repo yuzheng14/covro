@@ -1,18 +1,18 @@
 .activity-group {
-  --activity-surface: #f5f8f6;
+  --activity-surface: light-dark(#f5f8f6, var(--dark-surface-raised));
   min-width: 0;
   margin: 10px 0;
-  border: 1px solid #e8ebea;
+  border: 1px solid light-dark(#e8ebea, var(--dark-border));
   border-radius: 7px;
-  background: #fbfcfb;
+  background: light-dark(#fbfcfb, var(--dark-surface));
 }
 .activity-group > summary {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 11px 12px;
-  background: #f5f8f6;
-  color: #7b8780;
+  background: light-dark(#f5f8f6, var(--dark-surface-raised));
+  color: light-dark(#7b8780, var(--dark-text-secondary));
   font-size: 11px;
   list-style: none;
 }
@@ -32,7 +32,7 @@
 }
 .activity-group-reviews {
   flex-shrink: 0;
-  color: #7b8780;
+  color: light-dark(#7b8780, var(--dark-text-secondary));
   font-size: 10px;
 }
 .activity-group-status {
@@ -42,14 +42,14 @@
   justify-content: flex-end;
   gap: 3px 8px;
   max-width: 55%;
-  color: #7b8780;
+  color: light-dark(#7b8780, var(--dark-text-secondary));
   font-size: 10px;
 }
 .activity-group-status > span {
   white-space: nowrap;
 }
 .activity-group-running {
-  color: #55785f;
+  color: light-dark(#55785f, var(--dark-accent));
   font-weight: 600;
 }
 .activity-group-problem {
@@ -57,28 +57,28 @@
   font-weight: 600;
 }
 .activity-group-attention {
-  color: #8b6726;
+  color: light-dark(#8b6726, var(--dark-warning));
   font-weight: 600;
 }
 .activity-group-items {
   min-width: 0;
   padding: 1px 10px;
-  border-top: 1px solid #e8ebea;
+  border-top: 1px solid light-dark(#e8ebea, var(--dark-border));
 }
 .activity-group-items > .activity,
 .activity-group-items > .auto-review-card {
   margin: 9px 0;
 }
 .auto-review-card.collapsible-activity {
-  --activity-surface: #fafcfb;
+  --activity-surface: light-dark(#fafcfb, var(--dark-surface));
   padding: 0;
 }
 .auto-review-card.auto-review-inProgress,
 .auto-review-card.auto-review-timedOut {
-  --activity-surface: #fdfbf5;
+  --activity-surface: light-dark(#fdfbf5, var(--dark-surface));
 }
 .auto-review-card.auto-review-denied {
-  --activity-surface: #fff6f4;
+  --activity-surface: light-dark(#fff6f4, var(--dark-surface));
 }
 .auto-review-card.collapsible-activity > summary {
   display: flex;
@@ -94,11 +94,11 @@
   flex: 1;
 }
 .auto-review-card.auto-review-denied > summary {
-  color: #ae4c42;
+  color: light-dark(#ae4c42, var(--dark-danger));
 }
 .auto-review-card.auto-review-inProgress > summary,
 .auto-review-card.auto-review-timedOut > summary {
-  color: #8f7135;
+  color: light-dark(#8f7135, var(--dark-warning));
 }
 .auto-review-body {
   font-size: 11px;

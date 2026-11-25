@@ -55,5 +55,9 @@
   "covro_updates": "Covro 업데이트",
   "model_defaults_are_being_saved_wait_before_proceeding": "모델 기본값을 저장 중입니다. 완료 후 진행하세요.",
   "unassigned": "프로젝트 미연결",
-  "close": "닫기"
+  "close": "닫기",
+  "appearance": "화면 모드",
+  "theme_system": "시스템",
+  "theme_light": "라이트",
+  "theme_dark": "다크"
 }

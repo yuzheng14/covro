@@ -1,3 +1,10 @@
+import type { SaveGlobalDefaultsInput } from '../shared/global-defaults.js';
+import {
+  globalInstructionsHome,
+  readGlobalInstructions,
+  saveGlobalInstructions,
+} from './global-instructions.js';
+import type { SaveGlobalInstructions } from '../shared/global-instructions.js';
 import { questionAnswers } from '../shared/question-resolution.js';
 import { asyncQuestionId, parseQuestionReplies } from '../shared/async-questions.js';
 import { QuestionTrackingStore } from './db/question-tracking.js';
@@ -98,6 +105,7 @@ export interface GatewayOptions {
   store: OperationStore;
   projects: ProjectRegistry;
   workspacesRoot?: string;
+  codexHome?: string;
   codex: CodexClient;
   limits?: { eventBytes: number; itemBytes: number; wsBytes?: number };
   authMode?: SystemInfo['authMode'];
@@ -143,10 +151,14 @@ export class GatewayService {
   private runtimeSettingsSequence = 0;
   private readonly runtimeSettingsUpdates = new Map<string, number>();
   private readonly inFlightOperations = new Set<string>();
+  private readonly instructionsHome: string;
+  private readonly instructionWrites = new Set<Promise<unknown>>();
+  private readonly defaultWrites = new Set<Promise<unknown>>();
   private readonly pendingThreadCreations = new Map<string, string>();
   private readonly capacityLinks = new Map<string, Map<string, string>>();
 
   constructor(private readonly options: GatewayOptions) {
+    this.instructionsHome = globalInstructionsHome(options.codexHome);
     this.logger = (options.logger ?? nullLogger).child({ component: 'operations' });
     this.store = options.store;
     this.turnUsage = new TurnUsageStore(this.store.database);
@@ -183,6 +195,26 @@ export class GatewayService {
     this.currentEpoch = this.codex.epoch;
     this.store.recover();
     this.removeListener = this.codex.onEvent((event) => this.consume(event));
+  }
+
+  readGlobalInstructions() {
+    return readGlobalInstructions(this.instructionsHome);
+  }
+
+  async saveGlobalInstructions(input: SaveGlobalInstructions) {
+    if (!this.accepting) throw new AppError('GATEWAY_STOPPING', 'Gateway is stopping', 503);
+    if (this.isInMaintenance()) throw this.maintenanceError();
+    const pending = saveGlobalInstructions(
+      this.instructionsHome,
+      input,
+      this.logger.child({ component: 'global_instructions' }),
+    );
+    this.instructionWrites.add(pending);
+    try {
+      return await pending;
+    } finally {
+      this.instructionWrites.delete(pending);
+    }
   }
 
   listProjects() {
@@ -313,7 +345,13 @@ export class GatewayService {
     if (this.capacityRetries.active()) block('retry', '等待模型容量重试结束或取消');
     if (this.projectClones.hasActive) block('clone', '等待项目克隆完成或取消');
     if (this.shell.active()) block('shell', '等待 Shell 命令结束');
-    if (this.inFlightOperations.size || this.resumes.size || this.pendingThreadCreations.size)
+    if (
+      this.instructionWrites.size ||
+      this.defaultWrites.size ||
+      this.inFlightOperations.size ||
+      this.resumes.size ||
+      this.pendingThreadCreations.size
+    )
       block('operation', '等待正在提交或恢复的操作完成');
 
     const markers = this.store.activeMarkers();
@@ -676,6 +714,43 @@ export class GatewayService {
     return this.codex.readRuntimeSettings(cwd);
   }
 
+  async readGlobalDefaults() {
+    this.ensureReady();
+    if (!this.codex.readGlobalDefaults)
+      throw new AppError('PROTOCOL_INCOMPATIBLE', 'Global defaults are not supported', 503);
+    return this.codex.readGlobalDefaults();
+  }
+  async saveGlobalDefaults(input: SaveGlobalDefaultsInput) {
+    if (!this.accepting) throw new AppError('CODEX_UNAVAILABLE', '服务正在关闭', 503);
+    if (this.maintenance) throw this.maintenanceError();
+    this.ensureReady();
+    this.ensureCompatibilityConfirmed();
+    if (!this.codex.saveGlobalDefaults)
+      throw new AppError('PROTOCOL_INCOMPATIBLE', 'Global defaults are not supported', 503);
+    const logger = this.logger.child({ ...logContext(), component: 'global_defaults' });
+    const started = performance.now();
+    // Only an in-flight write holds maintenance. Codex configuration is the durable truth.
+    const pending = Promise.resolve().then(() => this.codex.saveGlobalDefaults!(input));
+    this.defaultWrites.add(pending);
+    try {
+      const result = await pending;
+      if (!result || !['ok', 'okOverridden'].includes(result.status))
+        throw new AppError('PROTOCOL_INCOMPATIBLE', 'Invalid configuration write result', 502);
+      logger.info('global_defaults.saved', {
+        outcome: result.status,
+        durationMs: Math.round(performance.now() - started),
+      });
+      return result;
+    } catch (error) {
+      logger.warn('global_defaults.save_failed', {
+        ...errorFields(error),
+        durationMs: Math.round(performance.now() - started),
+      });
+      throw this.asAppError(error);
+    } finally {
+      this.defaultWrites.delete(pending);
+    }
+  }
   async saveModelDefaults(
     projectId: string | null,
     input: SaveModelDefaultsInput,
@@ -2076,6 +2151,7 @@ export class GatewayService {
 
   async shutdown(): Promise<void> {
     this.accepting = false;
+    await Promise.allSettled([...this.instructionWrites, ...this.defaultWrites]);
     this.capacityRetries.clearAll();
     await this.projectClones.close();
     this.store.recover();

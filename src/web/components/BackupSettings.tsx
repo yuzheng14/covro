@@ -1,3 +1,4 @@
+import { SettingsSurface } from './SettingsSurface';
 import { useEffect, useRef, useState } from 'react';
 import { DatabaseBackup, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { BackupStatus } from '../../shared/backups';
@@ -99,7 +100,7 @@ export function BackupSettings({ onClose: onDismiss }: { onClose: () => void }) 
     0,
   );
   return (
-    <dialog
+    <SettingsSurface
       ref={dialog}
       className="project-dialog backup-dialog"
       aria-labelledby="backup-title"
@@ -254,6 +255,6 @@ export function BackupSettings({ onClose: onDismiss }: { onClose: () => void }) 
           </>
         )}
       </section>
-    </dialog>
+    </SettingsSurface>
   );
 }

@@ -205,5 +205,9 @@
   "recovery_other_threads": "他の会話と操作",
   "recovery_handle_submission": "復旧方法を表示",
   "recovery_responding": "この承認・入力への回答は確認待ちです。重複して送信することはできません。",
-  "CLONE_INTERRUPTED": "サービスが停止または再起動したため、結果を確認できません。自動再試行やファイル削除は行いません。保存先を確認し、完全な場合のみ既存のディレクトリとして追加してください。それ以外は新しい空のディレクトリで再試行してください。"
+  "CLONE_INTERRUPTED": "サービスが停止または再起動したため、結果を確認できません。自動再試行やファイル削除は行いません。保存先を確認し、完全な場合のみ既存のディレクトリとして追加してください。それ以外は新しい空のディレクトリで再試行してください。",
+  "INSTRUCTIONS_CONFLICT": "AGENTS.md は外部で変更されました。変更をコピーしてから再読み込みしてください。",
+  "INSTRUCTIONS_UNSUPPORTED": "AGENTS.md はリンクのない通常の UTF-8 テキストファイルである必要があります。",
+  "INSTRUCTIONS_TOO_LARGE": "AGENTS.md は 256 KiB の制限を超えています。",
+  "INSTRUCTIONS_OVERRIDDEN": "AGENTS.override.md が優先されるため、この AGENTS.md の保存は無効です。"
 }

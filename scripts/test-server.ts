@@ -15,6 +15,9 @@ import { systemInspector } from '../src/server/preview/processes.js';
 
 /** Test-only diagnostics controls; the production adapter has no hook. */
 class ControlledFixture implements CodexClient {
+  readGlobalDefaults = () => this.inner.readGlobalDefaults!();
+  saveGlobalDefaults: NonNullable<CodexClient['saveGlobalDefaults']> = (input) =>
+    this.inner.saveGlobalDefaults!(input);
   refreshAccountUsage = () => this.inner.refreshAccountUsage!();
   executeCommand: NonNullable<CodexClient['executeCommand']> = (...args) =>
     this.inner.executeCommand!(...args);

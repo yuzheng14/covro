@@ -1,3 +1,4 @@
+import { saveGlobalDefaultsSchema } from '../shared/global-defaults.js';
 import { randomUUID } from 'node:crypto';
 import { nullLogger, type Logger } from '../logging/logger.js';
 import { errorFields } from '../logging/fields.js';
@@ -402,6 +403,10 @@ export function createApp({
   app.post('/api/projects/reorder', async (c) =>
     c.json(service.reorderProjects(await parse(c, schemas.reorderProjectsSchema))),
   );
+  app.get('/api/settings/defaults', async (c) => c.json(await service.readGlobalDefaults()));
+  app.post('/api/settings/defaults', async (c) => {
+    return c.json(await service.saveGlobalDefaults(await parse(c, saveGlobalDefaultsSchema)));
+  });
   app.get('/api/projects/:projectId/runtime-settings', async (c) =>
     c.json(await service.readRuntimeSettings(id(c.req.param('projectId')))),
   );
@@ -417,6 +422,17 @@ export function createApp({
     return c.json(
       service.addProject({ ...input, path: resolveProjectPath(input.path, configuration.workDir) }),
     );
+  });
+  app.get('/api/instructions/global', async (c) => c.json(await service.readGlobalInstructions()));
+  app.post('/api/instructions/global', async (c) => {
+    const input = z
+      .object({
+        content: z.string().max(256 * 1024),
+        revision: z.string().regex(/^(missing|[a-f0-9]{64})$/),
+      })
+      .strict()
+      .parse(await c.req.json());
+    return c.json(await service.saveGlobalInstructions(input));
   });
   app.post('/api/projects/:projectId/rename', async (c) =>
     c.json(

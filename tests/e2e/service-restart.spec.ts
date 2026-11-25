@@ -89,7 +89,7 @@ exec ${quote(resolve('tests/fixtures/codex.mjs'))} "$@" --options ${quote(option
 }
 
 async function openRestart(page: Page, serviceLabel = '服务配置') {
-  const settings = await openSidebarSettings(page);
+  const settings = await openSidebarSettings(page, 'service');
   await settings.getByRole('button', { name: serviceLabel, exact: true }).click();
   const control = page.locator('.service-restart');
   await expect(control.getByRole('button').first()).toBeVisible();

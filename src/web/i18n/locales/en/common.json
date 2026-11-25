@@ -55,5 +55,9 @@
   "covro_updates": "Covro updates",
   "model_defaults_are_being_saved_wait_before_proceeding": "Model defaults are being saved. Wait before proceeding.",
   "unassigned": "Unassigned",
-  "close": "Close"
+  "close": "Close",
+  "appearance": "Appearance",
+  "theme_system": "System",
+  "theme_light": "Light",
+  "theme_dark": "Dark"
 }

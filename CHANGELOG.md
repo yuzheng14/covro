@@ -1,5 +1,32 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Edit the connected Codex environment’s global AGENTS.md from Settings, with conflict detection and active-override notices.
+
+- Configure default permission mode, model, and reasoning effort for new conversations in Settings, with model-aware options and concurrent-edit detection. Existing conversations keep their settings.
+
+### Changed
+
+- Organize Settings into General, AI configuration, Account, and Service & data, with sidebar navigation on desktop, category navigation on mobile, and editors inside one window with unsaved-change protection.
+
+### Fixed
+
+- Preserve readable Max and Ultra reasoning controls and highlighted menu options in dark mode.
+
+- Keep permissions undetermined when named profiles and legacy sandbox settings coexist, so new conversations cannot be labeled read-only from an inactive profile.
+- Show the computed unknown permission label in the composer instead of replacing it with a generic placeholder.
+- Read global default model choices from the current provider on the verified Codex version instead of using the startup catalog.
+
+- Validate new-conversation defaults against the global Codex provider and await model capability checks before writing configuration.
+
+- Keep session-default saves out of persistent task tracking so a lost acknowledgement cannot block backups or updates. Reload configuration to confirm an uncertain result without resubmitting the write.
+
+- Align the appearance selector typography and controls with the language selector on desktop and mobile.
+- Improve technical error detail contrast and text size in dark mode.
+
 ## [0.12.0](https://github.com/yuzheng14/covro/compare/v0.11.0...v0.12.0) (2026-11-24)
 
 

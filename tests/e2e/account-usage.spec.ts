@@ -30,10 +30,9 @@ const limits = {
     },
   },
 };
-async function openUsage(page: Page, label = '账户额度') {
-  const settings = await openSidebarSettings(page);
-  await settings.getByRole('button', { name: label, exact: true }).click();
-  const dialog = page.locator('.account-dialog[open]');
+async function openUsage(page: Page) {
+  await openSidebarSettings(page, 'account');
+  const dialog = page.locator('.account-dialog');
   await expect(dialog).toBeVisible();
   return dialog;
 }
@@ -174,17 +173,17 @@ for (const [locale, title, used] of [
     await confirmCompatibility(page);
     await selectInterfaceLocale(page, locale!);
     await page.setViewportSize({ width: 390, height: 844 });
-    const settings = await openSidebarSettings(page);
-    const entry = settings.getByRole('button', { name: title, exact: true });
-    await entry.focus();
-    await page.keyboard.press('Enter');
-    const dialog = page.locator('.account-dialog[open]');
+    await openSidebarSettings(page, 'account');
+    await expect(page.locator('.account-dialog')).toHaveAccessibleName(title!);
+    const dialog = page.locator('.account-dialog');
     await expect(dialog).toContainText(used!);
     await expect(dialog).not.toContainText('account:');
     expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     // Visible cached quota can precede the opening refresh. Test keyboard traversal
     // once both controls are available, rather than racing the disabled refresh button.
     await expect(dialog.locator('.account-refresh button')).toBeEnabled();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('.settings-back')).toBeFocused();
     await page.keyboard.press('Tab');
     expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
     await page.keyboard.press('Escape');

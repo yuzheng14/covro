@@ -1,3 +1,5 @@
+import type { GlobalDefaultsSnapshot, SaveGlobalDefaultsInput } from '../shared/global-defaults.js';
+import type { ConfigEdit } from './generated/v2/ConfigEdit.js';
 import { questionAnswers } from '../shared/question-resolution.js';
 import { nullLogger, type Logger } from '../logging/logger.js';
 import { errorFields } from '../logging/fields.js';
@@ -33,7 +35,11 @@ import { TurnTokenUsage } from './turn-token-usage.js';
 import { mapSessionTokenUsage } from './session-token-usage.js';
 import { AppError } from '../shared/errors.js';
 import { threadNameError } from '../shared/thread-name.js';
-import { permissionModeUnavailable, permissionReviewerUnavailable } from '../shared/permissions.js';
+import {
+  permissionModes,
+  permissionModeUnavailable,
+  permissionReviewerUnavailable,
+} from '../shared/permissions.js';
 import {
   permissionCapabilities,
   type PermissionRequirements,
@@ -1034,6 +1040,101 @@ export class CodexAdapter implements CodexClient {
       runtimeSettings: await this.responseRuntimeSettings(result),
     };
   }
+  private configuredPermissionMode(config: ConfigReadResponse['config']) {
+    const profile = config.default_permissions;
+    // Merged config can retain a profile from one layer and a legacy sandbox from
+    // another. Managed requirements also affect which mechanism Codex selects.
+    // Without an effective native boundary, neither field proves the preset.
+    if (profile && config.sandbox_mode != null) return null;
+    const workspace = config.sandbox_workspace_write;
+    const customBoundary = Boolean(
+      workspace &&
+      (workspace.network_access ||
+        workspace.writable_roots?.length ||
+        workspace.exclude_tmpdir_env_var ||
+        workspace.exclude_slash_tmp),
+    );
+    const mode =
+      !customBoundary &&
+      (Object.keys(permissionModes) as Array<keyof typeof permissionModes>).find((key) => {
+        const preset = permissionModes[key];
+        return (
+          (!profile || profile === preset.profile) &&
+          (profile === preset.profile || config.sandbox_mode === preset.sandbox) &&
+          config.approval_policy === preset.approvalPolicy &&
+          config.approvals_reviewer === preset.approvalReviewer
+        );
+      });
+    return mode || null;
+  }
+  async readGlobalDefaults(): Promise<GlobalDefaultsSnapshot> {
+    const result = await this.call('config/read', { includeLayers: true });
+    const config = result.config;
+    return {
+      settings: {
+        model: config.model ?? null,
+        reasoningEffort: config.model_reasoning_effort ?? null,
+        permissionMode: this.configuredPermissionMode(config),
+      },
+      models:
+        this.state.codexVersion === VERIFIED_ADAPTER_CODEX_VERSION
+          ? (await this.modelCatalog(config.model_provider ?? 'openai')).models
+          : this.state.models,
+      capabilities: await this.readPermissionCapabilities(undefined, config),
+      version:
+        result.layers?.find((layer) => layer.name.type === 'user' && !layer.name.profile)
+          ?.version ?? null,
+    };
+  }
+  async saveGlobalDefaults(input: SaveGlobalDefaultsInput): Promise<ModelDefaultsResult> {
+    const settings = input.settings;
+    if (settings.model === null && settings.reasoningEffort !== null)
+      throw new AppError('VALIDATION_ERROR', 'Choose a model before setting reasoning effort');
+    const { config } = await this.call('config/read', { includeLayers: false });
+    await this.validateSettings(
+      {
+        ...(settings.model === null ? {} : { model: settings.model }),
+        ...(settings.reasoningEffort === null ? {} : { reasoningEffort: settings.reasoningEffort }),
+      },
+      {
+        model: settings.model,
+        reasoningEffort: settings.reasoningEffort,
+        modelProvider: config.model_provider ?? 'openai',
+      },
+    );
+    const edits: ConfigEdit[] = [
+      { keyPath: 'model', value: settings.model, mergeStrategy: 'replace' },
+      {
+        keyPath: 'model_reasoning_effort',
+        value: settings.reasoningEffort,
+        mergeStrategy: 'replace',
+      },
+    ];
+    if (settings.permissionMode !== null) {
+      const snapshot = await this.readGlobalDefaults();
+      const unavailable = permissionModeUnavailable(
+        settings.permissionMode,
+        snapshot.capabilities,
+        settings.model,
+      );
+      if (unavailable) throw new AppError('PERMISSION_MODE_UNAVAILABLE', unavailable);
+      const preset = permissionModes[settings.permissionMode];
+      edits.push(
+        { keyPath: 'default_permissions', value: null, mergeStrategy: 'replace' },
+        { keyPath: 'sandbox_mode', value: preset.sandbox, mergeStrategy: 'replace' },
+        { keyPath: 'sandbox_workspace_write', value: null, mergeStrategy: 'replace' },
+        { keyPath: 'approval_policy', value: preset.approvalPolicy, mergeStrategy: 'replace' },
+        { keyPath: 'approvals_reviewer', value: preset.approvalReviewer, mergeStrategy: 'replace' },
+      );
+    }
+    const result = await this.call('config/batchWrite', {
+      edits,
+      ...(input.version === null ? {} : { expectedVersion: input.version }),
+      // Permission defaults must not be hot-reloaded into existing conversations.
+      reloadUserConfig: false,
+    });
+    return { status: result.status };
+  }
   async saveModelDefaults(settings: ModelDefaults): Promise<ModelDefaultsResult> {
     const context = await this.settingsContext(process.cwd());
     if (
@@ -1060,7 +1161,8 @@ export class CodexAdapter implements CodexClient {
           mergeStrategy: 'replace',
         },
       ],
-      reloadUserConfig: true,
+      // Do not replay permission defaults changed by another settings entry into active threads.
+      reloadUserConfig: false,
     });
     return { status: result.status };
   }
@@ -1087,10 +1189,11 @@ export class CodexAdapter implements CodexClient {
           ? (config.sandbox_workspace_write?.network_access ?? null)
           : null,
       permissionMode:
-        typeof config.default_permissions === 'string' &&
+        this.configuredPermissionMode(config) ??
+        (typeof config.default_permissions === 'string' &&
         ![':workspace', ':read-only', ':danger-full-access'].includes(config.default_permissions)
           ? 'custom'
-          : null,
+          : null),
       permissionProfile:
         typeof config.default_permissions === 'string'
           ? { id: config.default_permissions, extends: null }

@@ -61,7 +61,7 @@ export function PermissionModeSelect({
         >
           <Icon name="shield" size={16} />
           <span className="permission-mode-label">
-            <SelectValue placeholder={unknown}>{label}</SelectValue>
+            <SelectValue placeholder={label}>{label}</SelectValue>
           </span>
           {settings.permissionMode && (
             <span className="permission-pending-dot" aria-label={t('settings:pending_2')} />

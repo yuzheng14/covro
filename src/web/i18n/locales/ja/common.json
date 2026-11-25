@@ -55,5 +55,9 @@
   "covro_updates": "Covro の更新",
   "model_defaults_are_being_saved_wait_before_proceeding": "モデルの既定値を保存中です。完了までお待ちください。",
   "unassigned": "プロジェクト未関連付け",
-  "close": "閉じる"
+  "close": "閉じる",
+  "appearance": "外観",
+  "theme_system": "システム",
+  "theme_light": "ライト",
+  "theme_dark": "ダーク"
 }

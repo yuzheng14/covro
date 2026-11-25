@@ -32,7 +32,7 @@ declare global {
 }
 const evidence = join(tmpdir(), 'covro-issue-248-evidence');
 const deliveryEvidence = join(tmpdir(), 'covro-issue-284-evidence');
-const dialog = (page: Page) => page.getByRole('dialog', { name: '浏览器通知' });
+const dialog = (page: Page) => page.getByRole('region', { name: '浏览器通知' });
 async function openNotificationSettings(page: Page) {
   await openSidebarSettings(page);
   await page.getByRole('button', { name: /浏览器通知/ }).click();
@@ -205,7 +205,7 @@ test.describe('persistent notifications on browsers without the Notification con
     await page.screenshot({
       path: join(deliveryEvidence, 'mobile-test-submitted.png'),
     });
-    await page.getByRole('button', { name: '关闭通知设置' }).click();
+    await page.locator('.settings-heading button').click();
     const id = await create(request, 'fixture-other', '手机通知兼容性');
     await start(request, id);
     await expect.poll(() => persistent(page)).toHaveLength(2);
@@ -230,7 +230,7 @@ test.describe('persistent notifications on browsers without the Notification con
       await mockPersistentNotifications(page);
       await open(page);
       await enable(page);
-      await page.getByRole('button', { name: '关闭通知设置' }).click();
+      await page.locator('.settings-heading button').click();
       const id = await create(request, 'fixture-other', '手机上的待处理请求');
       await start(request, id, prompt);
       await expect.poll(() => persistent(page)).toHaveLength(1);
@@ -307,7 +307,7 @@ test.describe('persistent notifications on browsers without the Notification con
     await mockPersistentNotifications(page);
     await open(page);
     await enable(page);
-    await page.getByRole('button', { name: '关闭通知设置' }).click();
+    await page.locator('.settings-heading button').click();
     const other = await context.newPage();
     await mockPersistentNotifications(other);
     await other.goto('/');
@@ -349,7 +349,7 @@ test('asks only after a click, shows guidance, and opens the notified project an
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: join(evidence, 'notifications-on-mobile.png') });
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.getByRole('button', { name: '关闭通知设置' }).click();
+  await page.locator('.settings-heading button').click();
 
   const id = await create(request, 'fixture-other', '跨项目任务结果');
   await start(request, id);
@@ -371,7 +371,7 @@ test('distinguishes failure and interruption, with no notification from reload, 
   await mockNotifications(page);
   await open(page);
   await enable(page);
-  await page.getByRole('button', { name: '关闭通知设置' }).click();
+  await page.locator('.settings-heading button').click();
   const id = await create(request);
   await start(request, id, '[codex-retry-fail]');
   await expect.poll(() => captured(page)).toMatchObject([{ title: 'Agent 执行失败' }]);
@@ -407,7 +407,7 @@ test('atomically deduplicates simultaneous tabs and shares the notification pref
   await mockNotifications(page);
   await open(page);
   await enable(page);
-  await page.getByRole('button', { name: '关闭通知设置' }).click();
+  await page.locator('.settings-heading button').click();
   const other = await context.newPage();
   await mockNotifications(other, 'granted');
   await other.goto('/');
@@ -435,7 +435,7 @@ test('recovers results and unread markers after freeze/resume lifecycle events w
   await mockNotifications(page);
   await open(page);
   await enable(page);
-  await page.getByRole('button', { name: '关闭通知设置' }).click();
+  await page.locator('.settings-heading button').click();
   const id = await create(request);
   await start(request, id, '[approval] 页面休眠验收');
   await waitStatus(request, id, 'waitingApproval');
@@ -485,7 +485,7 @@ test('denied and unsupported browsers keep in-page results usable', async ({ pag
   await expect(dialog(page)).toContainText('当前浏览器不支持');
   await expect(toggle(page)).toBeDisabled();
   await page.screenshot({ path: join(evidence, 'notifications-unsupported.png') });
-  await page.getByRole('button', { name: '关闭通知设置' }).click();
+  await page.locator('.settings-heading button').click();
   await expect(
     page
       .locator(`[data-thread-id="${id}"]`)
@@ -529,7 +529,7 @@ for (const [prompt, title, selector, state] of [
     await mockNotifications(page);
     await open(page);
     await enable(page);
-    await page.getByRole('button', { name: '关闭通知设置' }).click();
+    await page.locator('.settings-heading button').click();
     const id = await create(request, 'fixture-other', '等待你处理的会话');
     await start(request, id, prompt);
     await waitStatus(request, id, state);
@@ -577,7 +577,7 @@ test('deduplicates an approval across tabs and handles clicking its old notifica
   await mockNotifications(page);
   await open(page);
   await enable(page);
-  await page.getByRole('button', { name: '关闭通知设置' }).click();
+  await page.locator('.settings-heading button').click();
   const other = await context.newPage();
   await mockNotifications(other, 'granted');
   await other.goto('/');
@@ -611,7 +611,7 @@ test('does not notify a request resolved while durable arbitration is in flight'
   await mockNotifications(page);
   await open(page);
   await enable(page);
-  await page.getByRole('button', { name: '关闭通知设置' }).click();
+  await page.locator('.settings-heading button').click();
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -645,7 +645,7 @@ test('answered async questions do not notify again and old notifications open th
   await mockNotifications(page);
   await open(page);
   await enable(page);
-  await page.getByRole('button', { name: '关闭通知设置' }).click();
+  await page.locator('.settings-heading button').click();
   const id = await create(request);
   await start(request, id, '[async-questions]');
   await expect
@@ -674,7 +674,7 @@ for (const mode of ['disabled', 'denied', 'unsupported', 'failed'] as const) {
     await open(page);
     if (mode === 'failed') {
       await enable(page);
-      await page.getByRole('button', { name: '关闭通知设置' }).click();
+      await page.locator('.settings-heading button').click();
       await page.evaluate(() => {
         window.notificationTest.fail = true;
       });
@@ -693,7 +693,7 @@ for (const mode of ['disabled', 'denied', 'unsupported', 'failed'] as const) {
     if (mode === 'failed') {
       await openNotificationSettings(page);
       await expect(dialog(page).getByRole('alert')).toContainText('通知发送失败');
-      await page.getByRole('button', { name: '关闭通知设置' }).click();
+      await page.locator('.settings-heading button').click();
     }
     await card.getByRole('button').first().click();
     await waitStatus(request, id, 'completed');

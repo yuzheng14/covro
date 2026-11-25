@@ -1,3 +1,4 @@
+import { SettingsSurface } from './SettingsSurface';
 import { useEffect, useRef, useState } from 'react';
 import { Gauge, RefreshCw } from 'lucide-react';
 import type { SystemInfo } from '../../shared/types';
@@ -212,7 +213,7 @@ export function AccountUsage({
   const failed =
     !unavailable && (status === 'error' || (request?.scope === scope && request.failed));
   return (
-    <dialog
+    <SettingsSurface
       ref={dialog}
       className="project-dialog account-dialog"
       aria-labelledby="account-usage-title"
@@ -265,6 +266,6 @@ export function AccountUsage({
           )}
         </>
       )}
-    </dialog>
+    </SettingsSurface>
   );
 }

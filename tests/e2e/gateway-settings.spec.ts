@@ -11,7 +11,7 @@ import { DomainCodex } from '../integration/domain-helpers';
 
 let root: string, path: string, origin: string;
 let runtime: Awaited<ReturnType<typeof startGateway>>;
-const settings = (page: Page) => page.getByRole('dialog', { name: '服务配置', exact: true });
+const settings = (page: Page) => page.getByRole('region', { name: '服务配置', exact: true });
 async function start() {
   runtime = await startGateway(await loadConfig({ configPath: path, development: false }), {
     codex: new DomainCodex(),
@@ -41,7 +41,7 @@ async function open(page: Page) {
   await page.goto(origin);
   if (page.viewportSize()!.width <= 760)
     await page.getByRole('button', { name: '打开项目与会话' }).click();
-  await openSidebarSettings(page);
+  await openSidebarSettings(page, 'service');
   await page.getByRole('button', { name: '服务配置', exact: true }).click();
   await expect(settings(page).getByLabel('Codex 可执行文件', { exact: true })).toHaveValue('codex');
 }
@@ -75,7 +75,7 @@ test('edit, review, save and restart distinguish file settings from running valu
   await runtime.close();
   await start();
   await page.reload();
-  await openSidebarSettings(page);
+  await openSidebarSettings(page, 'service');
   await page.getByRole('button', { name: '服务配置', exact: true }).click();
   await expect(
     settings(page).getByText('已保存配置与当前运行配置一致', { exact: true }),
@@ -164,11 +164,11 @@ test('validation, stale writes and close confirmation preserve user edits', asyn
   await dialog.getByRole('button', { name: '丢弃编辑并重新读取' }).click();
   await expect(dialog.getByLabel('请求超时（毫秒）', { exact: true })).toHaveValue('18000');
   await dialog.getByLabel('请求超时（毫秒）', { exact: true }).fill('20000');
-  await dialog.getByRole('button', { name: '关闭服务配置' }).click();
+  await page.locator('.settings-heading button').click();
   await expect(dialog.getByRole('region', { name: '放弃编辑确认' })).toBeVisible();
   await dialog.getByRole('button', { name: '继续编辑' }).click();
   await expect(dialog.getByLabel('请求超时（毫秒）', { exact: true })).toHaveValue('20000');
-  await dialog.getByRole('button', { name: '关闭服务配置' }).click();
+  await page.locator('.settings-heading button').click();
   await dialog.getByRole('button', { name: '放弃更改并关闭' }).click();
   await expect(dialog).not.toBeVisible();
 });
@@ -277,7 +277,7 @@ test('legacy non-MiB byte limits survive opening, unrelated saves, import and ex
   await open(page);
   const dialog = settings(page);
   await expect(dialog.getByRole('button', { name: '检查更改' })).toBeDisabled();
-  await dialog.getByRole('button', { name: '关闭服务配置' }).click();
+  await page.locator('.settings-heading button').click();
   await expect(dialog).not.toBeVisible();
   await open(page);
   await dialog.getByLabel('请求超时（毫秒）', { exact: true }).fill('18000');

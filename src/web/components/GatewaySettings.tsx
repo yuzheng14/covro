@@ -1,3 +1,4 @@
+import { SettingsSurface, useSettingsLeaveGuard } from './SettingsSurface';
 import { errorMessage } from '../lib/error-message';
 import { message, displayMessage, messageDetails } from '../i18n/messages';
 import { t, formatList } from '../i18n';
@@ -202,8 +203,9 @@ export function GatewaySettings({
     );
   }
 
+  useSettingsLeaveGuard(close);
   return (
-    <dialog
+    <SettingsSurface
       ref={dialog}
       className="project-dialog gateway-dialog"
       aria-labelledby="gateway-title"
@@ -523,6 +525,6 @@ export function GatewaySettings({
           )}
         </>
       )}
-    </dialog>
+    </SettingsSurface>
   );
 }

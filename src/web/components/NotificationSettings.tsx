@@ -1,3 +1,4 @@
+import { SettingsSurface } from './SettingsSurface';
 import { displayMessage } from '../i18n/messages';
 import { t } from '../i18n';
 import { useEffect, useRef } from 'react';
@@ -35,7 +36,7 @@ export function NotificationSettings({
   }[access];
   const unavailable = !['default', 'granted'].includes(access);
   return (
-    <dialog
+    <SettingsSurface
       ref={dialog}
       className="project-dialog notification-dialog"
       aria-labelledby="notification-dialog-title"
@@ -151,6 +152,6 @@ export function NotificationSettings({
           <p>{t('notifications:configure_this_manually_in_the_browser_names_may')}</p>
         </details>
       </section>
-    </dialog>
+    </SettingsSurface>
   );
 }

@@ -467,7 +467,7 @@ describe('verified protocol adapter with a real subprocess', () => {
             { keyPath: 'model', value: 'other-model', mergeStrategy: 'replace' },
             { keyPath: 'model_reasoning_effort', value: 'high', mergeStrategy: 'replace' },
           ],
-          reloadUserConfig: true,
+          reloadUserConfig: false,
         },
       },
     ]);
@@ -1841,4 +1841,221 @@ it('preserves native skill items alongside text and images in turn starts', asyn
       name: skills[0]!.name,
       path: skills[0]!.path,
     });
+});
+
+describe('configured permission precedence', () => {
+  it.each(['0.171.0', '0.172.0'])(
+    'does not label a writable layered configuration read-only on Codex %s',
+    async (codexVersion) => {
+      const user = { type: 'user' as const, file: '/tmp/user-config.toml', profile: null };
+      const project = { type: 'project' as const, dotCodexFolder: '/tmp/project/.codex' };
+      const { adapter, requests } = await fixture(
+        {
+          codexVersion,
+          configOverrides: { default_permissions: ':read-only', sandbox_mode: 'workspace-write' },
+          configLayers: [
+            {
+              name: user,
+              version: 'user-v1',
+              config: { default_permissions: ':read-only' },
+              disabledReason: null,
+            },
+            {
+              name: project,
+              version: 'project-v1',
+              config: { sandbox_mode: 'workspace-write' },
+              disabledReason: null,
+            },
+          ],
+          configOrigins: {
+            default_permissions: { name: user, version: 'user-v1' },
+            sandbox_mode: { name: project, version: 'project-v1' },
+          },
+          threadSandbox: 'workspace-write',
+        },
+        15000,
+      );
+      expect((await adapter.readRuntimeSettings('/tmp/project')).permissionMode).toBe(null);
+      expect((await adapter.readGlobalDefaults()).settings.permissionMode).toBe(null);
+      const thread = await adapter.createThread('/tmp/project');
+      expect(thread.runtimeSettings).toMatchObject({
+        sandbox: 'workspace-write',
+        permissionMode: 'ask',
+      });
+      const start = (await requests()).find((call) => call.method === 'thread/start')!;
+      expect(start.params).not.toHaveProperty('sandbox');
+      expect(start.params).not.toHaveProperty('permissions');
+    },
+  );
+
+  const mixedConfigs: NonNullable<SimulatorOptions['configOverrides']>[] = [
+    { default_permissions: ':read-only', sandbox_mode: 'workspace-write' },
+    { default_permissions: ':workspace', sandbox_mode: 'read-only' },
+    { default_permissions: ':read-only', sandbox_mode: 'read-only' },
+    {
+      default_permissions: ':danger-full-access',
+      sandbox_mode: 'workspace-write',
+      approval_policy: 'never',
+    },
+  ];
+  it.each(mixedConfigs)(
+    'keeps mixed permission mechanisms undetermined: %j',
+    async (configOverrides) => {
+      const { adapter } = await fixture({ configOverrides });
+      expect((await adapter.readRuntimeSettings('/tmp')).permissionMode).toBe(null);
+      expect((await adapter.readGlobalDefaults()).settings.permissionMode).toBe(null);
+    },
+  );
+
+  const standardConfigs: {
+    config: NonNullable<SimulatorOptions['configOverrides']>;
+    mode: string;
+  }[] = [
+    { config: { sandbox_mode: 'read-only' }, mode: 'read-only' },
+    { config: { sandbox_mode: 'workspace-write' }, mode: 'ask' },
+    {
+      config: { sandbox_mode: 'workspace-write', approvals_reviewer: 'auto_review' },
+      mode: 'auto-review',
+    },
+    {
+      config: { sandbox_mode: 'danger-full-access', approval_policy: 'never' },
+      mode: 'full-access',
+    },
+    { config: { sandbox_mode: null, default_permissions: ':read-only' }, mode: 'read-only' },
+    { config: { sandbox_mode: null, default_permissions: ':workspace' }, mode: 'ask' },
+  ];
+  it.each(standardConfigs)(
+    'retains unambiguous standard permission modes: $mode $config',
+    async ({ config, mode }) => {
+      const { adapter } = await fixture({ configOverrides: config });
+      expect((await adapter.readRuntimeSettings('/tmp')).permissionMode).toBe(mode);
+      expect((await adapter.readGlobalDefaults()).settings.permissionMode).toBe(mode);
+    },
+  );
+});
+
+describe('global session defaults', () => {
+  it('uses the global provider catalog for defaults and awaits validation before writing', async () => {
+    const { adapter, requests } = await fixture({
+      codexVersion: '0.172.0',
+      modelProvider: 'startup',
+      configOverrides: { model_provider: 'global' },
+      configModel: 'global-first',
+      configEffort: 'high',
+      modelPageSize: 1,
+      providerModels: {
+        startup: [{ id: 'startup-only', efforts: ['high'] }],
+        global: [
+          { id: 'global-first', efforts: ['high'] },
+          { id: 'global-second', efforts: ['low'] },
+        ],
+        other: [{ id: 'other-only', efforts: ['high'] }],
+      },
+    });
+    const before = (await requests()).length;
+    const initial = await adapter.readGlobalDefaults();
+    expect(initial.models.map((model) => model.id)).toEqual(['global-first', 'global-second']);
+    await adapter.saveGlobalDefaults({
+      version: initial.version,
+      settings: { model: 'global-second', reasoningEffort: 'low', permissionMode: null },
+    });
+    const saved = await adapter.readGlobalDefaults();
+    for (const settings of [
+      { model: 'other-only', reasoningEffort: 'high', permissionMode: null },
+      { model: 'global-second', reasoningEffort: 'high', permissionMode: null },
+    ])
+      await expect(
+        adapter.saveGlobalDefaults({ version: saved.version, settings }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    const calls = (await requests()).slice(before);
+    expect(calls.filter((call) => call.method === 'config/batchWrite')).toHaveLength(1);
+    expect(
+      calls
+        .filter((call) => call.method === 'config/read')
+        .every((call) => !('cwd' in call.params)),
+    ).toBe(true);
+    const pages = calls.filter(
+      (call) => call.method === 'model/list' && call.params.cursor === '1',
+    );
+    expect(pages.length).toBeGreaterThan(0);
+    expect(pages.every((call) => call.params.modelProvider === 'global')).toBe(true);
+  });
+
+  it('reads user defaults without project cwd and atomically saves for new threads only', async () => {
+    const { adapter, requests } = await fixture({ models: ['simulated-model', 'other-model'] });
+    const existing = await adapter.createThread('/tmp');
+    const initial = await adapter.readGlobalDefaults();
+    expect(initial.settings.permissionMode).toBe('read-only');
+    expect(JSON.stringify(initial)).not.toContain('private-test-key');
+    expect(JSON.stringify(initial)).not.toContain('private instructions');
+    await adapter.saveGlobalDefaults({
+      version: initial.version,
+      settings: { model: 'other-model', reasoningEffort: 'high', permissionMode: 'auto-review' },
+    });
+    const saved = await adapter.readGlobalDefaults();
+    expect(saved.settings).toEqual({
+      model: 'other-model',
+      reasoningEffort: 'high',
+      permissionMode: 'auto-review',
+    });
+    const calls = await requests();
+    expect(
+      calls
+        .filter((call) => call.method === 'config/read' && call.params.includeLayers === true)
+        .every((call) => !('cwd' in call.params)),
+    ).toBe(true);
+    const write = calls.find((call) => call.method === 'config/batchWrite')!;
+    expect(write.params.reloadUserConfig).toBe(false);
+    expect(write.params.expectedVersion).toBe(initial.version);
+    expect(write.params).not.toHaveProperty('filePath');
+    expect((await adapter.resumeThread(existing.id, '/tmp')).runtimeSettings).toMatchObject({
+      model: 'simulated-model',
+      permissionMode: 'read-only',
+    });
+    expect((await adapter.createThread('/tmp')).runtimeSettings).toMatchObject({
+      model: 'other-model',
+      reasoningEffort: 'high',
+      permissionMode: 'auto-review',
+    });
+    await expect(
+      adapter.saveGlobalDefaults({
+        version: initial.version,
+        settings: { model: 'simulated-model', reasoningEffort: 'medium', permissionMode: 'ask' },
+      }),
+    ).rejects.toThrow();
+    expect((await adapter.readGlobalDefaults()).settings).toEqual(saved.settings);
+  });
+  it('rejects invalid models, efforts and unavailable automatic review before writing', async () => {
+    const { adapter, requests } = await fixture({ guardianApproval: false });
+    for (const settings of [
+      { model: 'missing', reasoningEffort: 'high', permissionMode: null },
+      { model: 'simulated-model', reasoningEffort: 'unsupported', permissionMode: null },
+      { model: null, reasoningEffort: 'high', permissionMode: null },
+      { model: 'simulated-model', reasoningEffort: 'high', permissionMode: 'auto-review' as const },
+    ])
+      await expect(
+        adapter.saveGlobalDefaults({
+          version: null,
+          settings,
+        }),
+      ).rejects.toThrow();
+    expect((await requests()).some((call) => call.method === 'config/batchWrite')).toBe(false);
+  });
+  it('does not rewrite permission keys when preserving an existing custom profile', async () => {
+    const { adapter, requests } = await fixture({
+      configOverrides: { default_permissions: 'custom-profile' },
+    });
+    const initial = await adapter.readGlobalDefaults();
+    expect(initial.settings.permissionMode).toBe(null);
+    await adapter.saveGlobalDefaults({
+      version: initial.version,
+      settings: { model: 'simulated-model', reasoningEffort: null, permissionMode: null },
+    });
+    expect(
+      (await requests()).find((call) => call.method === 'config/batchWrite')?.params.edits,
+    ).toEqual([
+      { keyPath: 'model', value: 'simulated-model', mergeStrategy: 'replace' },
+      { keyPath: 'model_reasoning_effort', value: null, mergeStrategy: 'replace' },
+    ]);
+  });
 });

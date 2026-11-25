@@ -7,6 +7,7 @@ import { once } from 'node:events';
 import { parseConfig, type AppConfig } from '../../src/server/config';
 import { startGateway } from '../../src/server/main';
 import { DomainCodex } from '../integration/domain-helpers';
+import { openSidebarSettings } from './helpers';
 import type { Project } from '../../src/shared/types';
 
 let directory: string;
@@ -43,7 +44,12 @@ test.beforeEach(async () => {
   await new Promise<void>((done) => probe.close(() => done()));
   origin = `http://127.0.0.1:${address.port}`;
   config = parseConfig(
-    { port: address.port, publicOrigin: [origin], dataDir: join(directory, 'data') },
+    {
+      port: address.port,
+      publicOrigin: [origin],
+      dataDir: join(directory, 'data'),
+      codex: { home: join(directory, 'codex-home') },
+    },
     join(directory, 'config.json'),
   );
   config.demo = true;
@@ -210,4 +216,72 @@ test('mobile adds server directories and other open tabs immediately follow proj
   expect(removed.ok()).toBe(true);
   await expect(group(page, '跨页面同步名称')).toHaveCount(0);
   await expect(group(other, '跨页面同步名称')).toHaveCount(0);
+});
+
+test('global instructions editor creates, saves, detects conflicts, and protects unsaved changes', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(origin);
+  const settings = await openSidebarSettings(page, 'ai');
+  await settings.getByRole('button', { name: '全局指令', exact: true }).click();
+  const editor = page.getByRole('region', { name: '编辑全局指令', exact: true });
+  const file = join(directory, 'codex-home', 'AGENTS.md');
+  await expect(editor).toContainText(file);
+  const textbox = editor.getByRole('textbox', { name: 'AGENTS.md', exact: true });
+  await expect(editor).toContainText('AGENTS.md 尚不存在');
+  await textbox.fill('# Global instructions\n\nUse TypeScript. 中文指令。\n');
+  await editor.getByRole('button', { name: '保存文件', exact: true }).click();
+  await expect(editor.getByRole('status')).toContainText('AGENTS.md 已保存');
+  expect(await readFile(file, 'utf8')).toContain('Use TypeScript');
+  await textbox.fill('my unsaved changes');
+  await writeFile(file, 'external changes');
+  await editor.getByRole('button', { name: '保存文件', exact: true }).click();
+  await expect(editor.getByRole('alert')).toContainText('已被其他操作修改');
+  await expect(textbox).toHaveValue('my unsaved changes');
+  await screenshot(page, testInfo, 'instructions-conflict');
+  await editor.getByRole('button', { name: '重新读取', exact: true }).click();
+  await editor.getByRole('button', { name: '放弃修改', exact: true }).click();
+  await expect(textbox).toHaveValue('external changes');
+  await textbox.fill('new saved instructions');
+  await editor.getByRole('button', { name: '保存文件', exact: true }).click();
+  await expect(editor.getByRole('status')).toContainText('AGENTS.md 已保存');
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = 'dark';
+    document.documentElement.style.colorScheme = 'dark';
+  });
+  await screenshot(page, testInfo, 'instructions-dark');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await screenshot(page, testInfo, 'instructions-mobile');
+  await textbox.fill('discard me');
+  await page.keyboard.press('Escape');
+  await expect(editor).toBeVisible();
+  await expect(editor).toContainText('放弃尚未保存的修改');
+  await editor.getByRole('button', { name: '继续编辑', exact: true }).click();
+  await expect(textbox).toHaveValue('discard me');
+  await page.keyboard.press('Escape');
+  await editor.getByRole('button', { name: '放弃修改', exact: true }).click();
+  await expect(editor).not.toBeVisible();
+  expect(await readFile(file, 'utf8')).toBe('new saved instructions');
+  const invalid = await page.request.post(`${origin}/api/instructions/global`, {
+    headers: { Origin: origin },
+    data: { content: 'bad', revision: 'missing', path: join(directory, 'alpha', 'AGENTS.md') },
+  });
+  expect(invalid.status()).toBe(400);
+  await expect(page.locator('.instructions-trigger')).toHaveCount(0);
+  await writeFile(join(directory, 'codex-home', 'AGENTS.override.md'), 'active override');
+  await openSidebarSettings(page, 'ai');
+  await page.getByRole('button', { name: '全局指令', exact: true }).click();
+  await expect(editor.getByRole('alert')).toContainText('AGENTS.override.md');
+  await expect(editor.getByRole('button', { name: '保存文件', exact: true })).toBeDisabled();
+  const blocked = await page.request.post(`${origin}/api/instructions/global`, {
+    headers: { Origin: origin },
+    data: {
+      content: 'bad',
+      revision: (await (await page.request.get(`${origin}/api/instructions/global`)).json())
+        .revision,
+    },
+  });
+  expect(blocked.status()).toBe(409);
+  expect(await readFile(file, 'utf8')).toBe('new saved instructions');
 });

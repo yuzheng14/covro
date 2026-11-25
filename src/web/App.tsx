@@ -1,7 +1,6 @@
 import { UNASSIGNED_SCOPE } from '../shared/workspace-scope';
 import { displayMessage, messageDetails } from './i18n/messages';
 import { t, useInterfaceLocale } from './i18n';
-import { BackupSettings } from './components/BackupSettings';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, CircleAlert, Pencil } from 'lucide-react';
 import type { Settings, ThreadSummary, ReviewTarget } from '../shared/types';
@@ -37,8 +36,6 @@ import { CompatibilityNotice } from './components/CompatibilityNotice';
 import { BackgroundTasks } from './components/BackgroundTasks';
 import { useBackgroundTasks } from './hooks/useBackgroundTasks';
 import { ProjectDialog } from './components/ProjectDialog';
-import { NotificationSettings } from './components/NotificationSettings';
-import { GatewaySettings } from './components/GatewaySettings';
 import { UpdateSettings } from './components/UpdateSettings';
 import { useConversationHistory } from './hooks/useConversationHistory';
 import { useUpdates } from './hooks/useUpdates';
@@ -87,7 +84,6 @@ export function App() {
     [workspace.projectThreads],
   );
   const [focusedOperationId, setFocusedOperationId] = useState<string>();
-  const [backupsOpen, setBackupsOpen] = useState(false);
   const [shellOpen, setShellOpen] = useState(false);
   const shell = useShell(shellOpen);
   const [shellCollapsed, setShellCollapsed] = useState(false);
@@ -104,7 +100,7 @@ export function App() {
   const [composerFocusRequest, setComposerFocusRequest] = useState(0);
   const [skillsRequest, setSkillsRequest] = useState(0);
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
-  const [gatewaySettingsOpen, setGatewaySettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   useEffect(() => {
     const query = window.matchMedia(overlaySidebarQuery);
     const update = () => {
@@ -176,6 +172,7 @@ export function App() {
     if (sidebarOpen || notificationSettingsOpen) {
       setSidebarOpen(false);
       setNotificationSettingsOpen(false);
+      if (notificationSettingsOpen) setSettingsOpen(false);
       return;
     }
     const { target } = notificationTarget;
@@ -489,14 +486,7 @@ export function App() {
     <WorkspaceLayout threadId={thread?.id} getHistoryCursor={history.getHistoryCursor}>
       <Sidebar
         system={system}
-        onBackups={() => {
-          setSidebarOpen(false);
-          setBackupsOpen(true);
-        }}
-        onGatewaySettings={() => {
-          setSidebarOpen(false);
-          setGatewaySettingsOpen(true);
-        }}
+        backupsAvailable
         onUpdates={() => {
           setSidebarOpen(false);
           setUpdatesOpen(true);
@@ -506,10 +496,10 @@ export function App() {
           updates.status?.available && updates.status.available.version !== updates.status.version,
         )}
         updating={updateActive(updates.status?.run)}
-        onNotificationSettings={() => {
-          setSidebarOpen(false);
-          setNotificationSettingsOpen(true);
-        }}
+        settingsOpen={settingsOpen}
+        onSettingsOpenChange={setSettingsOpen}
+        onNotificationPanelChange={setNotificationSettingsOpen}
+        notifications={workspace.notifications}
         notificationStatus={
           workspace.notifications.error
             ? t('workspace:check_settings')
@@ -1301,16 +1291,6 @@ export function App() {
             setProjectDialog((current) => (current === projectDialog ? undefined : current))
           }
         />
-      )}
-      {notificationSettingsOpen && (
-        <NotificationSettings
-          notifications={workspace.notifications}
-          onClose={() => setNotificationSettingsOpen(false)}
-        />
-      )}
-      {backupsOpen && <BackupSettings onClose={() => setBackupsOpen(false)} />}
-      {gatewaySettingsOpen && (
-        <GatewaySettings onClose={() => setGatewaySettingsOpen(false)} connected={!offline} />
       )}
       {updatesOpen && <UpdateSettings updates={updates} onClose={() => setUpdatesOpen(false)} />}
     </WorkspaceLayout>

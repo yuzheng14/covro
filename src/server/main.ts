@@ -96,6 +96,7 @@ export async function startGateway(
       });
     const service = new GatewayService({
       logger,
+      codexHome: config.codex.home,
       store: new OperationStore(db.database, logger.child({ component: 'operations' })),
       projects: new ProjectRegistry(config.projects, db.database),
       codex,

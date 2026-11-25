@@ -205,5 +205,9 @@
   "recovery_other_threads": "其他会话与操作",
   "recovery_handle_submission": "查看处理方式",
   "recovery_responding": "这次审批或输入仍在等待处理确认，暂时不能重复提交。",
-  "CLONE_INTERRUPTED": "服务已停止或重启，无法确认克隆结果。不会自动重试或删除文件；请检查目标目录，确认完整后通过已有目录添加，否则使用新的空目录重试。"
+  "CLONE_INTERRUPTED": "服务已停止或重启，无法确认克隆结果。不会自动重试或删除文件；请检查目标目录，确认完整后通过已有目录添加，否则使用新的空目录重试。",
+  "INSTRUCTIONS_CONFLICT": "AGENTS.md 已被其他操作修改。请先复制保留当前修改，再重新读取文件。",
+  "INSTRUCTIONS_UNSUPPORTED": "AGENTS.md 必须是无链接的普通 UTF-8 文本文件。",
+  "INSTRUCTIONS_TOO_LARGE": "AGENTS.md 超过 256 KiB 限制。",
+  "INSTRUCTIONS_OVERRIDDEN": "检测到优先生效的 AGENTS.override.md，当前 AGENTS.md 不生效，暂不可保存。"
 }

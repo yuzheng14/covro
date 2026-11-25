@@ -1,3 +1,4 @@
+import type { GlobalDefaultsSnapshot, SaveGlobalDefaultsInput } from '../shared/global-defaults.js';
 import type {
   ActionResolution,
   AutoReviewView,
@@ -91,6 +92,8 @@ export interface CodexClient {
     turnId: string,
     settings: import('../shared/types.js').LiveSettings,
   ): Promise<Partial<Omit<import('../shared/types.js').LiveSettingsState, 'turnId'>>>;
+  readGlobalDefaults?(): Promise<GlobalDefaultsSnapshot>;
+  saveGlobalDefaults?(input: SaveGlobalDefaultsInput): Promise<ModelDefaultsResult>;
   saveModelDefaults(settings: ModelDefaults): Promise<ModelDefaultsResult>;
   onEvent(listener: (event: CodexEvent) => void): () => void;
   listThreads(cwd: string | string[], cursor?: string, archived?: boolean): Promise<ThreadPage>;

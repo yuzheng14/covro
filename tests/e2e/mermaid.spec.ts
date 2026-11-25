@@ -16,6 +16,7 @@ import {
   createEmptyThread,
   expectThreadReady,
   selectInterfaceLocale,
+  openSidebarSettings,
 } from './helpers';
 
 const reply = (page: Page) => page.getByRole('article', { name: 'Codex 的回复' });
@@ -42,6 +43,8 @@ test.beforeEach(async ({ page, request, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await controlRuntime(request, { reset: true });
   await page.emulateMedia({ colorScheme: 'light' });
+  // Pin an explicit app preference when testing application-over-system precedence.
+  await page.addInitScript(() => localStorage.setItem('covro.theme', 'light'));
   await page.goto('/');
   await confirmCompatibility(page);
   await createEmptyThread(page);
@@ -175,7 +178,7 @@ test('the application palette takes precedence over OS appearance and a denied c
   await expectDiagram(block);
   const lightSource = await block.getByRole('img').getAttribute('src');
   await page.emulateMedia({ colorScheme: 'dark' });
-  // Covro currently has a light application palette, even when the OS uses dark mode.
+  // The explicit light app preference takes precedence over the OS dark appearance.
   await expect(block).toHaveAttribute('data-theme', 'light');
   await expectDiagram(block);
   await expect(block.getByRole('img')).toHaveAttribute('src', lightSource!);
@@ -190,6 +193,13 @@ test('the application palette takes precedence over OS appearance and a denied c
   await block.getByRole('button', { name: '查看图表' }).click();
   await expectDiagram(block);
   await expect(block).toHaveAttribute('data-theme', 'light');
+  const settings = await openSidebarSettings(page);
+  await settings.getByRole('combobox', { name: '外观', exact: true }).click();
+  await page.getByRole('option', { name: '暗色', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(block).toHaveAttribute('data-theme', 'dark');
+  await expectDiagram(block);
+  await block.screenshot({ path: '/tmp/covro-mermaid-explicit-dark.png', animations: 'disabled' });
 });
 
 test('resolved application palette changes redraw both entries, including common Chinese diagrams (browser theme fixture)', async ({
@@ -224,8 +234,7 @@ test('resolved application palette changes redraw both entries, including common
     normalize(lightSource!),
   );
 
-  // There is no global dark theme selector on main. Exercise the same resolved root
-  // styles/attribute changes a theme selector would produce, without adding one here.
+  // Exercise a custom resolved palette independently of the built-in appearance selector.
   await page.addStyleTag({
     content: `:root.mermaid-test-dark {
       background: #20252b; color: #e2e8ee;

@@ -50,12 +50,13 @@ test.afterEach(async () => {
   }
   await rm(root, { recursive: true, force: true });
 });
-const settings = (page: Page) => page.getByRole('dialog', { name: '服务配置', exact: true });
+const settings = (page: Page) => page.getByRole('region', { name: '服务配置', exact: true });
 const projectDialog = (page: Page) =>
   page.getByRole('dialog', { name: '添加服务器项目', exact: true });
 async function sidebar(page: Page) {
-  if ((page.viewportSize()?.width ?? 1280) <= 760)
-    await page.getByRole('button', { name: '打开项目与会话', exact: true }).click();
+  const trigger = page.getByRole('button', { name: '打开项目与会话', exact: true });
+  if ((await trigger.isVisible()) && !(await page.locator('.sidebar-open').count()))
+    await trigger.click();
 }
 async function openAdd(page: Page) {
   await sidebar(page);
@@ -66,7 +67,7 @@ async function openAdd(page: Page) {
   return projectDialog(page);
 }
 async function saveBase(page: Page, path: string) {
-  await openSidebarSettings(page);
+  await openSidebarSettings(page, 'service');
   await page.getByRole('button', { name: '服务配置', exact: true }).click();
   const dialog = settings(page);
   await dialog.getByLabel('项目基础目录（workDir，可选）', { exact: true }).fill(path);
@@ -95,7 +96,7 @@ test('saves immediately, previews imports and clone defaults, and retains workDi
     .scrollIntoViewIfNeeded();
   await capture(page, info, 'workdir-settings-desktop');
   expect(JSON.parse(await readFile(configPath, 'utf8')).workDir).toBe(workDir);
-  await settingsDialog.getByRole('button', { name: '关闭服务配置', exact: true }).click();
+  await page.locator('.settings-heading button').click();
   await expect(settingsDialog).not.toBeVisible();
   let dialog = await openAdd(page);
   const path = dialog.getByRole('textbox', { name: '服务器目录', exact: true });
@@ -141,11 +142,8 @@ test('saves immediately, previews imports and clone defaults, and retains workDi
   await dialog.getByRole('button', { name: '关闭项目管理', exact: true }).click();
   const newBase = join(root, 'new-base');
   await mkdir(newBase);
-  await (
-    await saveBase(page, newBase)
-  )
-    .getByRole('button', { name: '关闭服务配置', exact: true })
-    .click();
+  await saveBase(page, newBase);
+  await page.locator('.settings-heading button').click();
   const projects = (await (await page.request.get(`${origin}/api/projects`)).json()).data;
   expect(projects.map((p: { rootPath: string }) => p.rootPath)).toEqual([
     join(workDir, 'demo'),
@@ -167,7 +165,9 @@ test('mobile handles unavailable workDir, absolute overrides and clearing the se
     .getByLabel('项目基础目录（workDir，可选）', { exact: true })
     .scrollIntoViewIfNeeded();
   await capture(page, info, 'workdir-settings-mobile');
-  await dialog.getByRole('button', { name: '关闭服务配置', exact: true }).click();
+  await page.locator('.settings-heading button').click();
+  await expect(page.locator('.sidebar-settings-dialog[open]')).toHaveCount(0);
+  await expect(page.locator('.sidebar-open')).toBeVisible();
   await rm(workDir, { recursive: true });
   const add = await openAdd(page);
   await expect(add.getByRole('alert')).toContainText('workDir 目录不存在');
@@ -179,11 +179,8 @@ test('mobile handles unavailable workDir, absolute overrides and clearing the se
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await add.getByRole('button', { name: '添加项目', exact: true }).click();
   await expect(add).not.toBeVisible();
-  await (
-    await saveBase(page, '')
-  )
-    .getByRole('button', { name: '关闭服务配置', exact: true })
-    .click();
+  await saveBase(page, '');
+  await page.locator('.settings-heading button').click();
   await page.reload();
   const empty = await openAdd(page);
   await expect(empty.getByRole('textbox', { name: '服务器目录', exact: true })).toHaveValue('');
@@ -208,11 +205,8 @@ test('a delayed preview cannot replace the latest path or enable submission earl
   page,
 }) => {
   await page.goto(origin);
-  await (
-    await saveBase(page, workDir)
-  )
-    .getByRole('button', { name: '关闭服务配置', exact: true })
-    .click();
+  await saveBase(page, workDir);
+  await page.locator('.settings-heading button').click();
   let release!: () => void;
   const delayed = new Promise<void>((done) => {
     release = done;
