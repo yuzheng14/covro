@@ -115,6 +115,7 @@ export interface CodexClient {
   readThreadPage?(id: string, cursor?: string, options?: HistoryReadOptions): Promise<ThreadView>;
   canReadDeferredOutput?(): boolean;
   readThreadItem?(id: string, turnId: string, itemId: string): Promise<ItemView>;
+  readThreadTurnItems?(id: string, turnId: string): Promise<ItemView[]>;
   loadedThreadActivity?(): Promise<ReadonlySet<ThreadView['status']>>;
   readThreadMetadata(id: string): Promise<ThreadView>;
   createThread(cwd: string, settings?: Settings): Promise<ThreadView>;

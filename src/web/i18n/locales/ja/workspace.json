@@ -89,5 +89,13 @@
   "question_tracking_ended": "スキップ済み · 回答は未送信",
   "questions_handled": "処理済み",
   "answer_receipt_pending": "回答の受領確認待ち",
-  "skip_all_questions_hint": "入力済みの下書きを含め、このグループの未回答の質問をすべてスキップします。回答は送信せず、タスクも停止しません。"
+  "skip_all_questions_hint": "入力済みの下書きを含め、このグループの未回答の質問をすべてスキップします。回答は送信せず、タスクも停止しません。",
+  "pending_questions": "未回答の質問",
+  "check_pending_questions": "未回答の質問を確認",
+  "no_pending_questions": "未回答の質問はありません",
+  "question_turn_id": "ターン …{{id}}",
+  "question_current_request": "現在のリクエスト",
+  "question_skip_unconfirmed": "スキップを確認できませんでした。再試行する前にセッションの状態を確認してください。",
+  "question_history_incomplete": "一部の過去の質問を読み込めませんでした。",
+  "question_history_gap": "途中のターンの一部はまだ読み込まれていません。"
 }

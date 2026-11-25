@@ -7,6 +7,13 @@ import {
 import type { SaveGlobalInstructions } from '../shared/global-instructions.js';
 import { questionAnswers } from '../shared/question-resolution.js';
 import { asyncQuestionId, parseQuestionReplies } from '../shared/async-questions.js';
+import {
+  pendingQuestionCatalog,
+  questionEvidence,
+  type QuestionHistory,
+} from './pending-questions.js';
+import type { PendingQuestionsPage, QuestionLocation } from '../shared/pending-questions.js';
+import { canTrackQuestions } from '../shared/pending-questions.js';
 import { QuestionTrackingStore } from './db/question-tracking.js';
 import { nullLogger, type Logger } from '../logging/logger.js';
 import { errorFields } from '../logging/fields.js';
@@ -159,6 +166,7 @@ export class GatewayService {
   private readonly store: OperationStore;
   private readonly turnUsage: TurnUsageStore;
   private readonly questionTracking: QuestionTrackingStore;
+  private readonly questionHistories = new Map<string, QuestionHistory>();
   private readonly projects: ProjectRegistry;
   private readonly workspaces: WorkspaceRegistry;
   private readonly codex: CodexClient;
@@ -1108,7 +1116,12 @@ export class GatewayService {
       if (this.codex.ready) await this.refreshThreadMetadata(threadId);
       this.workspaces.assertOwnership(cached.projectId, cached.cwd, cached.id);
       await this.refreshGoal(cached);
-      return { ...this.threadView(cached, false), turns: [], actions: [] };
+      return {
+        ...this.threadView(cached, false, false),
+        pendingQuestions: undefined,
+        turns: [],
+        actions: [],
+      };
     }
     // Checking a remembered ID must not load history or resume an unsent thread.
     const metadata = this.threadView(this.normalize(await this.codex.readThreadMetadata(threadId)));
@@ -1141,7 +1154,215 @@ export class GatewayService {
     const thread = this.projection.get(threadId);
     if (!thread) return [];
     this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
-    return pendingAttention(this.threadView(thread));
+    return pendingAttention(this.threadView(thread, false, false));
+  }
+
+  private scanQuestionHistory(thread: ThreadView, retry = false): void {
+    const { id, projectId } = thread;
+    const cursor = thread.history?.olderCursor;
+    if (!cursor || thread.archived || !this.codex.ready || !this.codex.readThreadPage) return;
+    const epoch = this.codex.epoch;
+    const previous = this.questionHistories.get(id);
+    if (
+      previous?.epoch === epoch &&
+      previous.cursor === cursor &&
+      (previous.status !== 'error' || (!retry && Date.now() < (previous.retryAt ?? 0)))
+    )
+      return;
+    const entry: QuestionHistory = {
+      epoch,
+      cursor,
+      status: 'loading',
+      turns: previous?.turns ?? new Map(),
+      observed: previous?.observed,
+    };
+    this.questionHistories.set(id, entry);
+    const current = () => this.questionHistories.get(id) === entry && this.codex.epoch === epoch;
+    const logger = this.logger.child({
+      component: 'question_history',
+      ...logContext(),
+      threadId: id,
+      codexEpoch: epoch,
+    });
+    const started = Date.now();
+    logger.debug('question.history_scan_started');
+    void (async () => {
+      const pages: { turn: ThreadView['turns'][number]; cursor: string }[][] = [];
+      const seen = new Set<string>();
+      let next: string | null = cursor;
+      while (next && current()) {
+        if (seen.has(next) || seen.size >= 1000)
+          throw new AppError(
+            'QUESTION_HISTORY_INCOMPLETE',
+            'Invalid question history pagination',
+            409,
+          );
+        seen.add(next);
+        const page = await this.codex.readThreadPage!(id, next, { deferOutput: true });
+        if (!current()) return;
+        if (page.id !== id || page.historyTruncated || !page.history)
+          throw new AppError('QUESTION_HISTORY_INCOMPLETE', 'Incomplete question history', 409);
+        this.workspaces.assertOwnership(projectId, page.cwd, id);
+        const source = next;
+        pages.push(page.turns.map((turn) => ({ turn: questionEvidence(turn), cursor: source })));
+        next = page.history.olderCursor;
+      }
+      if (!current()) return;
+      entry.turns = new Map(
+        pages
+          .reverse()
+          .flat()
+          .map((source) => [source.turn.id, source]),
+      );
+      entry.status = 'ready';
+      this.publishThread(id);
+      logger.debug('question.history_scan_finished', {
+        count: seen.size,
+        durationMs: Date.now() - started,
+        outcome: 'succeeded',
+      });
+    })().catch((problem: unknown) => {
+      if (!current()) return;
+      entry.status = 'error';
+      entry.retryAt = Date.now() + 30_000;
+      logger.warn('question.history_scan_finished', {
+        durationMs: Date.now() - started,
+        outcome: 'failed',
+        ...errorFields(problem),
+      });
+      this.publishThread(id);
+    });
+  }
+
+  private questionHistory(threadId: string): QuestionHistory | undefined {
+    const history = this.questionHistories.get(threadId);
+    return history?.epoch === this.codex.epoch ? history : undefined;
+  }
+
+  private questionState(thread: ThreadView) {
+    const history = this.questionHistory(thread.id);
+    const cursor = thread.history?.olderCursor;
+    return pendingQuestionCatalog(
+      thread,
+      cursor && history && cursor !== history.cursor ? { ...history, status: 'loading' } : history,
+    ).state;
+  }
+
+  private async questionCatalog(threadId: string) {
+    const thread = this.projection.get(threadId) ?? (await this.openThread(threadId, false));
+    this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
+    this.scanQuestionHistory(thread);
+    return {
+      thread,
+      ...pendingQuestionCatalog(
+        this.threadView(thread, false, false),
+        this.questionHistory(threadId),
+      ),
+    };
+  }
+
+  async getPendingQuestions(
+    threadId: string,
+    cursor?: string,
+    retry = false,
+  ): Promise<PendingQuestionsPage> {
+    const { data, state, thread } = await this.questionCatalog(threadId);
+    if (retry && !cursor && state.history === 'error') {
+      this.scanQuestionHistory(thread, true);
+      if (this.questionHistory(threadId)?.status === 'loading') {
+        this.publishThread(threadId);
+        state.history = 'loading';
+      }
+    }
+    let offset = 0;
+    if (cursor !== undefined) {
+      const [version, position, extra] = cursor.split('.');
+      offset = Number(position);
+      if (
+        version !== state.version ||
+        extra !== undefined ||
+        !Number.isSafeInteger(offset) ||
+        offset < 1 ||
+        offset >= data.length
+      )
+        throw new AppError('QUESTION_LIST_CHANGED', 'The pending questions changed', 409);
+    }
+    const end = offset + 40;
+    return {
+      data: data.slice(offset, end),
+      nextCursor: end < data.length ? `${state.version}.${end}` : null,
+      history: state.history,
+    };
+  }
+
+  async locateQuestion(
+    threadId: string,
+    target: {
+      kind: string | undefined;
+      id: string | undefined;
+      turnId?: string;
+      questionId: string | undefined;
+    },
+  ): Promise<QuestionLocation> {
+    const find = async () => {
+      const catalog = await this.questionCatalog(threadId);
+      const row = catalog.data.find(
+        (row) =>
+          row.id === target.questionId &&
+          row.target.kind === target.kind &&
+          row.target.id === target.id &&
+          row.turnId === target.turnId,
+      );
+      if (!row) throw new AppError('QUESTION_EXPIRED', '该问题已不存在，请刷新会话', 409);
+      return { ...catalog, row };
+    };
+    const epoch = this.codex.epoch;
+    const { row, thread } = await find();
+    if (row.target.kind === 'action') return {};
+    const source = this.questionHistory(threadId)?.turns.get(row.turnId!);
+    let turn = thread.turns.find((turn) => turn.id === row.turnId);
+    let cursor: string | undefined;
+    if (!turn && source) {
+      try {
+        const page = await this.getThreadHistory(threadId, source.cursor);
+        if (page.id === threadId) turn = page.turns.find((turn) => turn.id === row.turnId);
+        if (turn) cursor = source.cursor;
+      } catch (problem) {
+        if (!(problem instanceof AppError && problem.code === 'HISTORY_CURSOR_EXPIRED'))
+          throw problem;
+      }
+      // Some cursors expire or move on append. Resolve the exact native turn in that case.
+      if (!turn && this.codex.readThreadTurnItems && this.codex.epoch === epoch) {
+        const metadata = this.normalize(await this.codex.readThreadMetadata(threadId));
+        if (metadata.id !== threadId || metadata.archived)
+          throw new AppError('QUESTION_EXPIRED', '该问题已不存在，请刷新会话', 409);
+        this.workspaces.assertOwnership(thread.projectId, metadata.cwd, threadId);
+        turn = {
+          ...source.turn,
+          items: await this.codex.readThreadTurnItems(threadId, source.turn.id),
+        };
+      }
+    }
+    const { replies } = await find();
+    if (this.codex.epoch !== epoch)
+      throw new AppError('QUESTION_EXPIRED', '该问题已不存在，请刷新会话', 409);
+    const item = turn?.items.find((item) => item.id === row.target.id);
+    if (
+      !turn ||
+      turn.threadId !== threadId ||
+      !canTrackQuestions(turn.status) ||
+      !item?.questions?.some((_, index) => asyncQuestionId(item.id, index) === row.id)
+    )
+      throw new AppError('QUESTION_EXPIRED', '该问题已不存在，请刷新会话', 409);
+    return {
+      turn,
+      cursor,
+      turnNumber: row.turnNumber,
+      replies: [
+        item.id,
+        ...item.questions.map((_, index) => asyncQuestionId(item.id, index)),
+      ].flatMap((id) => replies.get(id) ?? []),
+    };
   }
 
   async getThreadSnapshot(threadId: string) {
@@ -1171,7 +1392,7 @@ export class GatewayService {
       const root = links.get(turn.id);
       if (root) turn.retryOf = root;
     }
-    return this.threadView(page);
+    return { ...this.threadView(page, true, false), pendingQuestions: undefined };
   }
 
   async getThreadItem(threadId: string, turnId: string, itemId: string): Promise<ItemView> {
@@ -2413,6 +2634,8 @@ export class GatewayService {
   }
 
   private mergeQuestionHistory(history: ThreadView): void {
+    const index = this.questionHistory(history.id);
+    if (index && !history.historyTruncated) index.observed = history.turns.map(questionEvidence);
     const current = this.projection.get(history.id);
     if (history.historyMode !== 'paginated' || !current) {
       this.projection.thread(history, true);
@@ -2429,6 +2652,7 @@ export class GatewayService {
       },
       true,
     );
+    if (index) this.publishThread(history.id);
   }
 
   private questionItems(history: ThreadView) {
@@ -2438,10 +2662,19 @@ export class GatewayService {
   }
 
   private findAsyncQuestion(history: ThreadView, id: string) {
-    for (const item of this.questionItems(history)) {
-      if (item.type !== 'agentMessage') continue;
-      const index = item.questions?.findIndex((_, index) => asyncQuestionId(item.id, index) === id);
-      if (index !== undefined && index >= 0) return { item, question: item.questions![index]! };
+    const turns = new Map(
+      (this.projection.get(history.id)?.turns ?? []).map((turn) => [turn.id, turn]),
+    );
+    for (const native of history.turns) turns.set(native.id, native);
+    for (const turn of turns.values()) {
+      if (!canTrackQuestions(turn.status)) continue;
+      for (const item of turn.items) {
+        if (item.type !== 'agentMessage') continue;
+        const index = item.questions?.findIndex(
+          (_, index) => asyncQuestionId(item.id, index) === id,
+        );
+        if (index !== undefined && index >= 0) return { item, question: item.questions![index]! };
+      }
     }
   }
 
@@ -2590,6 +2823,7 @@ export class GatewayService {
     this.stopLoopScheduler();
     await Promise.allSettled([...this.instructionWrites, ...this.defaultWrites]);
     this.capacityRetries.clearAll();
+    this.questionHistories.clear();
     await this.projectClones.close();
     this.store.recover();
     this.projection.runtimeReset();
@@ -3014,7 +3248,8 @@ export class GatewayService {
   private publishThread(threadId: string, streamed?: StreamedItem): void {
     const thread = this.projection.get(threadId);
     if (!thread) return;
-    const view = this.detailThreadView(thread, false);
+    const view = this.detailThreadView(thread, false, !streamed || !thread.pendingQuestions);
+    if (view.pendingQuestions) thread.pendingQuestions = view.pendingQuestions;
     this.events.publishThread(view, streamed);
     const summary = toThreadSummary({ ...view, turns: thread.turns });
     const encoded = JSON.stringify(summary);
@@ -3049,8 +3284,8 @@ export class GatewayService {
     return links;
   }
 
-  private detailThreadView(thread: ThreadView, copy = true): ThreadView {
-    if (thread.historyMode !== 'paginated') return this.threadView(thread, copy);
+  private detailThreadView(thread: ThreadView, copy = true, includeQuestions = true): ThreadView {
+    if (thread.historyMode !== 'paginated') return this.threadView(thread, copy, includeQuestions);
     const bounded = thread.turns.length > HISTORY_PAGE_SIZE;
     const history = bounded
       ? {
@@ -3070,10 +3305,17 @@ export class GatewayService {
           : turn,
       );
     }
-    return this.threadView({ ...thread, turns, history }, copy);
+    const result = this.threadView({ ...thread, turns, history }, copy, false);
+    if (includeQuestions)
+      result.pendingQuestions = this.questionState({
+        ...result,
+        turns: thread.turns,
+        history: thread.history,
+      });
+    return result;
   }
 
-  private threadView(thread: ThreadView, copy = true): ThreadView {
+  private threadView(thread: ThreadView, copy = true, includeQuestions = true): ThreadView {
     const submissions = new Map(
       this.store.pendingMessages(thread.id).map((message) => [message.id, message]),
     );
@@ -3116,6 +3358,7 @@ export class GatewayService {
         actions.set(action.actionId, action);
     result.actions = [...actions.values()];
     result.archived = thread.archived ?? false;
+    if (includeQuestions) result.pendingQuestions = this.questionState(result);
     result.historyVisible = this.historyVisible(thread);
     const marker = this.store.activeForThread(thread.id);
     delete result.execution;
@@ -3212,6 +3455,7 @@ export class GatewayService {
         this.runtimeSettingsUpdates.clear();
         this.turnBaselines.clear();
         this.resumes.clear();
+        this.questionHistories.clear();
         this.store.recover();
         this.projection.runtimeReset();
         for (const thread of this.projection.values()) this.publishThread(thread.id);
@@ -3246,7 +3490,7 @@ export class GatewayService {
       const known = this.projection.actions.has(action.actionId);
       const owner = action.threadId ? this.projection.get(action.threadId) : undefined;
       const previous = new Set(
-        owner ? pendingAttention(this.threadView(owner)).map(attentionKey) : [],
+        owner ? pendingAttention(this.threadView(owner, false, false)).map(attentionKey) : [],
       );
       this.projection.action(action);
       if (action.kind === 'questions') this.questionTracking.saveAction(action);
@@ -3277,7 +3521,7 @@ export class GatewayService {
     }
     const previousAttention = new Set(
       event.type === 'item' || event.type === 'turn'
-        ? pendingAttention(this.threadView(thread)).map(attentionKey)
+        ? pendingAttention(this.threadView(thread, false, false)).map(attentionKey)
         : [],
     );
     if (event.type === 'tokenUsage') {

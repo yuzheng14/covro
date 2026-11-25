@@ -89,5 +89,13 @@
   "question_tracking_ended": "건너뜀 · 답변 미전송",
   "questions_handled": "처리됨",
   "answer_receipt_pending": "답변 수신 확인 대기 중",
-  "skip_all_questions_hint": "작성한 초안을 포함하여 이 그룹의 미답변 질문을 모두 건너뜁니다. 답변을 보내거나 작업을 중지하지 않습니다."
+  "skip_all_questions_hint": "작성한 초안을 포함하여 이 그룹의 미답변 질문을 모두 건너뜁니다. 답변을 보내거나 작업을 중지하지 않습니다.",
+  "pending_questions": "답변 대기 질문",
+  "check_pending_questions": "답변 대기 질문 확인",
+  "no_pending_questions": "답변 대기 중인 질문이 없습니다",
+  "question_turn_id": "턴 …{{id}}",
+  "question_current_request": "현재 요청",
+  "question_skip_unconfirmed": "건너뛰기를 확인하지 못했습니다. 다시 시도하기 전에 세션 상태를 확인하세요.",
+  "question_history_incomplete": "이전 질문 중 일부를 불러오지 못했습니다.",
+  "question_history_gap": "중간의 일부 턴은 아직 불러오지 않았습니다."
 }

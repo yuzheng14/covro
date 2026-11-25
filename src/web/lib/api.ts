@@ -140,6 +140,27 @@ export const api = {
     ),
   threadAttention: (threadId: string) =>
     request<AttentionRequest[]>(`/api/threads/${encodeURIComponent(threadId)}/attention`),
+  pendingQuestions: (threadId: string, cursor: string | null, signal: AbortSignal, retry = false) =>
+    request<import('../../shared/pending-questions').PendingQuestionsPage>(
+      `/api/threads/${encodeURIComponent(threadId)}/questions${cursor ? `?${new URLSearchParams({ cursor })}` : retry ? '?retry=true' : ''}`,
+      undefined,
+      signal,
+    ),
+  locateQuestion: (
+    threadId: string,
+    question: import('../../shared/pending-questions').PendingQuestion,
+    signal: AbortSignal,
+  ) =>
+    request<import('../../shared/pending-questions').QuestionLocation>(
+      `/api/threads/${encodeURIComponent(threadId)}/questions/location?${new URLSearchParams({
+        kind: question.target.kind,
+        target: question.target.id,
+        question: question.id,
+        ...(question.turnId ? { turn: question.turnId } : {}),
+      })}`,
+      undefined,
+      signal,
+    ),
   threadHistory: (threadId: string, cursor: string, signal: AbortSignal) =>
     request<ThreadView>(
       `/api/threads/${encodeURIComponent(threadId)}/history?${new URLSearchParams({ cursor })}`,

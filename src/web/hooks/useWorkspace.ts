@@ -941,10 +941,10 @@ export function useWorkspace() {
     },
     [applyOperation, report, recordLookupError],
   );
-  const refreshThread = useCallback(async () => {
+  const refreshThread = useCallback(async (expectedId?: string) => {
     const id = selectedRef.current;
     const stream = streamRef.current;
-    if (!id || !stream) return;
+    if (!id || !stream || (expectedId && id !== expectedId)) return;
     // A remembered session can be readable from cache before its metadata check recovers.
     stream.select(id, projectRef.current === UNASSIGNED_SCOPE ? null : projectRef.current);
     await stream.refresh(id);

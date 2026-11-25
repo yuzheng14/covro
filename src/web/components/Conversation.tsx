@@ -15,6 +15,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { AsyncQuestionReply, ItemView, ThreadView, TurnView } from '../../shared/types';
 import { AsyncQuestionCard, type AsyncQuestionControls } from './AsyncQuestionCard';
 import { asyncQuestionId } from '../../shared/async-questions';
+import {
+  canTrackQuestions,
+  indexQuestionReplies,
+  type QuestionLocation,
+} from '../../shared/pending-questions';
 import { Button } from './ui/button';
 import { Icon } from './Icon';
 import { isActive, Status } from './Status';
@@ -364,6 +369,7 @@ function TurnErrorNotice({ turn, offline }: { turn: TurnView; offline: boolean }
 
 interface ConversationProps {
   thread?: ThreadView;
+  locatedQuestion?: QuestionLocation;
   offline: boolean;
   retryControls?: CapacityRetryControls;
   history?: {
@@ -398,6 +404,7 @@ export function Conversation(props: ConversationProps) {
 
 function ConversationContent({
   thread,
+  locatedQuestion,
   offline,
   retryControls,
   history,
@@ -420,17 +427,26 @@ function ConversationContent({
   const lastScrollTop = useRef(0);
   const scrollingUp = useRef(false);
   const userScrolled = useRef(false);
-  const { turns: displayTurns, unbound } = thread
-    ? submittedConversation(thread)
-    : { turns: [], unbound: [] };
+  const { turns, unbound } = thread ? submittedConversation(thread) : { turns: [], unbound: [] };
+  const located = locatedQuestion?.turn;
+  const detached =
+    located && thread?.id === located.threadId && !turns.some((turn) => turn.id === located.id)
+      ? located
+      : undefined;
+  const displayTurns = detached ? [detached, ...turns] : turns;
+  const turnOffset = Math.max(
+    0,
+    (thread?.pendingQuestions?.turnCount ?? turns.length) - turns.length,
+  );
+  const turnNumber = (id: string, index: number) =>
+    (id === located?.id ? locatedQuestion?.turnNumber : undefined) ??
+    turnOffset + index + (detached ? 0 : 1);
   const latestTurn = thread?.turns.at(-1);
-  const questionReplies = new Map<string, AsyncQuestionReply[]>();
-  for (const turn of thread?.turns ?? [])
-    for (const item of turn.items)
-      for (const reply of item.questionReplies ?? []) {
-        const previous = questionReplies.get(reply.questionItemId) ?? [];
-        questionReplies.set(reply.questionItemId, [...previous, reply]);
-      }
+  const questionReplies = indexQuestionReplies(thread?.turns ?? []);
+  for (const reply of locatedQuestion?.replies ?? []) {
+    const previous = questionReplies.get(reply.questionItemId) ?? [];
+    questionReplies.set(reply.questionItemId, [...previous, reply]);
+  }
   const activeCompaction =
     latestTurn && isActive(latestTurn.status)
       ? latestTurn.items.findLast(
@@ -453,7 +469,7 @@ function ConversationContent({
     if (
       focused instanceof HTMLElement &&
       box?.contains(focused) &&
-      focused.matches('[data-attention-id]')
+      focused.closest('[data-attention-id]')
     ) {
       stickToBottom.current = false;
       anchor.current = undefined;
@@ -614,6 +630,18 @@ function ConversationContent({
           className="conversation-scroll"
           ref={containerRef}
           onScroll={updateScrollPosition}
+          onFocusCapture={(event) => {
+            if (
+              !(event.target instanceof HTMLElement) ||
+              !event.target.closest('[data-question-id]')
+            )
+              return;
+            if (event.target.tabIndex !== -1) return;
+            stickToBottom.current = false;
+            scrollingUp.current = false;
+            userScrolled.current = false;
+            anchor.current = undefined;
+          }}
           onWheel={() => {
             userScrolled.current = true;
           }}
@@ -736,10 +764,10 @@ function ConversationContent({
                   className="turn"
                   key={turn.id}
                   data-turn-id={turn.id}
-                  aria-label={t('conversation:turn', { v0: index + 1 })}
+                  aria-label={t('conversation:turn', { v0: turnNumber(turn.id, index) })}
                 >
                   <div className="turn-heading">
-                    <span>{t('conversation:turn', { v0: index + 1 })}</span>
+                    <span>{t('conversation:turn', { v0: turnNumber(turn.id, index) })}</span>
                     <Status status={turn.status} offline={offline} />
                   </div>
                   {turn.id !== latestTurn?.id &&
@@ -755,7 +783,9 @@ function ConversationContent({
                         threadId={turn.threadId}
                         turnId={turn.id}
                         streaming={isActive(turn.status)}
-                        questionControls={questionControls}
+                        questionControls={
+                          canTrackQuestions(turn.status) ? questionControls : undefined
+                        }
                         replies={[
                           ...(questionReplies.get(group.item.id) ?? []),
                           ...(group.item.questions ?? []).flatMap(
@@ -800,7 +830,9 @@ function ConversationContent({
                       onClick={() =>
                         openDiff({
                           id: turn.id,
-                          scope: message('conversation:turn_changes', { v0: index + 1 }),
+                          scope: message('conversation:turn_changes', {
+                            v0: turnNumber(turn.id, index),
+                          }),
                           source: 'turn',
                         })
                       }
@@ -828,6 +860,9 @@ function ConversationContent({
                   )}
 
                   <TurnCompletion turn={turn} />
+                  {turn === detached && (
+                    <p className="located-question-gap">{t('workspace:question_history_gap')}</p>
+                  )}
                 </section>
               ))
             )}
