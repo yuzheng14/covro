@@ -417,6 +417,17 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
                 : t('updates:update_and_restart')}
         </Button>
       </div>
+      {(error || checkFailure || reloadError) && (
+        <div className="inline-error" role="alert">
+          <p>{displayMessage(reloadError ?? error) ?? t('updates:checkFailed')}</p>
+          {checkFailure && (
+            <details>
+              <summary>{t('common:technical_details')}</summary>
+              <pre>{checkFailure}</pre>
+            </details>
+          )}
+        </div>
+      )}
       {selected?.downgrade && (
         <label className="update-downgrade">
           <input
@@ -447,17 +458,6 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
           </details>
           {active && <progress aria-label={t('updates:update_progress')} />}
         </section>
-      )}
-      {(error || checkFailure || reloadError) && (
-        <div className="inline-error" role="alert">
-          <p>{displayMessage(reloadError ?? error) ?? t('updates:checkFailed')}</p>
-          {checkFailure && (
-            <details>
-              <summary>{t('common:technical_details')}</summary>
-              <pre>{checkFailure}</pre>
-            </details>
-          )}
-        </div>
       )}
       {!status?.supported && status?.unsupportedReason && (
         <div className="update-notice">
