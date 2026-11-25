@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { confirmCompatibility, controlRuntime, createEmptyThread } from './helpers';
 import type { ThreadView } from '../../src/shared/types';
 
-const entry = (page: Page) => page.locator('.topbar button.status-waitingInput');
+const entry = (page: Page) => page.locator('.topbar button.status-waitingInput:visible');
 const dialog = (page: Page) => page.locator('.pending-questions-dialog[open]');
 const cards = (page: Page) => page.locator('.async-question-card');
 const sidebarWaiting = (page: Page) =>
@@ -166,7 +166,7 @@ test('questions from two turns coexist with execution at narrow widths in Japane
   await confirmCompatibility(page);
   await createEmptyThread(page);
   await send(page, '[async-questions] Earlier settings');
-  await send(page, '[async-questions-running] Current settings', '运行中');
+  await send(page, '[async-questions-running] Current settings', '执行中');
   for (const [locale, title, colorScheme] of [
     ['ja', '未回答の質問', 'light'],
     ['ko', '답변 대기 질문', 'dark'],
@@ -185,4 +185,42 @@ test('questions from two turns coexist with execution at narrow widths in Japane
     await page.keyboard.press('Escape');
     await expect(entry(page)).toBeFocused();
   }
+});
+
+test('closing the list and switching sessions releases an in-flight location', async ({
+  page,
+  request,
+}) => {
+  await controlRuntime(request, { reset: true });
+  await page.goto('/');
+  await confirmCompatibility(page);
+  await createEmptyThread(page);
+  await send(page, '[async-questions] Locate while changing sessions');
+  const original = await page.locator('.thread-selected').getAttribute('data-thread-id');
+  let release!: () => void;
+  const deferredLocation = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let received!: () => void;
+  const locationRequested = new Promise<void>((resolve) => {
+    received = resolve;
+  });
+  await page.route('**/questions/location?*', async (route) => {
+    const response = await route.fetch();
+    received();
+    await deferredLocation;
+    await route.fulfill({ response }).catch(() => {
+      // Closing the dialog may already have canceled the browser request.
+    });
+  });
+  await entry(page).click();
+  await dialog(page).locator('.pending-question-link').first().click();
+  await locationRequested;
+  await page.keyboard.press('Escape');
+  await createEmptyThread(page);
+  await expect(page.locator('.thread-selected')).not.toHaveAttribute('data-thread-id', original!);
+  release();
+  await expect(dialog(page)).toHaveCount(0);
+  await expect(cards(page)).toHaveCount(0);
+  await expect(entry(page)).toHaveCount(0);
 });

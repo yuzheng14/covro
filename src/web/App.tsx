@@ -211,7 +211,9 @@ export function App() {
     if (target && focusQuestion(target)) return;
     (from.isConnected && from.getClientRects().length
       ? from
-      : (header.current?.querySelector<HTMLElement>('.status-trigger') ?? header.current)
+      : ([...(header.current?.querySelectorAll<HTMLElement>('.status-trigger') ?? [])].find(
+          (trigger) => trigger.getClientRects().length,
+        ) ?? header.current)
     )?.focus({ preventScroll: true });
   }, [questionsOpen]);
   const diagnosticCount = workspace.operations.length;
@@ -878,7 +880,7 @@ export function App() {
                 </Button>
               )}
             </HeaderActions>
-            {!compactHeader && waitingQuestion}
+            {waitingQuestion}
             {thread && !(waitingQuestion && thread.status === 'waitingInput') && (
               <Status status={thread.status} offline={offline} />
             )}

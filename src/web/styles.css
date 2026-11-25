@@ -6342,7 +6342,8 @@ dd {
   text-align: center;
 }
 
-:is(.action-card, .async-question-card) [data-question-id]:has(:focus-visible) {
+:is(.action-card, .async-question-card)
+  [data-question-id]:has(> legend:focus, .async-question-title:focus) {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }

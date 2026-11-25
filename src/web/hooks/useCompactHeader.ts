@@ -43,7 +43,7 @@ export function useCompactHeader(ref: RefObject<HTMLElement | null>) {
       const active = document.activeElement;
       focusedControl.current =
         active instanceof HTMLElement &&
-        status.contains(active) &&
+        (status.contains(active) || active.matches('.topbar-attention .status-trigger')) &&
         !active.closest('.diagnostics-panel')
           ? active
           : null;
@@ -84,6 +84,13 @@ export function useCompactHeader(ref: RefObject<HTMLElement | null>) {
     if (!previous) return;
     if (previous.isConnected && previous.getClientRects().length > 0) {
       previous.focus({ preventScroll: true });
+      return;
+    }
+    if (previous.classList.contains('status-trigger')) {
+      const selector = compact
+        ? '.topbar-attention .status-trigger'
+        : '.topbar-status .status-trigger';
+      ref.current?.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true });
       return;
     }
     const diagnostics = previous.matches('summary, [aria-controls="diagnostics-panel"]');
