@@ -914,7 +914,7 @@ export class CodexAdapter implements CodexClient {
     const sequence = ++this.archiveSequence;
     const header = await this.readThreadHeader(id);
     // Legacy rollout files expose no paging protocol. Keep the compatibility path explicit.
-    if (header.historyMode !== 'paginated') return this.readThread(id);
+    if (header.historyMode !== 'paginated') return this.readLegacyThread(id, sequence);
     const page = await this.call('thread/turns/list', {
       threadId: id,
       cursor,
@@ -947,37 +947,47 @@ export class CodexAdapter implements CodexClient {
     };
   }
 
+  private async hydrateTurn(id: string, turn: Thread['turns'][number]): Promise<void> {
+    let cursor: string | null = null;
+    const seen = new Set<string>();
+    turn.items = [];
+    do {
+      const page: ThreadItemsListResponse = await this.call('thread/items/list', {
+        threadId: id,
+        turnId: turn.id,
+        cursor,
+        limit: 20,
+        sortDirection: 'asc',
+      });
+      turn.items.push(...page.data.map((entry) => entry.item));
+      cursor = page.nextCursor;
+      if (cursor && (seen.has(cursor) || seen.size >= 1000))
+        throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid item pagination');
+      if (cursor) seen.add(cursor);
+    } while (cursor);
+  }
+
   private async hydrateTurns(id: string, turns: Thread['turns']): Promise<void> {
-    for (const turn of turns) {
-      if (turn.itemsView === 'full') continue;
-      let cursor: string | null = null;
-      const seen = new Set<string>();
-      turn.items = [];
-      do {
-        const page: ThreadItemsListResponse = await this.call('thread/items/list', {
-          threadId: id,
-          turnId: turn.id,
-          cursor,
-          limit: 20,
-          sortDirection: 'asc',
-        });
-        turn.items.push(...page.data.map((entry) => entry.item));
-        cursor = page.nextCursor;
-        if (cursor && (seen.has(cursor) || seen.size >= 1000))
-          throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid item pagination');
-        if (cursor) seen.add(cursor);
-      } while (cursor);
-    }
+    const pending = turns.filter((turn) => turn.itemsView !== 'full');
+    const concurrency = 3;
+    // Each turn has its own cursor. Keep the number of large RPCs in flight bounded.
+    for (let start = 0; start < pending.length; start += concurrency)
+      await Promise.all(
+        pending.slice(start, start + concurrency).map((turn) => this.hydrateTurn(id, turn)),
+      );
+  }
+
+  private async readLegacyThread(id: string, sequence: number): Promise<ThreadView> {
+    return this.storedThread(
+      (await this.call('thread/read', { threadId: id, includeTurns: true })).thread,
+      sequence,
+    );
   }
 
   async readThread(id: string): Promise<ThreadView> {
     const sequence = ++this.archiveSequence;
     const thread = await this.readThreadHeader(id);
-    if (thread.historyMode !== 'paginated')
-      return this.storedThread(
-        (await this.call('thread/read', { threadId: id, includeTurns: true })).thread,
-        sequence,
-      );
+    if (thread.historyMode !== 'paginated') return this.readLegacyThread(id, sequence);
     let cursor: string | null = null;
     const seen = new Set<string>();
     thread.turns = [];
@@ -989,27 +999,7 @@ export class CodexAdapter implements CodexClient {
         sortDirection: 'asc',
         itemsView: 'summary',
       });
-      for (const turn of page.data) {
-        if (turn.itemsView !== 'full') {
-          let itemCursor: string | null = null;
-          const itemSeen = new Set<string>();
-          turn.items = [];
-          do {
-            const items: ThreadItemsListResponse = await this.call('thread/items/list', {
-              threadId: id,
-              turnId: turn.id,
-              cursor: itemCursor,
-              limit: 20,
-              sortDirection: 'asc',
-            });
-            turn.items.push(...items.data.map((entry) => entry.item));
-            itemCursor = items.nextCursor;
-            if (itemCursor && (itemSeen.has(itemCursor) || itemSeen.size >= 1000))
-              throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid item pagination');
-            if (itemCursor) itemSeen.add(itemCursor);
-          } while (itemCursor);
-        }
-      }
+      for (const turn of page.data) if (turn.itemsView !== 'full') await this.hydrateTurn(id, turn);
       thread.turns.push(...page.data);
       cursor = page.nextCursor;
       if (cursor && (seen.has(cursor) || seen.size >= 1000))
