@@ -192,7 +192,7 @@ test('imports a browser’s existing read receipt without opening the conversati
   const migration = page.waitForResponse(
     (response) => response.ok() && response.url().endsWith(`/${threadId}/completion-read`),
   );
-  await open(page);
+  await page.reload();
   await migration;
   await expect(link(page, threadId)).toBeVisible();
   await expect(unread(page, threadId)).toHaveCount(0);
