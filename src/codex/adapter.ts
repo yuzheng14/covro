@@ -8,7 +8,6 @@ import { logContext, withLogContext } from '../logging/context.js';
 import { CODEX_COMPATIBILITY } from './compatibility.js';
 import { readModels } from './models.js';
 import { AccountUsageReader } from './account-usage.js';
-import type { ItemView } from '../shared/types.js';
 import type { GetAccountRateLimitsResponse } from './generated/v2/GetAccountRateLimitsResponse.js';
 import { SHELL_TIMEOUT_MS, SHELL_OUTPUT_BYTES } from '../shared/shell.js';
 import type { CommandExecResponse } from './generated/v2/CommandExecResponse.js';
@@ -65,6 +64,7 @@ import type {
   ModelDefaults,
   ModelDefaultsResult,
   ThreadPage,
+  ItemView,
   ThreadView,
   TurnView,
 } from '../shared/types.js';
@@ -122,7 +122,13 @@ import {
   type RpcNotification,
   type RpcServerRequest,
 } from './transport.js';
-import type { CodexClient, CodexDiagnostics, CodexEvent } from './types.js';
+import type {
+  CodexClient,
+  CodexDiagnostics,
+  CodexEvent,
+  ForkHistoryOptions,
+  HistoryReadOptions,
+} from './types.js';
 import type { ThreadCompactStartResponse } from './generated/v2/ThreadCompactStartResponse.js';
 export type {
   CodexClient,
@@ -912,7 +918,11 @@ export class CodexAdapter implements CodexClient {
     const sequence = ++this.archiveSequence;
     return this.storedThread(await this.readThreadHeader(id), sequence);
   }
-  async readThreadPage(id: string, continuation?: string): Promise<ThreadView> {
+  async readThreadPage(
+    id: string,
+    continuation?: string,
+    options?: HistoryReadOptions,
+  ): Promise<ThreadView> {
     const epoch = this.epoch;
     let cursor: string | null = null;
     let beforeTurnId: string | undefined;
@@ -934,7 +944,11 @@ export class CodexAdapter implements CodexClient {
     const sequence = ++this.archiveSequence;
     const header = await this.readThreadHeader(id);
     // Legacy rollout files expose no paging protocol. Keep the compatibility path explicit.
-    if (header.historyMode !== 'paginated') return this.readLegacyThread(id, sequence);
+    if (header.historyMode !== 'paginated') {
+      if (continuation)
+        throw new AppError('HISTORY_CURSOR_EXPIRED', '历史分页已失效，请重新同步会话。', 409);
+      return this.readLegacyThread(id, sequence);
+    }
     const seen = new Set<string>();
     let turns: Thread['turns'];
     do {
@@ -958,7 +972,7 @@ export class CodexAdapter implements CodexClient {
     } while (cursor && !turns.length);
     if (beforeTurnId)
       throw new AppError('HISTORY_CURSOR_EXPIRED', '历史分页已失效，请重新同步会话。', 409);
-    const deferred = await this.hydrateTurns(id, turns);
+    const deferred = await this.hydrateTurns(id, turns, options?.deferOutput === true);
     if (this.epoch !== epoch)
       throw new AppError('HISTORY_CURSOR_EXPIRED', '读取期间 Codex 已重启，请重新同步会话。', 409);
     const view = await this.storedThread({ ...header, turns: turns.reverse() }, sequence);
@@ -999,8 +1013,8 @@ export class CodexAdapter implements CodexClient {
     return deferred;
   }
 
-  private async hydrateTurns(id: string, turns: Thread['turns']) {
-    const canDefer = this.canReadDeferredOutput();
+  private async hydrateTurns(id: string, turns: Thread['turns'], deferOutput: boolean) {
+    const canDefer = deferOutput && this.canReadDeferredOutput();
     const pending = turns
       .map((turn) => ({ turn, defer: canDefer && turn.status !== 'inProgress' }))
       .filter(({ turn, defer }) => turn.itemsView !== 'full' || defer);
@@ -1402,7 +1416,12 @@ export class CodexAdapter implements CodexClient {
       this.emit({ type: 'threadSettings', threadId: result.thread.id, settings: confirmed });
     return settings;
   }
-  async resumeThread(id: string, cwd: string, settings?: Settings): Promise<ThreadView> {
+  async resumeThread(
+    id: string,
+    cwd: string,
+    settings?: Settings,
+    options?: HistoryReadOptions,
+  ): Promise<ThreadView> {
     await this.validateSettings(
       settings,
       hasModelSettings(settings) ? await this.settingsContext(cwd, id) : undefined,
@@ -1429,22 +1448,14 @@ export class CodexAdapter implements CodexClient {
       throw error;
     }
     titles?.register(result);
-    const view = await this.readThreadPage(result.thread.id);
+    const view = await this.readThreadPage(result.thread.id, undefined, options);
     return { ...view, runtimeSettings: await this.responseRuntimeSettings(result) };
   }
-  forkThread(id: string, cwd: string, settings?: Settings): Promise<ThreadView> {
-    return this.forkWithHistory(id, cwd, settings, false);
-  }
-
-  forkThreadPage(id: string, cwd: string, settings?: Settings): Promise<ThreadView> {
-    return this.forkWithHistory(id, cwd, settings, true);
-  }
-
-  private async forkWithHistory(
+  async forkThread(
     id: string,
     cwd: string,
-    settings: Settings | undefined,
-    recentOnly: boolean,
+    settings?: Settings,
+    options?: ForkHistoryOptions,
   ): Promise<ThreadView> {
     await this.validateSettings(
       settings,
@@ -1468,7 +1479,9 @@ export class CodexAdapter implements CodexClient {
       if (metadata.id === id)
         throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Codex fork returned the source thread ID');
       forkedId = metadata.id;
-      const thread = await (recentOnly ? this.readThreadPage(forkedId) : this.readThread(forkedId));
+      const thread = await (options?.recentOnly
+        ? this.readThreadPage(forkedId, undefined, options)
+        : this.readThread(forkedId));
       if (thread.id !== forkedId)
         throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Codex returned a different fork thread ID');
       titles?.register(result);

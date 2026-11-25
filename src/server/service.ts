@@ -1162,7 +1162,9 @@ export class GatewayService {
     this.workspaces.assertOwnership(metadata.projectId, metadata.cwd, metadata.id);
     if (!this.codex.readThreadPage)
       throw new AppError('HISTORY_UNAVAILABLE', '当前 Codex 不支持历史分页', 409);
-    const page = this.normalize(await this.codex.readThreadPage(threadId, cursor));
+    const page = this.normalize(
+      await this.codex.readThreadPage(threadId, cursor, { deferOutput: true }),
+    );
     this.workspaces.assertOwnership(page.projectId, page.cwd, page.id);
     const links = this.retryLinks(threadId);
     for (const turn of page.turns) {
@@ -1291,7 +1293,8 @@ export class GatewayService {
     const revision = this.projection.revision(threadId);
     const loading = (async () => {
       const thread = this.normalize(
-        await (this.codex.readThreadPage?.(threadId) ?? this.codex.readThread(threadId)),
+        await (this.codex.readThreadPage?.(threadId, undefined, { deferOutput: true }) ??
+          this.codex.readThread(threadId)),
       );
       // Managed live projections are never replaced by a history read finishing later.
       const current = this.projection.get(threadId);
@@ -1434,7 +1437,9 @@ export class GatewayService {
         delete current.resumeError;
         pending = (async () => {
           try {
-            const resumed = await this.codex.resumeThread(threadId, ownership.cwd, input.settings);
+            const resumed = await this.codex.resumeThread(threadId, ownership.cwd, input.settings, {
+              deferOutput: true,
+            });
             if (this.codex.epoch !== epoch || !this.codex.ready)
               throw new Error('恢复请求已发送，但 Codex 实例已变化，请核对提交');
             this.projection.thread(
@@ -1492,8 +1497,10 @@ export class GatewayService {
       this.store.dispatch(input.clientOperationId);
       this.pendingThreadCreations.set(input.clientOperationId, forkCwd);
       const settingsSequence = this.runtimeSettingsSequence;
-      const forked = await (this.codex.forkThreadPage?.(threadId, forkCwd, input.settings) ??
-        this.codex.forkThread(threadId, forkCwd, input.settings));
+      const forked = await this.codex.forkThread(threadId, forkCwd, input.settings, {
+        recentOnly: true,
+        deferOutput: true,
+      });
       if (forked.id === threadId || this.codex.epoch !== epoch || !this.codex.ready)
         throw new Error('分叉请求已发送，但返回的新会话无法确认，请核对历史');
       let normalized: ThreadView;
@@ -2801,10 +2808,14 @@ export class GatewayService {
 
         const page =
           actual.historyMode === 'paginated' && this.codex.readThreadPage
-            ? await this.codex.readThreadPage(marker.threadId)
+            ? await this.codex.readThreadPage(marker.threadId, undefined, { deferOutput: true })
             : actual;
         if (!current() || page.id !== marker.threadId) return;
-        this.workspaces.assertOwnership(ownership.projectId, page.cwd, page.id);
+        if (
+          this.workspaces.assertOwnership(ownership.projectId, page.cwd, page.id).workspaceKey !==
+          marker.workspaceKey
+        )
+          return;
         // Only the recent display page enters the projection. Keep an older known turn's
         // recovered status when it is already represented by a live event.
         if (ended && (isActive(page.status) || page.turns.some((entry) => isActive(entry.status))))

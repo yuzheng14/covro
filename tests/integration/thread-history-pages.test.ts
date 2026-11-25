@@ -178,7 +178,9 @@ it('pages the history of a new paginated fork', async () => {
   cleanups.push(() => adapter.stop());
   await adapter.start();
   const source = await adapter.createThread(resource.project);
-  const fork = await adapter.forkThreadPage(source.id, resource.project);
+  const fork = await adapter.forkThread(source.id, resource.project, undefined, {
+    recentOnly: true,
+  });
   expect(fork).toMatchObject({ historyMode: 'paginated', forkedFromId: source.id });
   expect(fork.turns).toHaveLength(12);
   expect(fork.history?.olderCursor).toBeTruthy();
