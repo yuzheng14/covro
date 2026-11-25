@@ -113,13 +113,21 @@ export async function runDaemon(configPath: string) {
       } else if (request.url === '/update-status') {
         response.end(JSON.stringify(await updates!.status()));
       } else if (request.url === '/update-check') {
-        if (runtime?.service.isInMaintenance()) throw runtime.service.maintenanceError();
         const channel = (input as { channel?: unknown }).channel;
         if (channel !== undefined && !['stable', 'beta', 'dev'].includes(String(channel)))
           throw new Error('Invalid channel');
-        response.end(
-          JSON.stringify(await updates!.check(channel as 'stable' | 'beta' | 'dev' | undefined)),
-        );
+        // CLI status also polls the current transaction. Keep those reads available
+        // even when installation or maintenance prevents a fresh registry lookup.
+        const status = runtime?.service.isInMaintenance()
+          ? await updates!.status()
+          : await updates!
+              .check(channel as 'stable' | 'beta' | 'dev' | undefined)
+              .catch((error: unknown) => {
+                if (error instanceof AppError && error.code === 'UPDATE_PLAN_FIXED')
+                  return updates!.status();
+                throw error;
+              });
+        response.end(JSON.stringify(status));
       } else if (request.url === '/update') {
         response.end(
           JSON.stringify(await updates!.start(input as Parameters<UpdateManager['start']>[0])),
