@@ -9,9 +9,12 @@ const sidebarWaiting = (page: Page) =>
   page.locator('.thread-row:has(.thread-selected) .thread-status-waitingInput');
 
 async function send(page: Page, text: string, status = '已完成') {
+  const turns = page.locator('.conversation-content .turn');
+  const before = await turns.count();
   await page.getByRole('textbox', { name: '任务内容', exact: true }).fill(text);
   await page.getByRole('button', { name: '发送任务', exact: true }).click();
-  await expect(page.locator('.turn-heading .status').last()).toHaveText(status);
+  await expect(turns).toHaveCount(before + 1);
+  await expect(turns.last().locator('.turn-heading .status')).toHaveText(status);
 }
 
 test('paged questions jump to the exact old card and skip only the chosen question', async ({
@@ -83,13 +86,13 @@ test('paged questions jump to the exact old card and skip only the chosen questi
   await entry(page).click();
   await expect(dialog(page).locator('li')).toHaveCount(3);
   const row = dialog(page).locator('li').filter({ hasText: '项目名称是什么？' });
+  const skip = row.getByRole('button', { name: 'Skip', exact: true });
+  await expect(skip).toBeEnabled();
   const dismiss = page.waitForRequest((r) => r.url().endsWith('/questions/dismiss'));
-  await row
-    .getByRole('button', { name: 'Skip', exact: true })
-    .evaluate((button: HTMLButtonElement) => {
-      button.click();
-      button.click();
-    });
+  await skip.evaluate((button: HTMLButtonElement) => {
+    button.click();
+    button.click();
+  });
   const submitted = await dismiss;
   expect(submitted.postDataJSON().questionIds).toHaveLength(1);
   await expect(dialog(page).locator('li')).toHaveCount(2);
