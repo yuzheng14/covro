@@ -126,7 +126,11 @@ test('loads the preferred project first and bounds other startup reads', async (
     expect(overviewReads).toBe(1);
     expect(new Set(requested).size).toBe(5);
     expect(peak).toBeLessThanOrEqual(4);
-    await page.screenshot({ path: info.outputPath('preferred-project-first.png') });
+    await confirmCompatibility(page);
+    await row(page, preferred.id).scrollIntoViewIfNeeded();
+    await page.getByRole('complementary', { name: '项目与会话' }).screenshot({
+      path: info.outputPath('preferred-project-first.png'),
+    });
   } finally {
     releaseOverview();
     release();
