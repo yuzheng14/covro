@@ -190,6 +190,7 @@
   "loop_failed": "실패",
   "loop_interrupted": "중단됨",
   "loop_unknown": "확인 필요",
+  "loop_reconciled": "확인 완료, 결과 알 수 없음",
   "loopReason_archived": "세션이 보관됨",
   "loopReason_unavailable": "세션 또는 설정을 사용할 수 없음",
   "loopReason_uncertain": "마지막 실행 결과를 확인해야 함",

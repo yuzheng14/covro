@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0764fc3c-65bd-499d-9c49-98a343a5025d",
+  "id": "0aecd616-1212-4484-97e6-ef6c39ae343b",
   "prevId": "77bd151d-e8e2-4765-aafc-bbc9d6a0f6f9",
   "tables": {
     "background_tasks": {
@@ -664,6 +664,13 @@
             "thread_id"
           ],
           "isUnique": false
+        },
+        "session_loops_run_idx": {
+          "name": "session_loops_run_idx",
+          "columns": [
+            "last_operation_id"
+          ],
+          "isUnique": true
         },
         "session_loops_due_idx": {
           "name": "session_loops_due_idx",

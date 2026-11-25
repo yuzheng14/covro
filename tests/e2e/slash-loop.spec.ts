@@ -38,6 +38,8 @@ test('creates a fixed loop and retains its controls and state after reload', asy
   await dialog.screenshot({ path: join(tmpdir(), 'covro-345-loop-paused.png') });
   await dialog.getByRole('button', { name: '关闭', exact: true }).click();
   await page.reload();
+  await expect(page.locator('.turn')).toHaveCount(1);
+  await expect(page.locator('.connection-badge.connection-connected')).toBeVisible();
   await input.fill('/loop');
   await input.press('Enter');
   await expect(row).toContainText('已暂停');

@@ -255,7 +255,10 @@ function unavailableReason(name: SlashCommandName, context: SlashCommandContext)
   if (context.connection !== 'connected')
     return t('commands:you_are_offline_wait_for_the_connection_to');
   if (name === 'loop') {
-    if (!context.thread || !context.openLoops) return t('commands:select_a_session_first');
+    if (!context.thread || !context.openLoops)
+      return context.selectedId
+        ? t('commands:session_loading_try_again_shortly')
+        : t('commands:select_a_session_first');
     return undefined;
   }
   if (name === 'diff') {

@@ -190,6 +190,7 @@
   "loop_failed": "Failed",
   "loop_interrupted": "Interrupted",
   "loop_unknown": "Needs checking",
+  "loop_reconciled": "Checked, result unknown",
   "loopReason_archived": "Session archived",
   "loopReason_unavailable": "Session or configuration unavailable",
   "loopReason_uncertain": "Last dispatch needs checking",

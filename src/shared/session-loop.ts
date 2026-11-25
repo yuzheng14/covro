@@ -19,7 +19,8 @@ export interface CreateSessionLoop extends OperationInput {
 export type SessionLoopAction = 'pause' | 'resume' | 'cancel';
 export type SessionLoopStatus = 'active' | 'paused' | 'cancelled' | 'finished';
 export type SessionLoopReason = 'archived' | 'unavailable' | 'uncertain' | 'deleted' | 'limit';
-export type SessionLoopResult = 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown';
+export type SessionLoopResult =
+  'running' | 'completed' | 'failed' | 'interrupted' | 'unknown' | 'reconciled';
 
 export interface SessionLoop {
   id: string;

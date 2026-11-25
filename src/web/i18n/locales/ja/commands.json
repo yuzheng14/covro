@@ -190,6 +190,7 @@
   "loop_failed": "失敗",
   "loop_interrupted": "中断",
   "loop_unknown": "確認が必要",
+  "loop_reconciled": "確認済み、結果は不明",
   "loopReason_archived": "セッションはアーカイブ済み",
   "loopReason_unavailable": "セッションまたは設定を利用できません",
   "loopReason_uncertain": "前回の実行結果を確認してください",

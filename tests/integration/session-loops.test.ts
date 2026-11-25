@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { MODEL_CAPACITY_MESSAGE } from '../../src/shared/turn-errors';
 import { GatewayService } from '../../src/server/service';
 import {
   LOOP_MIN_INTERVAL,
@@ -15,6 +16,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
   for (const fn of close.splice(0)) fn();
 });
 
@@ -171,5 +173,75 @@ it('skips downtime and holds an uncertain dispatch without replaying it', async 
   now += 8 * LOOP_MIN_INTERVAL;
   await restarted.tickSessionLoops();
   expect(start).toHaveBeenCalledTimes(1);
+  const uncertain = ctx.store.activeForThread(ctx.id)!;
+  await restarted.reconcileOperation(uncertain.operationId, {
+    clientOperationId: operationId(),
+    confirmEnded: true,
+  });
+  await restarted.tickSessionLoops();
+  const checked = (await restarted.listSessionLoops(ctx.id))[0]!;
+  expect(checked.lastResult).toBe('reconciled');
+  await restarted.controlSessionLoop(ctx.id, loop.id, {
+    clientOperationId: operationId(),
+    action: 'resume',
+    version: checked.version,
+  });
+  now += LOOP_MIN_INTERVAL;
+  await restarted.tickSessionLoops();
+  expect(start).toHaveBeenCalledTimes(2);
   await restarted.shutdown();
+});
+
+it('counts an automatic capacity retry as the same scheduled run', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const ctx = await setup();
+  await ctx.createLoop();
+  now += LOOP_MIN_INTERVAL;
+  await ctx.service.tickSessionLoops();
+  const thread = ctx.codex.threads.get(ctx.id)!;
+  const turn = thread.turns.at(-1)!;
+  turn.status = 'failed';
+  turn.error = MODEL_CAPACITY_MESSAGE;
+  turn.errorCode = 'serverOverloaded';
+  thread.status = 'failed';
+  ctx.codex.emit({ type: 'turn', threadId: ctx.id, turn: structuredClone(turn) });
+  now += LOOP_MIN_INTERVAL;
+  await ctx.service.tickSessionLoops();
+  expect(ctx.codex.starts).toBe(2);
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(ctx.codex.starts).toBe(3);
+  expect(thread.turns.at(-1)?.items[0]?.text).toBe('');
+  ctx.codex.complete(ctx.id, 'turn-3');
+  expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+    runs: 1,
+    lastResult: 'completed',
+    lastTurnId: 'turn-3',
+  });
+});
+
+it('pauses on archive and waits for a manual resume after unarchiving', async () => {
+  const ctx = await setup();
+  const loop = await ctx.createLoop();
+  await ctx.service.setThreadArchived(ctx.id, { clientOperationId: operationId(), archived: true });
+  now += LOOP_MIN_INTERVAL;
+  await ctx.service.tickSessionLoops();
+  expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+    id: loop.id,
+    status: 'paused',
+    reason: 'archived',
+  });
+  await ctx.service.setThreadArchived(ctx.id, {
+    clientOperationId: operationId(),
+    archived: false,
+  });
+  await ctx.service.tickSessionLoops();
+  expect(ctx.codex.starts).toBe(1);
+  await ctx.service.controlSessionLoop(ctx.id, loop.id, {
+    clientOperationId: operationId(),
+    action: 'resume',
+    version: 1,
+  });
+  now += LOOP_MIN_INTERVAL;
+  await ctx.service.tickSessionLoops();
+  expect(ctx.codex.starts).toBe(2);
 });

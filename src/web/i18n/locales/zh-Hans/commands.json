@@ -190,6 +190,7 @@
   "loop_failed": "失败",
   "loop_interrupted": "已中断",
   "loop_unknown": "待核对",
+  "loop_reconciled": "已核对，结果未知",
   "loopReason_archived": "会话已归档",
   "loopReason_unavailable": "会话或运行配置不可用",
   "loopReason_uncertain": "上次派发结果待核对",

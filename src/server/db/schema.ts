@@ -209,6 +209,7 @@ export const sessionLoops = sqliteTable(
   },
   (table) => [
     index('session_loops_thread_idx').on(table.threadId),
+    uniqueIndex('session_loops_run_idx').on(table.lastOperationId),
     index('session_loops_due_idx').on(table.status, table.nextRunAt),
   ],
 );

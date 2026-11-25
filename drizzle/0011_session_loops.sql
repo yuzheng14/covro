@@ -21,4 +21,5 @@ CREATE TABLE `session_loops` (
 );
 --> statement-breakpoint
 CREATE INDEX `session_loops_thread_idx` ON `session_loops` (`thread_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `session_loops_run_idx` ON `session_loops` (`last_operation_id`);--> statement-breakpoint
 CREATE INDEX `session_loops_due_idx` ON `session_loops` (`status`,`next_run_at`);

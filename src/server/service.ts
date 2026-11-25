@@ -1661,6 +1661,8 @@ export class GatewayService {
         );
     if (turn && isTerminal(turn.status)) {
       this.loops.record(row, turn.status as SessionLoopResult, turn.id);
+    } else if (operation?.reconciledAt != null) {
+      this.loops.record(row, 'reconciled', turnId ?? null);
     } else if (operation?.state === 'failed') {
       this.loops.record(row, 'failed', turnId ?? null);
     } else if (operation?.state === 'unknown' || marker?.state === 'unknown') {
