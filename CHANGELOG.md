@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.13.0](https://github.com/yuzheng14/covro/compare/v0.12.0...v0.13.0) (2026-11-25)
+
+
+### Features
+
+* **automation:** add fixed-interval session loops ([#389](https://github.com/yuzheng14/covro/issues/389)) ([32e22d4](https://github.com/yuzheng14/covro/commit/32e22d4be82caca9ccc6c25431fc88f0744746af)), closes [#345](https://github.com/yuzheng14/covro/issues/345)
+* **settings:** add appearance controls, AI defaults, and global instructions ([#361](https://github.com/yuzheng14/covro/issues/361)) ([2b85533](https://github.com/yuzheng14/covro/commit/2b85533a15c1e7b3be73623900ab3d637ff5a0db))
+
+
+### Bug Fixes
+
+* **header:** adapt actions to available conversation width ([#379](https://github.com/yuzheng14/covro/issues/379)) ([027b927](https://github.com/yuzheng14/covro/commit/027b927ba6d9f99cef6d4cfe4fd5369da6a2c98d)), closes [#373](https://github.com/yuzheng14/covro/issues/373)
+* **mobile:** anchor the composer to the visible viewport ([#378](https://github.com/yuzheng14/covro/issues/378)) ([50d58d0](https://github.com/yuzheng14/covro/commit/50d58d0a363beace8fdc712e96a18aee0b7a2333)), closes [#372](https://github.com/yuzheng14/covro/issues/372)
+
+
+### Performance Improvements
+
+* **session:** defer Git checkout discovery during session reads ([#382](https://github.com/yuzheng14/covro/issues/382)) ([f952cc4](https://github.com/yuzheng14/covro/commit/f952cc462095e3f4e554630765ee2928db6f5c81))
+* **session:** reduce work on initial history reads ([#383](https://github.com/yuzheng14/covro/issues/383)) ([9ae9986](https://github.com/yuzheng14/covro/commit/9ae9986143a02e23a6a92b40a00da9a3167f91f2))
+* **workspace:** prioritize session lists during startup ([#384](https://github.com/yuzheng14/covro/issues/384)) ([62aeb1b](https://github.com/yuzheng14/covro/commit/62aeb1b4b88cdc5a0f7fcb2fd634c7f7d7fb2cf7))
+
 ## [Unreleased]
 
 ### Added
