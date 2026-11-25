@@ -19,10 +19,25 @@ export interface HistoryChunk {
 /** History pages never replace live metadata, actions, or execution ownership. */
 export class HistoryWindow {
   readonly chunks: HistoryChunk[] = [];
+  private recentOlder: TurnView[] = [];
   constructor(public latest: ThreadView) {}
   update(latest: ThreadView) {
+    if (!latest.history?.olderCursor) {
+      this.chunks.length = 0;
+      this.recentOlder = [];
+    } else if (this.chunks.length && latest.historyMode === 'paginated') {
+      // A rolling recent page may drop turns already on screen above the live output.
+      // Keep those turns between the recent page and any older pages the reader opened.
+      const first = latest.turns[0]?.id;
+      const shift = this.latest.turns.findIndex((turn) => turn.id === first);
+      if (shift > 0)
+        this.recentOlder = mergeHistoryTurns(this.recentOlder, this.latest.turns.slice(0, shift));
+      else if (shift < 0 && !latest.turns.some((turn) => turn.id === this.latest.turns[0]?.id)) {
+        this.chunks.length = 0;
+        this.recentOlder = [];
+      }
+    }
     this.latest = latest;
-    if (!latest.history || latest.history.olderCursor === null) this.chunks.length = 0;
   }
   get cursor(): string | null {
     return (
@@ -66,7 +81,7 @@ export class HistoryWindow {
       turns = mergeHistoryTurns(turns, chunk.page.turns);
     return {
       ...this.latest,
-      turns: mergeHistoryTurns(turns, this.latest.turns),
+      turns: mergeHistoryTurns(mergeHistoryTurns(turns, this.recentOlder), this.latest.turns),
       history: { olderCursor: this.cursor },
     };
   }

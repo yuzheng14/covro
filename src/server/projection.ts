@@ -443,7 +443,7 @@ export class Projection {
     turn.status = status;
   }
 
-  private limit(item: ItemView): ItemView {
+  limit(item: ItemView): ItemView {
     const result = structuredClone(item);
     if (result.images) {
       let bytes = 0;

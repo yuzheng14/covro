@@ -41,7 +41,10 @@ describe('forking a conversation without taking over its execution', () => {
       result: { threadId: 'fork-1', forkedFromId: sourceId },
     });
     expect(ctx.service.getOperation(input.clientOperationId)).toEqual(result);
-    expect(fork).toHaveBeenCalledWith(sourceId, realpathSync(ctx.project), settings);
+    expect(fork).toHaveBeenCalledWith(sourceId, realpathSync(ctx.project), settings, {
+      recentOnly: true,
+      deferOutput: true,
+    });
     const forked = await ctx.service.getThread('fork-1');
     expect(forked).toMatchObject({
       id: 'fork-1',
@@ -219,7 +222,10 @@ describe('forking a conversation without taking over its execution', () => {
     symlinkSync(nested, alias);
     ctx.codex.threads.set('allowed', threadView('allowed', alias));
     await ctx.service.forkThread('allowed', { clientOperationId: operationId() });
-    expect(fork).toHaveBeenCalledWith('allowed', realpathSync(nested), undefined);
+    expect(fork).toHaveBeenCalledWith('allowed', realpathSync(nested), undefined, {
+      recentOnly: true,
+      deferOutput: true,
+    });
     expect((await ctx.service.getThread('fork-1')).cwd).toBe(realpathSync(nested));
   });
 });

@@ -55,6 +55,7 @@ import type {
   Cursor,
   ForkThreadInput,
   InterruptInput,
+  ItemView,
   Operation,
   OperationInput,
   SaveModelDefaultsInput,
@@ -91,6 +92,7 @@ import { ProjectRegistry } from './projects.js';
 import { BackgroundTasks } from './background-tasks.js';
 import { ProjectClones } from './project-clones.js';
 import { renderThreadExport } from './thread-export.js';
+import { HISTORY_PAGE_SIZE, historyCursor } from '../codex/history-cursor.js';
 import { readLocalImage } from './images.js';
 import { temporaryFileRoots, type FileScope } from './local-files.js';
 import { readLocalMarkdown } from './markdown.js';
@@ -106,6 +108,26 @@ import {
 } from '../shared/session-loop.js';
 import type { AppTransaction } from './db/index.js';
 import { SessionLoopStore, sessionLoopView, type SessionLoopRow } from './db/session-loops.js';
+
+function deferLiveToolOutput(item: ItemView): ItemView {
+  if (item.status !== 'completed' || item.outputDeferred || item.error) return item;
+  if (item.type === 'commandExecution' && item.output)
+    return { ...item, output: '', outputDeferred: true };
+  if (item.type !== 'mcpToolCall' || !item.details || typeof item.details !== 'object') return item;
+  const details = item.details as Record<string, unknown>;
+  const result = details.result as Record<string, unknown> | null | undefined;
+  if (
+    details.error != null ||
+    !Array.isArray(result?.content) ||
+    !result.content.length ||
+    result.structuredContent != null ||
+    result._meta != null ||
+    !result.content.every((part) => part?.type === 'text' && typeof part.text === 'string') ||
+    !result.content.some((part) => part.text.length)
+  )
+    return item;
+  return { ...item, outputDeferred: true, details: { ...details, result: null } };
+}
 
 export interface GatewayOptions {
   logger?: Logger;
@@ -1086,7 +1108,7 @@ export class GatewayService {
       if (this.codex.ready) await this.refreshThreadMetadata(threadId);
       this.workspaces.assertOwnership(cached.projectId, cached.cwd, cached.id);
       await this.refreshGoal(cached);
-      return { ...this.threadView(cached), turns: [], actions: [] };
+      return { ...this.threadView(cached, false), turns: [], actions: [] };
     }
     // Checking a remembered ID must not load history or resume an unsent thread.
     const metadata = this.threadView(this.normalize(await this.codex.readThreadMetadata(threadId)));
@@ -1096,7 +1118,7 @@ export class GatewayService {
   }
 
   async getThread(threadId: string): Promise<ThreadView> {
-    return this.threadView(await this.openThread(threadId, true));
+    return this.detailThreadView(await this.openThread(threadId, true));
   }
 
   private async openThread(threadId: string, waitForExecution: boolean): Promise<ThreadView> {
@@ -1126,7 +1148,7 @@ export class GatewayService {
     const thread = await this.openThread(threadId, false);
     // Copy and cursor share one synchronous boundary; later events are replayable.
     return {
-      data: this.threadView(thread),
+      data: this.detailThreadView(thread),
       cursor: this.events.cursor(),
     };
   }
@@ -1140,7 +1162,9 @@ export class GatewayService {
     this.workspaces.assertOwnership(metadata.projectId, metadata.cwd, metadata.id);
     if (!this.codex.readThreadPage)
       throw new AppError('HISTORY_UNAVAILABLE', '当前 Codex 不支持历史分页', 409);
-    const page = this.normalize(await this.codex.readThreadPage(threadId, cursor));
+    const page = this.normalize(
+      await this.codex.readThreadPage(threadId, cursor, { deferOutput: true }),
+    );
     this.workspaces.assertOwnership(page.projectId, page.cwd, page.id);
     const links = this.retryLinks(threadId);
     for (const turn of page.turns) {
@@ -1148,6 +1172,25 @@ export class GatewayService {
       if (root) turn.retryOf = root;
     }
     return this.threadView(page);
+  }
+
+  async getThreadItem(threadId: string, turnId: string, itemId: string): Promise<ItemView> {
+    this.ensureReady();
+    const epoch = this.codex.epoch;
+    const metadata = await this.codex.readThreadMetadata(threadId);
+    if (metadata.id !== threadId || this.codex.epoch !== epoch)
+      throw new AppError('THREAD_ITEM_NOT_FOUND', '工具输出不可用。', 404);
+    const thread = this.normalize(metadata);
+    this.workspaces.assertOwnership(thread.projectId, thread.cwd, threadId);
+    if (thread.historyMode !== 'paginated' || !this.codex.readThreadItem)
+      throw new AppError('HISTORY_UNAVAILABLE', '当前 Codex 不支持按条读取历史。', 409);
+    const item = await this.codex.readThreadItem(threadId, turnId, itemId);
+    this.workspaces.assertOwnership(thread.projectId, thread.cwd, threadId);
+    if (this.codex.epoch !== epoch)
+      throw new AppError('HISTORY_CURSOR_EXPIRED', '读取期间 Codex 已重启，请重新打开会话。', 409);
+    if (item.id !== itemId || !['commandExecution', 'mcpToolCall'].includes(item.type))
+      throw new AppError('THREAD_ITEM_NOT_FOUND', '工具输出不可用。', 404);
+    return this.projection.limit(item);
   }
 
   async exportThread(threadId: string) {
@@ -1250,7 +1293,8 @@ export class GatewayService {
     const revision = this.projection.revision(threadId);
     const loading = (async () => {
       const thread = this.normalize(
-        await (this.codex.readThreadPage?.(threadId) ?? this.codex.readThread(threadId)),
+        await (this.codex.readThreadPage?.(threadId, undefined, { deferOutput: true }) ??
+          this.codex.readThread(threadId)),
       );
       // Managed live projections are never replaced by a history read finishing later.
       const current = this.projection.get(threadId);
@@ -1393,7 +1437,9 @@ export class GatewayService {
         delete current.resumeError;
         pending = (async () => {
           try {
-            const resumed = await this.codex.resumeThread(threadId, ownership.cwd, input.settings);
+            const resumed = await this.codex.resumeThread(threadId, ownership.cwd, input.settings, {
+              deferOutput: true,
+            });
             if (this.codex.epoch !== epoch || !this.codex.ready)
               throw new Error('恢复请求已发送，但 Codex 实例已变化，请核对提交');
             this.projection.thread(
@@ -1432,7 +1478,9 @@ export class GatewayService {
       this.ensureReady();
       // Reading through getThread can reconcile recovered execution markers. Forking only
       // reads the source: its ownership, projection and execution remain untouched.
-      const source = this.projection.get(threadId) ?? (await this.codex.readThread(threadId));
+      const source =
+        this.projection.get(threadId) ??
+        (await (this.codex.readThreadPage?.(threadId) ?? this.codex.readThread(threadId)));
       const link = this.store.getThreadLink(threadId);
       const ownership = link
         ? this.workspaces.assertOwnership(link.projectId, source.cwd, threadId)
@@ -1449,7 +1497,10 @@ export class GatewayService {
       this.store.dispatch(input.clientOperationId);
       this.pendingThreadCreations.set(input.clientOperationId, forkCwd);
       const settingsSequence = this.runtimeSettingsSequence;
-      const forked = await this.codex.forkThread(threadId, forkCwd, input.settings);
+      const forked = await this.codex.forkThread(threadId, forkCwd, input.settings, {
+        recentOnly: true,
+        deferOutput: true,
+      });
       if (forked.id === threadId || this.codex.epoch !== epoch || !this.codex.ready)
         throw new Error('分叉请求已发送，但返回的新会话无法确认，请核对历史');
       let normalized: ThreadView;
@@ -2342,7 +2393,7 @@ export class GatewayService {
       await this.loadThread(threadId);
       const history = this.normalize(await this.codex.readThread(threadId));
       this.workspaces.assertOwnership(history.projectId, history.cwd, history.id);
-      this.projection.thread(history, true);
+      this.mergeQuestionHistory(history);
       const states = this.questionTracking.states(threadId);
       for (const id of new Set(input.questionIds)) {
         const question = this.findAsyncQuestion(history, id);
@@ -2359,6 +2410,25 @@ export class GatewayService {
       this.publishThread(threadId);
       return { result: { threadId, questionIds: ids } };
     });
+  }
+
+  private mergeQuestionHistory(history: ThreadView): void {
+    const current = this.projection.get(history.id);
+    if (history.historyMode !== 'paginated' || !current) {
+      this.projection.thread(history, true);
+      return;
+    }
+    // Question validation can inspect any saved turn. Only update turns already in the
+    // live projection, preserving its history cursor and keeping old output off the wire.
+    const visibleTurns = new Set(current.turns.map((turn) => turn.id));
+    this.projection.thread(
+      {
+        ...history,
+        history: current.history,
+        turns: history.turns.filter((turn) => visibleTurns.has(turn.id)),
+      },
+      true,
+    );
   }
 
   private questionItems(history: ThreadView) {
@@ -2395,7 +2465,7 @@ export class GatewayService {
     // Read native history too: another client can have answered since our last notification.
     const history = this.normalize(await this.codex.readThread(threadId));
     this.workspaces.assertOwnership(history.projectId, history.cwd, history.id);
-    this.projection.thread(history, true);
+    this.mergeQuestionHistory(history);
     const states = this.questionTracking.states(threadId);
     const ids: string[] = [];
     for (const reply of replies) {
@@ -2507,7 +2577,7 @@ export class GatewayService {
     } else await this.getThread(threadId);
     return this.events.subscribe(
       threadId,
-      () => this.threadView(this.projection.get(threadId)!),
+      () => this.detailThreadView(this.projection.get(threadId)!),
       after,
       listener,
       incremental,
@@ -2738,10 +2808,14 @@ export class GatewayService {
 
         const page =
           actual.historyMode === 'paginated' && this.codex.readThreadPage
-            ? await this.codex.readThreadPage(marker.threadId)
+            ? await this.codex.readThreadPage(marker.threadId, undefined, { deferOutput: true })
             : actual;
         if (!current() || page.id !== marker.threadId) return;
-        this.workspaces.assertOwnership(ownership.projectId, page.cwd, page.id);
+        if (
+          this.workspaces.assertOwnership(ownership.projectId, page.cwd, page.id).workspaceKey !==
+          marker.workspaceKey
+        )
+          return;
         // Only the recent display page enters the projection. Keep an older known turn's
         // recovered status when it is already represented by a live event.
         if (ended && (isActive(page.status) || page.turns.some((entry) => isActive(entry.status))))
@@ -2940,9 +3014,9 @@ export class GatewayService {
   private publishThread(threadId: string, streamed?: StreamedItem): void {
     const thread = this.projection.get(threadId);
     if (!thread) return;
-    const view = this.threadView(thread, false);
+    const view = this.detailThreadView(thread, false);
     this.events.publishThread(view, streamed);
-    const summary = toThreadSummary(view);
+    const summary = toThreadSummary({ ...view, turns: thread.turns });
     const encoded = JSON.stringify(summary);
     if (this.summaries.get(threadId) === encoded) return;
     try {
@@ -2973,6 +3047,30 @@ export class GatewayService {
       this.capacityLinks.set(threadId, links);
     }
     return links;
+  }
+
+  private detailThreadView(thread: ThreadView, copy = true): ThreadView {
+    if (thread.historyMode !== 'paginated') return this.threadView(thread, copy);
+    const bounded = thread.turns.length > HISTORY_PAGE_SIZE;
+    const history = bounded
+      ? {
+          olderCursor: historyCursor(thread.id, this.codex.epoch, {
+            beforeTurnId: thread.turns[thread.turns.length - HISTORY_PAGE_SIZE]!.id,
+          }),
+        }
+      : thread.history;
+    let turns = bounded ? thread.turns.slice(-HISTORY_PAGE_SIZE) : thread.turns;
+    if (this.codex.canReadDeferredOutput?.()) {
+      turns = turns.map((turn) =>
+        isTerminal(turn.status)
+          ? {
+              ...turn,
+              items: turn.items.map(deferLiveToolOutput),
+            }
+          : turn,
+      );
+    }
+    return this.threadView({ ...thread, turns, history }, copy);
   }
 
   private threadView(thread: ThreadView, copy = true): ThreadView {

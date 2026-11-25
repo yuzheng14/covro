@@ -8,6 +8,7 @@ import type {
   TextFile,
   RuntimeSettings,
   Operation,
+  ItemView,
   Project,
   ProjectClone,
   CloneProjectInput,
@@ -142,6 +143,12 @@ export const api = {
   threadHistory: (threadId: string, cursor: string, signal: AbortSignal) =>
     request<ThreadView>(
       `/api/threads/${encodeURIComponent(threadId)}/history?${new URLSearchParams({ cursor })}`,
+      undefined,
+      signal,
+    ),
+  threadItem: (threadId: string, turnId: string, itemId: string, signal: AbortSignal) =>
+    request<ItemView>(
+      `/api/threads/${encodeURIComponent(threadId)}/turns/${encodeURIComponent(turnId)}/items/${encodeURIComponent(itemId)}`,
       undefined,
       signal,
     ),

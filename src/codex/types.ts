@@ -60,6 +60,14 @@ export type CodexEvent =
   | { type: 'action'; action: PendingAction }
   | { type: 'actionResolved'; actionId: string }
   | { type: 'runtime'; diagnostics: CodexDiagnostics };
+export interface HistoryReadOptions {
+  deferOutput?: boolean;
+}
+
+export interface ForkHistoryOptions extends HistoryReadOptions {
+  recentOnly?: boolean;
+}
+
 export interface CodexClient {
   launchIdentity?(): import('./identity.js').CodexIdentity | undefined;
   refreshAccountUsage?(): Promise<import('../shared/account-usage.js').AccountUsage>;
@@ -104,12 +112,24 @@ export interface CodexClient {
   /** Recovery evidence for a known turn, without loading its items. */
   readExecutionHistory?(id: string, turnId: string): Promise<ThreadView>;
   /** One recent-to-old history page, without reading the rest of the conversation. */
-  readThreadPage?(id: string, cursor?: string): Promise<ThreadView>;
+  readThreadPage?(id: string, cursor?: string, options?: HistoryReadOptions): Promise<ThreadView>;
+  canReadDeferredOutput?(): boolean;
+  readThreadItem?(id: string, turnId: string, itemId: string): Promise<ItemView>;
   loadedThreadActivity?(): Promise<ReadonlySet<ThreadView['status']>>;
   readThreadMetadata(id: string): Promise<ThreadView>;
   createThread(cwd: string, settings?: Settings): Promise<ThreadView>;
-  forkThread(id: string, cwd: string, settings?: Settings): Promise<ThreadView>;
-  resumeThread(id: string, cwd: string, settings?: Settings): Promise<ThreadView>;
+  forkThread(
+    id: string,
+    cwd: string,
+    settings?: Settings,
+    options?: ForkHistoryOptions,
+  ): Promise<ThreadView>;
+  resumeThread(
+    id: string,
+    cwd: string,
+    settings?: Settings,
+    options?: HistoryReadOptions,
+  ): Promise<ThreadView>;
   startTurn(
     id: string,
     cwd: string,
