@@ -12,6 +12,8 @@
   "checking": "확인 중…",
   "unarchive": "보관 해제",
   "technical_details": "기술 세부 정보",
+  "copy_technical_details": "세부 정보 복사",
+  "technical_details_copy_failed": "복사하지 못했습니다. 세부 정보를 선택해 직접 복사하세요.",
   "free_text_answer": "{{v0}}: 직접 입력",
   "enter_your_answer": "답변을 입력하세요",
   "confirm_selection": "선택 확인",

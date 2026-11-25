@@ -12,6 +12,8 @@
   "checking": "正在核对…",
   "unarchive": "取消归档",
   "technical_details": "技术详情",
+  "copy_technical_details": "复制详情",
+  "technical_details_copy_failed": "复制失败。请选中详情并手动复制。",
   "free_text_answer": "{{v0}}：自由回答",
   "enter_your_answer": "输入你的回答",
   "confirm_selection": "确认选择",

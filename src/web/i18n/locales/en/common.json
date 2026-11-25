@@ -12,6 +12,8 @@
   "checking": "Checking…",
   "unarchive": "Unarchive",
   "technical_details": "Technical details",
+  "copy_technical_details": "Copy details",
+  "technical_details_copy_failed": "Couldn’t copy. Select the details to copy them manually.",
   "free_text_answer": "{{v0}}: free-text answer",
   "enter_your_answer": "Enter your answer",
   "confirm_selection": "Confirm selection",
