@@ -476,6 +476,13 @@ export function createApp({
       ),
     );
   });
+  app.post('/api/threads/:threadId/completion-read', async (c) => {
+    const { turnId } = z
+      .object({ turnId: schemas.idSchema })
+      .strict()
+      .parse(await c.req.json());
+    return c.json(await service.readTurnCompletion(id(c.req.param('threadId')), turnId));
+  });
   app.get('/api/threads/:threadId', async (c) =>
     c.json(await service.getThread(id(c.req.param('threadId')))),
   );

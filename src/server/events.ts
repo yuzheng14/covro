@@ -83,7 +83,9 @@ export class EventHub {
   }
 
   /** Overview is recovered via HTTP; it never consumes the detailed replay buffer. */
-  publishSummary(summary: ThreadSummary): void {
+  publishSummary(summary: ThreadSummary, advanceCursor = false): void {
+    // Standalone overview changes need their own boundary to win over in-flight list reads.
+    if (advanceCursor) this.seq++;
     const event: BusinessEvent = {
       type: 'event',
       kind: 'threadSummary',

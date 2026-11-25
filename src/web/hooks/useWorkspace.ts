@@ -371,6 +371,18 @@ export function useWorkspace() {
     },
     [forgetSelection],
   );
+  const readTurnCompletion = useCallback(
+    async (threadId: string, turnId: string) => {
+      try {
+        const { summary, cursor } = await api.readTurnCompletion(threadId, turnId);
+        updateSummary(summary, cursor);
+      } catch (problem) {
+        if (problem instanceof HttpError && problem.authenticationRequired) report(problem);
+        throw problem;
+      }
+    },
+    [report, updateSummary],
+  );
   const updateThread = useCallback(
     (next: ThreadView) => {
       if (
@@ -1472,6 +1484,7 @@ export function useWorkspace() {
         await refreshThread();
     },
     projectThreads,
+    readTurnCompletion,
     cacheScope,
     threads: projectThreads[projectId]?.data ?? [],
     nextCursor: projectThreads[projectId]?.nextCursor ?? null,

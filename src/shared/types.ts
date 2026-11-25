@@ -340,6 +340,8 @@ export type ThreadSummary = Pick<
   /** Stable identity of the latest known turn; absent when history is not loaded. */
   lastTurnId?: string;
   lastTurnStatus?: RunStatus;
+  /** Present on server summaries with a known completed turn. */
+  lastTurnRead?: boolean;
 };
 export interface Question {
   id: string;

@@ -91,7 +91,11 @@ export function App() {
   const updates = useUpdates();
   const backgroundTasks = useBackgroundTasks(!workspace.authRequired);
   const [updatesOpen, setUpdatesOpen] = useState(false);
-  const { isUnreadCompletion, markCompletedRead } = useThreadReadState();
+  const { isUnreadCompletion, markCompletedRead } = useThreadReadState(
+    workspace.projectThreads,
+    workspace.connection === 'connected' && !workspace.authRequired,
+    workspace.readTurnCompletion,
+  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const header = useRef<HTMLElement>(null);
   const compactHeader = useCompactHeader(header);

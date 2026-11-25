@@ -9,13 +9,14 @@ import { parseConfig } from '../../src/server/config.js';
 import { toThreadSummary } from '../../src/shared/thread-summary.js';
 import { asyncQuestionId } from '../../src/shared/async-questions.js';
 import type { PendingAction, ServerMessage, ThreadPage } from '../../src/shared/types.js';
+import { captureLogger } from '../fixtures/logging.js';
 import { databaseHarness } from './domain-db-helpers.js';
 import { deferred, DomainCodex, operationId, threadView } from './domain-helpers.js';
 
 vi.mock('node:child_process', { spy: true });
 
 const resources: ReturnType<typeof databaseHarness>[] = [];
-function setup() {
+function setup(logger?: ReturnType<typeof captureLogger>['logger']) {
   const database = databaseHarness();
   resources.push(database);
   const first = join(database.directory, 'first');
@@ -30,7 +31,7 @@ function setup() {
   ];
   const projects = new ProjectRegistry(registered);
   const codex = new DomainCodex();
-  const service = new GatewayService({ store: database.store, projects, codex });
+  const service = new GatewayService({ logger, store: database.store, projects, codex });
   const config = parseConfig(
     { projects: registered, dataDir: join(database.directory, 'data') },
     join(database.directory, 'config.json'),
@@ -120,6 +121,59 @@ describe('project conversation overview', () => {
     expect(unloaded).toMatchObject({ updatedAt: 456 });
     expect(unloaded).not.toHaveProperty('lastTurnId');
     expect(unloaded).not.toHaveProperty('lastTurnStatus');
+  });
+
+  it('persists each read, publishes it once and ignores receipts from earlier turns', async () => {
+    const logs = captureLogger();
+    const { service, codex, projects, store, app } = setup(logs.logger);
+    const id = await create(service, 'first');
+    const overview: ServerMessage[] = [];
+    service.subscribeOverview((event) => overview.push(event));
+    const read = async (turnId: string) => {
+      const response = await app.request(
+        `http://127.0.0.1:8787/api/threads/${id}/completion-read`,
+        {
+          method: 'POST',
+          headers: { Origin: 'http://127.0.0.1:8787', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ turnId }),
+        },
+      );
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+
+    await service.startTurn(id, { clientOperationId: operationId(), text: 'first completion' });
+    codex.complete(id, 'turn-1');
+    const before = await service.listThreadSummaries('first');
+    expect(before.data[0]).toMatchObject({ lastTurnId: 'turn-1', lastTurnRead: false });
+    const [first, duplicate] = await Promise.all([read('turn-1'), read('turn-1')]);
+    expect(first).toEqual(duplicate);
+    expect(first).toMatchObject({ summary: { lastTurnId: 'turn-1', lastTurnRead: true } });
+    expect(first.cursor.seq).toBeGreaterThan(before.cursor.seq);
+    expect(
+      overview.filter(
+        (event) =>
+          event.type === 'event' &&
+          event.kind === 'threadSummary' &&
+          (event.payload as { lastTurnRead?: boolean }).lastTurnRead,
+      ),
+    ).toHaveLength(1);
+    expect(logs.records.filter((entry) => entry.event === 'completion.read')).toMatchObject([
+      { threadId: id, turnId: 'turn-1' },
+    ]);
+
+    await service.startTurn(id, { clientOperationId: operationId(), text: 'second completion' });
+    codex.complete(id, 'turn-2');
+    expect(await read('turn-1')).toMatchObject({
+      summary: { lastTurnId: 'turn-2', lastTurnRead: false },
+    });
+    await read('turn-2');
+    const restarted = new GatewayService({ store, projects, codex });
+    await restarted.getThread(id);
+    expect((await restarted.listThreadSummaries('first')).data[0]).toMatchObject({
+      lastTurnId: 'turn-2',
+      lastTurnRead: true,
+    });
   });
 
   it('retains the creator through metadata refreshes, projection updates and summary broadcasts', async () => {
@@ -324,6 +378,7 @@ describe('project conversation overview', () => {
           pendingQuestionCount: 0,
           lastTurnId: 'turn',
           lastTurnStatus: 'completed',
+          lastTurnRead: false,
           historyVisible: true,
         },
       ],

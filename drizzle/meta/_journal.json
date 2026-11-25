@@ -85,6 +85,13 @@
       "when": 1795592925374,
       "tag": "0011_session_loops",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1795615361556,
+      "tag": "0012_turn_completion_reads",
+      "breakpoints": true
     }
   ]
 }
