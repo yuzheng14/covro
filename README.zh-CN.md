@@ -97,6 +97,8 @@ pnpm start -- --config ./config.local.json
 
 在更新面板或通过 `covro update` 选择稳定、预览或开发渠道。受管升级支持 **macOS 和 Linux 的 npm 全局安装**，其他安装方式沿用原更新方法。默认 Node 变更后，可切换到已安装全局 Covro 的受支持环境，Covro 同版本也可迁移。自动安装默认关闭，且只接受已验证的 Codex 组合；未验证组合需明确确认。Covro 不会升级 Codex CLI。升级排障与复制失败详情的方法见[更新与恢复](docs/distribution.md)。
 
+自动升级等待任务空闲时，仍可检查当前订阅渠道。
+
 ## 你的电脑，你的工作台
 
 Covro 通过 `codex app-server` 连接已有 CLI，沿用你的 Codex 登录与配置。任务在运行服务的电脑上执行，项目和 Codex 历史也留在那里；登录凭据不会复制到浏览器，Codex 仍会访问你配置的模型提供方。

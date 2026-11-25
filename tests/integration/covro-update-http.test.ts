@@ -71,6 +71,19 @@ it('keeps status available while fencing project and task mutations during activ
   expect(response.headers.get('cache-control')).toBe('no-store');
 });
 
+it('accepts a version lookup through the update endpoint and fences it during maintenance', async () => {
+  const { post, h, updates } = fixture();
+  expect((await post('/api/updates/check', {})).status).toBe(200);
+  expect(updates.check).toHaveBeenCalledExactlyOnceWith(undefined);
+  for (const reason of ['update', 'backup', 'restart'] as const) {
+    h.service.setMaintenance(true, reason);
+    expect((await post('/api/updates/check', {})).status).toBe(503);
+  }
+  expect(updates.check).toHaveBeenCalledTimes(1);
+  expect(updates.start).not.toHaveBeenCalled();
+  expect(updates.cancel).not.toHaveBeenCalled();
+});
+
 it('validates release-note selectors and keeps update controls independent of GitHub failures', async () => {
   const { app, origin, post, updates } = fixture();
   const fetcher = vi.fn(async () => Response.json({}, { status: 429 }));

@@ -12,6 +12,7 @@ import * as registry from '../../src/updates/registry.js';
 import * as runtime from '../../src/updates/runtime.js';
 import * as codexTarget from '../../src/updates/codex-target.js';
 import { nullLogger } from '../../src/logging/logger.js';
+import { deferred } from './domain-helpers.js';
 const identity = {
   binary: 'codex',
   resolved: '/codex',
@@ -342,21 +343,23 @@ it('merges automatic targets into one plan and freezes exact metadata only after
     code: 'UPDATE_PLAN_FIXED',
   });
   setTags({ latest: '0.4.0', dev: '0.5.0-dev.1' });
-  await manager.check();
+  await expect(manager.check()).rejects.toMatchObject({ code: 'UPDATE_PLAN_FIXED' });
   expect((await manager.status()).run?.target).toBe('0.3.0-dev.4');
 });
 
 it.each(['disable', 'channel', 'cancel', 'off-on'] as const)(
-  'invalidates waiting plans on %s, including changes during probes',
+  'invalidates waiting plans and in-flight queries on %s',
   async (change) => {
     packageInfo.version = '0.1.0';
-    const { manager, fetch } = await fixture('dev', '0.2.0', true);
+    const { manager, fetch, setTags } = await fixture('dev', '0.2.0', true);
     const run = (await manager.status()).run!;
     let release!: () => void;
     const pending = new Promise<void>((done) => {
       release = done;
     });
     const original = fetch.getMockImplementation()!;
+    setTags({ latest: '0.2.0', dev: '0.3.0-dev.2' });
+    fetch.mockClear();
     fetch.mockImplementation(async (...args) => {
       await pending;
       return original(...args);
@@ -364,7 +367,8 @@ it.each(['disable', 'channel', 'cancel', 'off-on'] as const)(
     const probe = expect(manager.automaticPlan(run.id, true)).rejects.toMatchObject({
       code: 'UPDATE_PLAN_CANCELLED',
     });
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    const manual = manager.check();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(4));
     if (change === 'cancel') await manager.cancel(run.id);
     else {
       await manager.configure({
@@ -375,6 +379,8 @@ it.each(['disable', 'channel', 'cancel', 'off-on'] as const)(
     }
     release();
     await probe;
+    expect((await manual).available?.version).not.toBe('0.3.0-dev.2');
+    expect((await manager.status()).run?.id).toBe(run.id);
     await expect(
       manager.freezeAutomatic(run.id, Date.now(), () => ({ ready: true })),
     ).rejects.toMatchObject({ code: 'UPDATE_PLAN_CANCELLED' });
@@ -388,7 +394,7 @@ it('never marks a manually selected candidate as a moving automatic plan', async
   const started = await manager.start({ clientOperationId: crypto.randomUUID() });
   expect(started.run?.automatic).toBeUndefined();
   setTags({ latest: '0.3.0', dev: '0.4.0-dev.1' });
-  await manager.check();
+  await expect(manager.check()).rejects.toMatchObject({ code: 'UPDATE_PLAN_FIXED' });
   expect((await manager.status()).run?.target).toBe('0.2.0');
 });
 
@@ -433,11 +439,94 @@ it('reports a channel probe failure even with a preinstalled fallback, so automa
   });
 });
 
-it('keeps a waiting automatic subscription when another client previews a different channel', async () => {
+it('coalesces manual requests for the subscription and offers a newer candidate to the same plan', async () => {
   packageInfo.version = '0.1.0';
-  const { manager } = await fixture('dev', '0.2.0', true);
+  const { manager, fetch, setTags } = await fixture('dev', '0.2.0', true);
   const run = (await manager.status()).run!;
-  await manager.check('stable');
-  expect((await manager.automaticPlan(run.id)).available?.requestedChannel).toBe('dev');
-  expect((await manager.status()).run?.id).toBe(run.id);
+  setTags({ latest: '0.2.0', dev: '0.3.0-dev.2' });
+  const gate = deferred<void>();
+  const lookup = fetch.getMockImplementation()!;
+  fetch.mockClear();
+  fetch.mockImplementationOnce(async (...args) => {
+    await gate.promise;
+    return lookup(...args);
+  });
+  const first = manager.check('stable');
+  const second = manager.check();
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  expect((await manager.automaticPlan(run.id)).available?.version).toBe('0.2.0');
+  gate.resolve();
+  for (const result of await Promise.all([first, second]))
+    expect(result).toMatchObject({
+      available: { version: '0.3.0-dev.2', requestedChannel: 'dev' },
+      run: { id: run.id, target: '0.2.0', phase: 'waiting' },
+    });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect((await manager.automaticPlan(run.id)).available?.version).toBe('0.3.0-dev.2');
+  expect(spawn).toHaveBeenCalledOnce();
+});
+
+it('keeps the waiting plan on no update or a failed manual lookup and still rechecks before install', async () => {
+  packageInfo.version = '0.1.0';
+  const { manager, setTags } = await fixture('dev', '0.2.0', true);
+  const run = (await manager.status()).run!;
+  setTags({ latest: '0.1.0', dev: 404 });
+  expect(await manager.check()).toMatchObject({
+    available: { version: '0.1.0' },
+    run,
+  });
+  setTags({ latest: '0.1.0', dev: 503 });
+  expect(await manager.check()).toMatchObject({
+    available: undefined,
+    checkError: expect.stringContaining('503'),
+    run,
+  });
+  expect((await manager.automaticPlan(run.id)).available?.version).toBe('0.2.0');
+  expect((await manager.automaticPlan(run.id, true)).checkError).toContain('503');
+  setTags({ latest: '0.2.0', dev: '0.3.0-dev.2' });
+  expect(await manager.check()).toMatchObject({
+    available: { version: '0.3.0-dev.2', codex: { status: 'verified' } },
+    checkError: undefined,
+    run,
+  });
+  expect((await manager.automaticPlan(run.id)).available?.version).toBe('0.3.0-dev.2');
+  expect(spawn).toHaveBeenCalledOnce();
+});
+
+it('freezes the fresh candidate while a manual lookup is in flight and discards the late result', async () => {
+  packageInfo.version = '0.1.0';
+  const { manager, fetch, setTags } = await fixture('dev', '0.2.0', true);
+  const run = (await manager.status()).run!;
+  const gate = deferred<void>();
+  const started = deferred<void>();
+  const lookup = fetch.getMockImplementation()!;
+  setTags({ latest: '0.2.0', dev: '0.5.0-dev.2' });
+  fetch.mockImplementationOnce(async (...args) => {
+    const response = await lookup(...args);
+    started.resolve();
+    await gate.promise;
+    return response;
+  });
+  const manual = manager.check();
+  await started.promise;
+  setTags({ latest: '0.2.0', dev: '0.4.0-dev.1' });
+  const fresh = await manager.automaticPlan(run.id, true);
+  const candidate = fresh.available!;
+  await saveJson(join(manager.context!.directory, 'run.json'), {
+    ...run,
+    target: candidate.version,
+    commit: candidate.commit,
+    candidate,
+  });
+  const frozen = await manager.freezeAutomatic(run.id, fresh.checkedAt!, () => ({ ready: true }));
+  expect(frozen.run).toMatchObject({
+    phase: 'installing',
+    target: '0.4.0-dev.1',
+    commit: 'commit-0.4.0-dev.1',
+  });
+  await expect(manager.check()).rejects.toMatchObject({ code: 'UPDATE_PLAN_FIXED' });
+  gate.resolve();
+  expect((await manual).run).toEqual(frozen.run);
+  expect((await manager.status()).available?.version).not.toBe('0.5.0-dev.2');
+  expect(spawn).toHaveBeenCalledOnce();
 });

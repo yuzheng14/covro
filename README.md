@@ -97,6 +97,8 @@ The host computer must stay awake and online. When adding projects remotely, ent
 
 Choose stable, beta, or dev in the update panel or with `covro update`. Managed upgrades support **macOS and Linux npm global installations**; other installations use their original update method. Updates can also switch to a supported default Node environment with an existing global Covro installation, including the same Covro version. Automatic installation is off by default and requires verified Codex compatibility; unverified combinations need explicit confirmation. Covro does not upgrade Codex CLI. See [updates and recovery](docs/distribution.md) for troubleshooting, including how to copy failed-upgrade diagnostics.
 
+You can check your subscribed channel while an automatic upgrade waits for tasks to finish.
+
 ## Your computer, your workspace
 
 Covro connects to your existing CLI through `codex app-server`. Tasks, projects, and Codex history stay on the host computer, using your Codex login and configuration. Login credentials are not copied into the browser; Codex still uses its configured model provider.

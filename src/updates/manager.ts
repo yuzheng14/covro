@@ -15,8 +15,10 @@ import lockfile from 'proper-lockfile';
 import { z } from 'zod';
 import { AppError } from '../shared/errors.js';
 import {
+  automaticUpdateWaiting,
   releaseChannels,
   updateActive,
+  updateCanCheck,
   type UpdateController,
   type UpdateSettings,
   type UpdateRun,
@@ -65,6 +67,11 @@ export interface UpdateContext {
   reuseTarget?: boolean;
   source?: LaunchRuntime;
 }
+type UpdateCheck = Pick<UpdateStatus, 'available' | 'checkError'> & {
+  checkedAt: number;
+  runtime: { target?: RuntimeTarget; error?: string };
+};
+
 export class UpdateManager implements UpdateController {
   private settings: UpdateSettings = {
     channel:
@@ -83,16 +90,13 @@ export class UpdateManager implements UpdateController {
     this.mutations = result.catch(() => {});
     return result;
   }
-  private available?: UpdateStatus['available'];
-  private checkedAt?: number;
-  private checkError?: string;
-  private target?: RuntimeTarget;
-  private runtimeError?: string;
-  private codexTarget?: CodexTarget;
-  private codexError?: string;
+  private latestCheck?: UpdateCheck;
+  private planCheck?: { id: string; result: UpdateCheck };
+  private lastCheckAt = 0;
+  private checkGeneration = 0;
+  private readonly manualChecks = new Map<string, Promise<UpdateStatus>>();
   private reason = '当前服务未通过 covro 启动，网页仅支持版本检测；升级请使用原部署方式。';
   private timer?: ReturnType<typeof setInterval>;
-  private checks: Promise<unknown> = Promise.resolve();
   private checking?: Promise<UpdateStatus>;
   private readonly network = new AbortController();
   readonly context?: UpdateContext;
@@ -178,11 +182,16 @@ export class UpdateManager implements UpdateController {
   }
 
   async status(): Promise<UpdateStatus> {
-    const { available, codexTarget, codexError, target, runtimeError, checkedAt, checkError } =
-      this;
-    const run = this.context
-      ? await readJson<UpdateRun>(join(this.context.directory, 'run.json'))
-      : undefined;
+    const run = await this.readRun();
+    return this.snapshot(this.latestCheck, run);
+  }
+  private readRun() {
+    return this.context
+      ? readJson<UpdateRun>(join(this.context.directory, 'run.json'))
+      : Promise.resolve(undefined);
+  }
+  private snapshot(check?: UpdateCheck, run?: UpdateRun): UpdateStatus {
+    const target = check?.runtime.target;
     return {
       version: packageInfo.version ?? 'unknown',
       commit: packageInfo.covroCommit,
@@ -191,38 +200,71 @@ export class UpdateManager implements UpdateController {
       settings: this.settings,
       supported: !this.reason,
       unsupportedReason: this.reason || undefined,
-      available: available
-        ? {
-            ...available,
-            codex: {
-              ...assessCodexCompatibility(
-                available.codex.manifest,
-                codexTarget?.identity.version ?? null,
-                'restart',
-              ),
-              ...(codexError ? { reason: codexError } : {}),
-            },
-            codexTarget: codexTarget,
-            codexError: codexError,
-          }
-        : undefined,
-      checkedAt: checkedAt,
-      checkError: checkError,
+      available: check?.available,
+      checkedAt: check?.checkedAt,
+      checkError: check?.checkError,
       run,
       runtime: {
         current: runningRuntime(),
         target: target,
         migration: Boolean(target && runtimeChanged(target)),
-        error: runtimeError,
+        error: check?.runtime.error,
       },
     };
   }
-  check(channel: ReleaseChannel = this.settings.channel) {
-    const result = this.checks.then(() => this.performCheck(channel));
-    this.checks = result.catch(() => {});
+  private publishCheck(check: UpdateCheck) {
+    if (!this.latestCheck || check.checkedAt > this.latestCheck.checkedAt) this.latestCheck = check;
+  }
+  async check(requestedChannel?: ReleaseChannel) {
+    // Admit and publish under the same lock as plan freeze, but probe outside it.
+    const { result } = await this.serialize(async () => {
+      const run = await this.readRun();
+      if (!updateCanCheck(run))
+        throw new AppError('UPDATE_PLAN_FIXED', '升级事务已开始，请等待完成后检查更新', 409);
+      const channel = automaticUpdateWaiting(run)
+        ? this.settings.channel
+        : (requestedChannel ?? this.settings.channel);
+      const generation = this.checkGeneration;
+      const key = `${generation}:${run?.id ?? ''}:${channel}`;
+      const existing = this.manualChecks.get(key);
+      if (existing) return { result: existing };
+      const result = this.probe(channel)
+        .then((check) =>
+          this.serialize(async () => {
+            const current = await this.readRun();
+            if (
+              generation === this.checkGeneration &&
+              run?.id === current?.id &&
+              updateCanCheck(current)
+            ) {
+              this.publishCheck(check);
+              const candidate = check.available;
+              // A failed or empty manual check is retryable while the worker is waiting.
+              // The worker still makes a fresh, authoritative check before installation.
+              if (
+                current &&
+                candidate &&
+                !check.checkError &&
+                !check.runtime.error &&
+                compareVersions(candidate.version, current.target) >= 0 &&
+                candidate.requestedChannel === current.channel &&
+                (await this.isCurrentAutomaticPlan(current)) &&
+                (this.planCheck?.id !== current.id ||
+                  check.checkedAt > this.planCheck.result.checkedAt)
+              )
+                this.planCheck = { id: current.id, result: check };
+            }
+            return this.snapshot(this.latestCheck, current);
+          }),
+        )
+        .finally(() => this.manualChecks.delete(key));
+      this.manualChecks.set(key, result);
+      return { result };
+    });
     return result;
   }
-  private async performCheck(channel: ReleaseChannel) {
+  private async probe(channel: ReleaseChannel): Promise<UpdateCheck> {
+    const checkedAt = (this.lastCheckAt = Math.max(Date.now(), this.lastCheckAt + 1));
     const started = performance.now();
     this.logger.debug('update.check_started');
     let target: RuntimeTarget | undefined;
@@ -305,11 +347,16 @@ export class UpdateManager implements UpdateController {
         channel: release.channel,
         commit: release.covroCommit ?? release.gitHead,
         downgrade: compareVersions(release.version, packageInfo.version) < 0,
-        codex: assessCodexCompatibility(
-          release.covroCodex,
-          codexTarget?.identity.version ?? null,
-          'restart',
-        ),
+        codex: {
+          ...assessCodexCompatibility(
+            release.covroCodex,
+            codexTarget?.identity.version ?? null,
+            'restart',
+          ),
+          ...(codexError ? { reason: codexError } : {}),
+        },
+        codexTarget,
+        codexError,
       };
     } catch (error) {
       available = undefined;
@@ -319,18 +366,11 @@ export class UpdateManager implements UpdateController {
         durationMs: Math.round(performance.now() - started),
       });
     }
-    this.target = target;
-    this.runtimeError = runtimeError;
-    this.codexTarget = codexTarget;
-    this.codexError = codexError;
-    this.available = available;
-    this.checkError = checkError;
-    this.checkedAt = Date.now();
     this.logger.debug('update.check_finished', {
       outcome: checkError ? 'failed' : 'succeeded',
       durationMs: Math.round(performance.now() - started),
     });
-    return this.status();
+    return { checkedAt, available, checkError, runtime: { target, error: runtimeError } };
   }
   async configure(input: UpdateSettings) {
     if (!this.context || this.reason) throw new AppError('UPDATE_UNSUPPORTED', this.reason, 409);
@@ -338,23 +378,34 @@ export class UpdateManager implements UpdateController {
       const run = (await this.status()).run;
       if (updateActive(run) && (!run?.automatic || run.transactionStartedAt))
         throw new AppError('UPDATE_PLAN_FIXED', '升级事务已开始，请等待完成后更改设置', 409);
-      this.settings = settingsSchema.parse(input);
+      const next = settingsSchema.parse(input);
+      if (
+        next.channel !== this.settings.channel &&
+        this.latestCheck?.available?.requestedChannel !== next.channel
+      )
+        this.latestCheck = undefined;
+      this.settings = next;
       this.revision = crypto.randomUUID();
+      this.checkGeneration++;
       await saveJson(join(this.context!.directory, 'settings-revision.json'), this.revision);
       await saveJson(join(this.context!.directory, 'settings.json'), this.settings);
       return this.status();
     });
   }
   private async assertAutomaticPlan(run: UpdateRun) {
-    if (!run.automatic || run.transactionStartedAt || run.phase !== 'waiting')
+    if (!automaticUpdateWaiting(run))
       throw new AppError('UPDATE_PLAN_FIXED', '升级已开始或不是自动升级计划', 409);
-    if (
-      !this.settings.automatic ||
-      this.settings.channel !== run.channel ||
-      this.revision !== run.automatic.revision ||
-      (await readJson(join(this.context!.directory, `cancel-${run.id}.json`)))
-    )
+    if (!(await this.isCurrentAutomaticPlan(run)))
       throw new AppError('UPDATE_PLAN_CANCELLED', '自动升级计划已取消或设置已变化', 409);
+  }
+  private async isCurrentAutomaticPlan(run: UpdateRun) {
+    return (
+      automaticUpdateWaiting(run) &&
+      this.settings.automatic &&
+      this.settings.channel === run.channel &&
+      this.revision === run.automatic?.revision &&
+      !(await readJson(join(this.context!.directory, `cancel-${run.id}.json`)))
+    );
   }
   async cancel(id: string) {
     z.uuid().parse(id);
@@ -366,25 +417,34 @@ export class UpdateManager implements UpdateController {
       if (!run.automatic || run.transactionStartedAt || run.phase !== 'waiting')
         throw new AppError('UPDATE_PLAN_FIXED', '升级已开始，不能取消事务', 409);
       await saveJson(join(this.context!.directory, `cancel-${id}.json`), { cancelled: true });
+      this.checkGeneration++;
       return this.status();
     });
   }
   async automaticPlan(id: string, fresh = false) {
-    const run = (await this.status()).run;
+    const run = await this.readRun();
     if (!run || run.id !== id) throw new Error('升级计划已变化');
     await this.assertAutomaticPlan(run);
-    const otherChannel = this.available && this.available.requestedChannel !== run.channel;
-    const result = fresh || otherChannel ? await this.check(run.channel) : await this.status();
-    // Settings/cancellation may have changed while a network/runtime probe was pending.
-    await this.assertAutomaticPlan(run);
-    return result;
+    const cached = this.planCheck?.id === id ? this.planCheck.result : undefined;
+    if (!fresh && cached) return this.snapshot(cached, run);
+    const check = await this.probe(run.channel);
+    return this.serialize(async () => {
+      const current = await this.readRun();
+      if (!current || current.id !== id) throw new Error('升级计划已变化');
+      await this.assertAutomaticPlan(current);
+      const latest = this.planCheck?.id === id ? this.planCheck.result : undefined;
+      if (latest && latest.checkedAt > check.checkedAt) return this.snapshot(latest, current);
+      this.planCheck = { id, result: check };
+      if (!this.manualChecks.size) this.publishCheck(check);
+      return this.snapshot(check, current);
+    });
   }
   async freezeAutomatic(id: string, checkedAt: number, readiness: () => { ready: boolean }) {
     return this.serialize(async () => {
-      const status = await this.status();
-      const run = status.run;
+      const run = await this.readRun();
       if (!run || run.id !== id) throw new Error('升级计划已变化');
       await this.assertAutomaticPlan(run);
+      const status = this.snapshot(this.planCheck?.id === id ? this.planCheck.result : undefined);
       const candidate = status.available;
       const target = status.runtime?.target as RuntimeTarget | undefined;
       if (
@@ -520,7 +580,10 @@ export class UpdateManager implements UpdateController {
         return before;
       }
       const channel = request.channel ?? this.settings.channel;
-      const checked = await this.check(channel);
+      const generation = this.checkGeneration;
+      const result = await this.probe(channel);
+      if (generation === this.checkGeneration) this.publishCheck(result);
+      const checked = this.snapshot(result);
       const target = checked.runtime?.target as RuntimeTarget | undefined;
       if (
         automatic &&
@@ -620,6 +683,7 @@ export class UpdateManager implements UpdateController {
       await copyFile(join(packageRoot, 'dist/update-worker.cjs'), worker);
       const log = await open(join(this.context.directory, 'update.log'), 'a', 0o600);
       try {
+        if (automatic) this.planCheck = { id: run.id, result };
         await saveJson(join(this.context.directory, 'run.json'), run);
         await saveJson(
           join(this.context.directory, 'requests', `${request.clientOperationId}.json`),
@@ -695,10 +759,17 @@ export class UpdateManager implements UpdateController {
   private async automatic() {
     if (!this.context || this.reason || this.checking) return;
     this.checking = (async () => {
+      const before = await this.readRun();
+      if (!updateCanCheck(before)) return this.snapshot(this.latestCheck, before);
+      const revision = this.revision;
       const result = await this.check();
       if (
+        !updateActive(before) &&
+        revision === this.revision &&
         this.settings.automatic &&
+        !result.checkError &&
         result.available &&
+        result.available.requestedChannel === this.settings.channel &&
         result.available.codex.status === 'verified' &&
         !result.available.downgrade &&
         compareVersions(result.available.version, packageInfo.version) > 0 &&

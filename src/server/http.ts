@@ -137,6 +137,10 @@ export function createApp({
   app.use('/api/*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
     if (['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) return next();
+    if (c.req.path === '/api/updates/check') {
+      if (service.isInMaintenance()) throw service.maintenanceError();
+      return next();
+    }
     if (c.req.path === '/api/service-restart' || c.req.path === '/api/service-restart/cancel')
       return next();
     if (
