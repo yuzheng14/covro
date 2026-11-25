@@ -57,3 +57,12 @@ it('locates turn and item snapshots in their newest authoritative history page',
   expect(window.getHistoryCursor('item-a')).toBe('older');
   expect(window.getHistoryCursor('missing')).toBeUndefined();
 });
+
+it('preserves loaded history as turns leave the live page', () => {
+  const window = new HistoryWindow({ ...page(['c', 'd'], 'before-c'), historyMode: 'paginated' });
+  window.append('before-c', page(['a', 'b'], null));
+  window.update({ ...page(['d', 'e'], 'before-d'), historyMode: 'paginated' });
+  window.update({ ...page(['e', 'f'], 'before-e'), historyMode: 'paginated' });
+  expect(window.view.turns.map((turn) => turn.id)).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+  expect(window.cursor).toBeNull();
+});

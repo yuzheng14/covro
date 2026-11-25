@@ -105,10 +105,13 @@ export interface CodexClient {
   readExecutionHistory?(id: string, turnId: string): Promise<ThreadView>;
   /** One recent-to-old history page, without reading the rest of the conversation. */
   readThreadPage?(id: string, cursor?: string): Promise<ThreadView>;
+  canReadDeferredOutput?(): boolean;
+  readThreadItem?(id: string, turnId: string, itemId: string): Promise<ItemView>;
   loadedThreadActivity?(): Promise<ReadonlySet<ThreadView['status']>>;
   readThreadMetadata(id: string): Promise<ThreadView>;
   createThread(cwd: string, settings?: Settings): Promise<ThreadView>;
   forkThread(id: string, cwd: string, settings?: Settings): Promise<ThreadView>;
+  forkThreadPage?(id: string, cwd: string, settings?: Settings): Promise<ThreadView>;
   resumeThread(id: string, cwd: string, settings?: Settings): Promise<ThreadView>;
   startTurn(
     id: string,

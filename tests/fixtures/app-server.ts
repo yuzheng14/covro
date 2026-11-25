@@ -17,6 +17,11 @@ type ClientRequest =
   | StableClientRequest
   | {
       id: RequestId;
+      method: 'thread/items/read';
+      params: { threadId: string; turnId: string; itemIds: string[] };
+    }
+  | {
+      id: RequestId;
       method: 'turn/settings/update';
       params: {
         threadId: string;
@@ -2381,14 +2386,40 @@ function receive(request: ClientRequest): void {
       const offset = Number(request.params.cursor ?? 0);
       const limit = Math.min(options.historyPageSize ?? 100, request.params.limit ?? 100);
       reply(request.id, {
-        data: items.slice(offset, offset + limit).map((item) => ({
+        data: items.slice(offset, offset + limit).map((item) => {
+          const deferral = request.params.deferOutput;
+          const defer =
+            deferral &&
+            'commandExecution' in deferral &&
+            deferral.commandExecution === true &&
+            item.type === 'commandExecution' &&
+            item.status === 'completed' &&
+            item.aggregatedOutput;
+          return {
+            turnId: request.params.turnId,
+            item: defer ? { ...item, aggregatedOutput: null } : item,
+            ...(defer ? { outputDeferred: true } : {}),
+            startedAtMs: null,
+            completedAtMs: null,
+          };
+        }),
+        nextCursor: offset + limit < items.length ? String(offset + limit) : null,
+        backwardsCursor: null,
+      });
+      break;
+    }
+    case 'thread/items/read': {
+      const turn = threads
+        .get(request.params.threadId)
+        ?.turns.find((entry) => entry.id === request.params.turnId);
+      const items = turn?.items.filter((item) => request.params.itemIds.includes(item.id)) ?? [];
+      reply(request.id, {
+        data: items.map((item) => ({
           turnId: request.params.turnId,
           item,
           startedAtMs: null,
           completedAtMs: null,
         })),
-        nextCursor: offset + limit < items.length ? String(offset + limit) : null,
-        backwardsCursor: null,
       });
       break;
     }

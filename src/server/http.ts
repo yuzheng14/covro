@@ -482,6 +482,15 @@ export function createApp({
   app.get('/api/threads/:threadId/history', async (c) =>
     c.json(await service.getThreadHistory(id(c.req.param('threadId')), c.req.query('cursor'))),
   );
+  app.get('/api/threads/:threadId/turns/:turnId/items/:itemId', async (c) =>
+    c.json(
+      await service.getThreadItem(
+        id(c.req.param('threadId')),
+        id(c.req.param('turnId')),
+        id(c.req.param('itemId')),
+      ),
+    ),
+  );
   app.get('/api/threads/:threadId/snapshot', async (c) =>
     c.json(await service.getThreadSnapshot(id(c.req.param('threadId')))),
   );

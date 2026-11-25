@@ -188,6 +188,8 @@ export interface ItemView {
   command?: string;
   cwd?: string;
   output?: string;
+  /** The persisted tool output is available from the item endpoint. */
+  outputDeferred?: boolean;
   changes?: FileChange[];
   details?: unknown;
   truncated?: boolean;

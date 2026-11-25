@@ -110,3 +110,112 @@ it('hydrates item-summary pages and retains the legacy history fallback', async 
     }
   }
 });
+
+it('bounds a warm snapshot and resumes history before its oldest visible turn', async () => {
+  const resource = harness();
+  cleanups.push(resource.close);
+  const logPath = join(resource.directory, 'requests.jsonl');
+  const adapter = new CodexAdapter({
+    binary: process.execPath,
+    args: [
+      '--import',
+      'tsx',
+      resolve('tests/fixtures/app-server.ts'),
+      '--options',
+      JSON.stringify({
+        paginated: true,
+        history: { turns: 37, itemsPerTurn: 3, itemBytes: 1000 },
+        logPath,
+      }),
+    ],
+  });
+  cleanups.push(() => adapter.stop());
+  await adapter.start();
+  const source = await adapter.createThread(resource.project);
+  const service = new GatewayService({
+    store: resource.store,
+    projects: resource.projects,
+    codex: adapter,
+  });
+  const initial = await service.getThread(source.id);
+  const full = await adapter.readThread(source.id);
+  service.projection.thread({ ...initial, managed: true, turns: full.turns });
+
+  const { data } = await service.getThreadSnapshot(source.id);
+  expect(data.turns.map((turn) => turn.id)).toEqual(full.turns.slice(-12).map((turn) => turn.id));
+  const ids = data.turns.map((turn) => turn.id);
+  let cursor = data.history?.olderCursor;
+  while (cursor) {
+    const page = await service.getThreadHistory(source.id, cursor);
+    expect(page.turns.length).toBeLessThanOrEqual(12);
+    ids.unshift(...page.turns.map((turn) => turn.id));
+    cursor = page.history?.olderCursor;
+  }
+  expect(ids).toEqual(full.turns.map((turn) => turn.id));
+
+  const prior = await readFile(logPath, 'utf8');
+  const latest = full.turns.at(-1)!;
+  const evidence = await adapter.readExecutionHistory(source.id, latest.id);
+  const requests = (await readFile(logPath, 'utf8')).slice(prior.length);
+  expect(evidence.turns.at(-1)).toMatchObject({ id: latest.id, status: latest.status, items: [] });
+  expect(requests).toContain('"itemsView":"notLoaded"');
+  expect(requests).not.toContain('thread/items/list');
+});
+
+it('pages the history of a new paginated fork', async () => {
+  const resource = harness();
+  cleanups.push(resource.close);
+  const adapter = new CodexAdapter({
+    binary: process.execPath,
+    args: [
+      '--import',
+      'tsx',
+      resolve('tests/fixtures/app-server.ts'),
+      '--options',
+      JSON.stringify({ paginated: true, history: { turns: 19, itemsPerTurn: 1, itemBytes: 10 } }),
+    ],
+  });
+  cleanups.push(() => adapter.stop());
+  await adapter.start();
+  const source = await adapter.createThread(resource.project);
+  const fork = await adapter.forkThreadPage(source.id, resource.project);
+  expect(fork).toMatchObject({ historyMode: 'paginated', forkedFromId: source.id });
+  expect(fork.turns).toHaveLength(12);
+  expect(fork.history?.olderCursor).toBeTruthy();
+});
+
+it('keeps saved tool output out of a paginated snapshot and reads it by item', async () => {
+  const resource = harness();
+  cleanups.push(resource.close);
+  const codex = new CodexAdapter({
+    binary: process.execPath,
+    args: [
+      '--import',
+      'tsx',
+      resolve('tests/fixtures/app-server.ts'),
+      '--options',
+      JSON.stringify({
+        codexVersion: '0.172.0',
+        paginated: true,
+        history: { turns: 18, itemsPerTurn: 1, itemBytes: 4000 },
+      }),
+    ],
+  });
+  cleanups.push(() => codex.stop());
+  await codex.start();
+  const source = await codex.createThread(resource.project);
+  const service = new GatewayService({ store: resource.store, projects: resource.projects, codex });
+  const snapshot = await service.getThreadSnapshot(source.id);
+  const turn = snapshot.data.turns.at(-1)!;
+  const tool = turn.items[0]!;
+  expect(tool).toMatchObject({ type: 'commandExecution', output: '', outputDeferred: true });
+  expect(await service.getThreadItem(source.id, turn.id, tool.id)).toMatchObject({
+    id: tool.id,
+    output: 'x'.repeat(4000),
+  });
+  await expect(service.getThreadItem(source.id, turn.id, 'missing')).rejects.toMatchObject({
+    code: 'THREAD_ITEM_NOT_FOUND',
+  });
+  const full = await codex.readThread(source.id);
+  expect(full.turns.at(-1)?.items[0]).toMatchObject({ output: 'x'.repeat(4000) });
+});

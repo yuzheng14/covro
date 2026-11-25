@@ -14,7 +14,7 @@ export function CollapsibleActivity({
   className?: string;
   label: string;
   summary: ReactNode;
-  children: ReactNode;
+  children: ReactNode | (() => ReactNode);
   group?: boolean;
 }) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -84,7 +84,7 @@ export function CollapsibleActivity({
         </span>
         <Icon name="chevron" size={14} />
       </summary>
-      {children}
+      {typeof children === 'function' ? open && children() : children}
     </details>
   );
 }

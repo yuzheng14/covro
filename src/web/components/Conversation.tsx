@@ -1,3 +1,5 @@
+import { api } from '../lib/api';
+import { readableError } from '../lib/utils';
 import { submittedConversation, type SubmittedItem } from '../lib/pending-user-messages';
 import { ActionCard } from './ActionCard';
 import { CapacityRetryNotice, type CapacityRetryControls } from './CapacityRetryNotice';
@@ -77,8 +79,17 @@ const activityStatusLabels: Record<string, string> = {
   },
 };
 
-function Activity({ item, streaming }: { item: ItemView; streaming: boolean }) {
-  const openDiff = useDiffPreview();
+function Activity({
+  item,
+  streaming,
+  threadId,
+  turnId,
+}: {
+  item: ItemView;
+  streaming: boolean;
+  threadId: string;
+  turnId: string;
+}) {
   return (
     <CollapsibleActivity
       className={`activity${item.type === 'commandExecution' ? ' activity-command' : ''}${item.status === 'failed' ? ' activity-failed' : ''}`}
@@ -103,72 +114,144 @@ function Activity({ item, streaming }: { item: ItemView; streaming: boolean }) {
         </>
       }
     >
-      <div className="activity-body">
-        {item.cwd && <p className="mono subtle">{item.cwd}</p>}
-        {item.command && (
-          <pre className="command">
-            <code>$ {item.command}</code>
-          </pre>
-        )}
-        {item.text && <TextContent text={item.text} streaming={streaming} />}
-        {item.output !== undefined &&
-          (item.type === 'commandExecution' ? (
-            <div className="command-output">
-              <CommandOutputCopyButton output={item.output} truncated={item.truncated} />
-              <pre className="tool-output" tabIndex={0}>
-                <code>{item.output || t('conversation:no_output_yet')}</code>
-              </pre>
-            </div>
-          ) : (
-            <pre className="tool-output">
+      {item.outputDeferred ? (
+        () => <DeferredActivityBody threadId={threadId} turnId={turnId} itemId={item.id} />
+      ) : (
+        <ActivityBody item={item} streaming={streaming} />
+      )}
+    </CollapsibleActivity>
+  );
+}
+
+function DeferredActivityBody({
+  threadId,
+  turnId,
+  itemId,
+}: {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+}) {
+  const [attempt, setAttempt] = useState(0);
+  const [result, setResult] = useState<{ item?: ItemView; error?: string }>();
+  useEffect(() => {
+    const controller = new AbortController();
+    void api
+      .threadItem(
+        threadId,
+        turnId,
+        itemId,
+        AbortSignal.any([controller.signal, AbortSignal.timeout(35_000)]),
+      )
+      .then(
+        (item) => {
+          if (!controller.signal.aborted) setResult({ item });
+        },
+        (error) => {
+          if (!controller.signal.aborted) setResult({ error: readableError(error) });
+        },
+      );
+    return () => controller.abort();
+  }, [attempt, threadId, turnId, itemId]);
+
+  if (result?.item) return <ActivityBody item={result.item} streaming={false} />;
+  return (
+    <div className="activity-body">
+      {result?.error ? (
+        <>
+          <p className="inline-error" role="alert">
+            {result.error}
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setResult(undefined);
+              setAttempt((count) => count + 1);
+            }}
+          >
+            {t('conversation:retry_loading')}
+          </Button>
+        </>
+      ) : (
+        <p role="status">{t('common:loading_2')}</p>
+      )}
+    </div>
+  );
+}
+
+function ActivityBody({ item, streaming }: { item: ItemView; streaming: boolean }) {
+  const openDiff = useDiffPreview();
+  return (
+    <div className="activity-body">
+      {item.cwd && <p className="mono subtle">{item.cwd}</p>}
+      {item.command && (
+        <pre className="command">
+          <code>$ {item.command}</code>
+        </pre>
+      )}
+      {item.text && <TextContent text={item.text} streaming={streaming} />}
+      {item.output !== undefined &&
+        (item.type === 'commandExecution' ? (
+          <div className="command-output">
+            <CommandOutputCopyButton output={item.output} truncated={item.truncated} />
+            <pre className="tool-output" tabIndex={0}>
               <code>{item.output || t('conversation:no_output_yet')}</code>
             </pre>
-          ))}
-        {item.truncated && (
-          <p className="truncation">
-            <Icon name="alert" size={14} />
-            {t('conversation:output_exceeds_the_display_limit_and_has_been')}
-          </p>
-        )}
-        {item.changes?.map((change, index) => (
-          <Button
-            className="file-change-link"
-            variant="ghost"
-            key={`${change.path}:${index}`}
-            onClick={() =>
-              openDiff({
-                id: item.id,
-                scope: message('conversation:file_changes_from_this_tool'),
-                source: 'item',
-                selectedPath: change.path,
-              })
-            }
-          >
-            <Icon name="code" size={15} />
-            <code>{change.path}</code>
-            <span>{t('conversation:view_changes')}</span>
-            <Icon name="chevron" size={14} />
-          </Button>
+          </div>
+        ) : (
+          <pre className="tool-output">
+            <code>{item.output || t('conversation:no_output_yet')}</code>
+          </pre>
         ))}
-        {item.error && <p className="inline-error">{displayMessage(item.error)}</p>}
-        {item.details !== undefined && (
-          <details className="raw-details">
-            <summary>{t('conversation:activity_details')}</summary>
-            <pre>{JSON.stringify(item.details, null, 2)}</pre>
-          </details>
-        )}
-      </div>
-    </CollapsibleActivity>
+      {item.truncated && (
+        <p className="truncation">
+          <Icon name="alert" size={14} />
+          {t('conversation:output_exceeds_the_display_limit_and_has_been')}
+        </p>
+      )}
+      {item.changes?.map((change, index) => (
+        <Button
+          className="file-change-link"
+          variant="ghost"
+          key={`${change.path}:${index}`}
+          onClick={() =>
+            openDiff({
+              id: item.id,
+              scope: message('conversation:file_changes_from_this_tool'),
+              source: 'item',
+              selectedPath: change.path,
+            })
+          }
+        >
+          <Icon name="code" size={15} />
+          <code>{change.path}</code>
+          <span>{t('conversation:view_changes')}</span>
+          <Icon name="chevron" size={14} />
+        </Button>
+      ))}
+      {item.error && <p className="inline-error">{displayMessage(item.error)}</p>}
+      {item.details !== undefined && (
+        <details className="raw-details">
+          <summary>{t('conversation:activity_details')}</summary>
+          <pre>{JSON.stringify(item.details, null, 2)}</pre>
+        </details>
+      )}
+    </div>
   );
 }
 
 function Item({
   item,
+  threadId,
+  turnId,
   questionControls,
   replies,
   streaming = false,
 }: {
   item: SubmittedItem;
+  threadId: string;
+  turnId: string;
   questionControls?: AsyncQuestionControls;
   replies?: AsyncQuestionReply[];
   streaming?: boolean;
@@ -203,7 +286,7 @@ function Item({
       </article>
     );
   }
-  return <Activity item={item} streaming={streaming} />;
+  return <Activity item={item} streaming={streaming} threadId={threadId} turnId={turnId} />;
 }
 
 function CodexReconnectNotice({ turn, offline }: { turn: TurnView; offline: boolean }) {
@@ -669,6 +752,8 @@ function ConversationContent({
                       <Item
                         key={group.key}
                         item={group.item}
+                        threadId={turn.threadId}
+                        turnId={turn.id}
                         streaming={isActive(turn.status)}
                         questionControls={questionControls}
                         replies={[
@@ -682,7 +767,13 @@ function ConversationContent({
                     ) : (
                       <ActivityGroup key={group.key} items={group.items}>
                         {group.items.map((item) => (
-                          <Item key={item.id} item={item} streaming={isActive(turn.status)} />
+                          <Item
+                            key={item.id}
+                            item={item}
+                            threadId={turn.threadId}
+                            turnId={turn.id}
+                            streaming={isActive(turn.status)}
+                          />
                         ))}
                       </ActivityGroup>
                     ),

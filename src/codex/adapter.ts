@@ -1,5 +1,6 @@
 import type { GlobalDefaultsSnapshot, SaveGlobalDefaultsInput } from '../shared/global-defaults.js';
 import type { ConfigEdit } from './generated/v2/ConfigEdit.js';
+import { HISTORY_PAGE_SIZE, historyCursor } from './history-cursor.js';
 import { questionAnswers } from '../shared/question-resolution.js';
 import { nullLogger, type Logger } from '../logging/logger.js';
 import { errorFields } from '../logging/fields.js';
@@ -7,6 +8,7 @@ import { logContext, withLogContext } from '../logging/context.js';
 import { CODEX_COMPATIBILITY } from './compatibility.js';
 import { readModels } from './models.js';
 import { AccountUsageReader } from './account-usage.js';
+import type { ItemView } from '../shared/types.js';
 import type { GetAccountRateLimitsResponse } from './generated/v2/GetAccountRateLimitsResponse.js';
 import { SHELL_TIMEOUT_MS, SHELL_OUTPUT_BYTES } from '../shared/shell.js';
 import type { CommandExecResponse } from './generated/v2/CommandExecResponse.js';
@@ -165,6 +167,15 @@ const CAPABILITIES = [
   'account/read',
   'account/rateLimits/read',
 ];
+// The pinned stable bindings omit these experimental 0.172.0 fields and method.
+type DeferredThreadItem = ThreadItemsListResponse['data'][number] & { outputDeferred?: boolean };
+type AdapterRequest =
+  | ClientRequest
+  | {
+      method: 'thread/items/read';
+      params: { threadId: string; turnId: string; itemIds: string[] };
+    };
+
 type Responses = {
   'command/exec': CommandExecResponse;
   'command/exec/terminate': CommandExecTerminateResponse;
@@ -189,7 +200,8 @@ type Responses = {
   'thread/unarchive': ThreadUnarchiveResponse;
   'thread/compact/start': ThreadCompactStartResponse;
   'thread/turns/list': ThreadTurnsListResponse;
-  'thread/items/list': ThreadItemsListResponse;
+  'thread/items/list': Omit<ThreadItemsListResponse, 'data'> & { data: DeferredThreadItem[] };
+  'thread/items/read': { data: DeferredThreadItem[] };
   'turn/start': TurnStartResponse;
   'review/start': ReviewStartResponse;
   'thread/goal/get': { goal: ThreadGoal | null };
@@ -611,7 +623,7 @@ export class CodexAdapter implements CodexClient {
   }
   private async call<M extends keyof Responses>(
     method: M,
-    params: Extract<ClientRequest, { method: M }>['params'],
+    params: Extract<AdapterRequest, { method: M }>['params'],
     initializing = false,
     timeoutMs?: number,
   ): Promise<Responses[M]> {
@@ -903,16 +915,18 @@ export class CodexAdapter implements CodexClient {
   async readThreadPage(id: string, continuation?: string): Promise<ThreadView> {
     const epoch = this.epoch;
     let cursor: string | null = null;
+    let beforeTurnId: string | undefined;
     if (continuation) {
       try {
         const decoded = JSON.parse(Buffer.from(continuation, 'base64url').toString('utf8'));
         if (
           decoded.threadId !== id ||
           decoded.epoch !== epoch ||
-          typeof decoded.cursor !== 'string'
+          (typeof decoded.cursor !== 'string' && typeof decoded.beforeTurnId !== 'string')
         )
           throw new Error('Invalid cursor');
-        cursor = decoded.cursor;
+        cursor = typeof decoded.cursor === 'string' ? decoded.cursor : null;
+        beforeTurnId = decoded.beforeTurnId;
       } catch {
         throw new AppError('HISTORY_CURSOR_EXPIRED', '历史分页已失效，请重新同步会话。', 409);
       }
@@ -921,66 +935,86 @@ export class CodexAdapter implements CodexClient {
     const header = await this.readThreadHeader(id);
     // Legacy rollout files expose no paging protocol. Keep the compatibility path explicit.
     if (header.historyMode !== 'paginated') return this.readLegacyThread(id, sequence);
-    const page = await this.call('thread/turns/list', {
-      threadId: id,
-      cursor,
-      limit: 12,
-      sortDirection: 'desc',
-      itemsView: 'summary',
-    });
-    if (page.nextCursor && page.nextCursor === cursor)
-      throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid turn pagination');
-    await this.hydrateTurns(id, page.data);
+    const seen = new Set<string>();
+    let turns: Thread['turns'];
+    do {
+      const page: ThreadTurnsListResponse = await this.call('thread/turns/list', {
+        threadId: id,
+        cursor,
+        limit: HISTORY_PAGE_SIZE,
+        sortDirection: 'desc',
+        itemsView: 'summary',
+      });
+      const anchor = beforeTurnId ? page.data.findIndex((turn) => turn.id === beforeTurnId) : -1;
+      if (anchor >= 0) beforeTurnId = undefined;
+      turns = beforeTurnId ? [] : page.data.slice(anchor + 1);
+      if (
+        page.nextCursor &&
+        (page.nextCursor === cursor || seen.has(page.nextCursor) || seen.size >= 1000)
+      )
+        throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid turn pagination');
+      cursor = page.nextCursor;
+      if (cursor) seen.add(cursor);
+    } while (cursor && !turns.length);
+    if (beforeTurnId)
+      throw new AppError('HISTORY_CURSOR_EXPIRED', '历史分页已失效，请重新同步会话。', 409);
+    const deferred = await this.hydrateTurns(id, turns);
     if (this.epoch !== epoch)
       throw new AppError('HISTORY_CURSOR_EXPIRED', '读取期间 Codex 已重启，请重新同步会话。', 409);
-    const view = await this.storedThread(
-      { ...header, turns: page.data.slice().reverse() },
-      sequence,
-    );
+    const view = await this.storedThread({ ...header, turns: turns.reverse() }, sequence);
+    for (const turn of view.turns) {
+      const items = deferred.get(turn.id);
+      if (!items) continue;
+      for (const item of turn.items) if (items.has(item.id)) item.outputDeferred = true;
+    }
     return {
       ...view,
-      history: {
-        olderCursor: page.nextCursor
-          ? Buffer.from(
-              JSON.stringify({
-                threadId: id,
-                epoch,
-                cursor: page.nextCursor,
-              }),
-            ).toString('base64url')
-          : null,
-      },
+      history: { olderCursor: cursor ? historyCursor(id, epoch, { cursor }) : null },
     };
   }
 
-  private async hydrateTurn(id: string, turn: Thread['turns'][number]): Promise<void> {
+  private async hydrateTurn(id: string, turn: Thread['turns'][number], deferOutput: boolean) {
     let cursor: string | null = null;
     const seen = new Set<string>();
+    const deferred = new Set<string>();
     turn.items = [];
     do {
-      const page: ThreadItemsListResponse = await this.call('thread/items/list', {
+      const page: Responses['thread/items/list'] = await this.call('thread/items/list', {
         threadId: id,
         turnId: turn.id,
         cursor,
         limit: 20,
         sortDirection: 'asc',
+        ...(deferOutput ? { deferOutput: { commandExecution: true, mcpToolCall: true } } : {}),
       });
-      turn.items.push(...page.data.map((entry) => entry.item));
+      for (const entry of page.data) {
+        turn.items.push(entry.item);
+        if (entry.outputDeferred) deferred.add(entry.item.id);
+      }
       cursor = page.nextCursor;
       if (cursor && (seen.has(cursor) || seen.size >= 1000))
         throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid item pagination');
       if (cursor) seen.add(cursor);
     } while (cursor);
+    return deferred;
   }
 
-  private async hydrateTurns(id: string, turns: Thread['turns']): Promise<void> {
-    const pending = turns.filter((turn) => turn.itemsView !== 'full');
+  private async hydrateTurns(id: string, turns: Thread['turns']) {
+    const canDefer = this.canReadDeferredOutput();
+    const pending = turns
+      .map((turn) => ({ turn, defer: canDefer && turn.status !== 'inProgress' }))
+      .filter(({ turn, defer }) => turn.itemsView !== 'full' || defer);
+    const deferred = new Map<string, Set<string>>();
     const concurrency = 3;
-    // Each turn has its own cursor. Keep the number of large RPCs in flight bounded.
+    // Each turn owns an independent cursor and at most three page reads run at once.
     for (let start = 0; start < pending.length; start += concurrency)
       await Promise.all(
-        pending.slice(start, start + concurrency).map((turn) => this.hydrateTurn(id, turn)),
+        pending.slice(start, start + concurrency).map(async ({ turn, defer }) => {
+          const ids = await this.hydrateTurn(id, turn, defer);
+          if (ids.size) deferred.set(turn.id, ids);
+        }),
       );
+    return deferred;
   }
 
   private async readLegacyThread(id: string, sequence: number): Promise<ThreadView> {
@@ -988,6 +1022,23 @@ export class CodexAdapter implements CodexClient {
       (await this.call('thread/read', { threadId: id, includeTurns: true })).thread,
       sequence,
     );
+  }
+
+  canReadDeferredOutput(): boolean {
+    return (
+      this.state.codexVersion === VERIFIED_ADAPTER_CODEX_VERSION &&
+      !this.disabled.has('thread/items/read')
+    );
+  }
+
+  async readThreadItem(id: string, turnId: string, itemId: string): Promise<ItemView> {
+    const page = await this.call('thread/items/read', { threadId: id, turnId, itemIds: [itemId] });
+    const entry = page.data.find(
+      (candidate) => candidate.turnId === turnId && candidate.item.id === itemId,
+    );
+    if (!entry || entry.outputDeferred)
+      throw new AppError('THREAD_ITEM_NOT_FOUND', '工具输出不可用。', 404);
+    return mapItem(entry.item);
   }
 
   async readExecutionHistory(id: string, turnId: string): Promise<ThreadView> {
@@ -1040,7 +1091,8 @@ export class CodexAdapter implements CodexClient {
         sortDirection: 'asc',
         itemsView: 'summary',
       });
-      for (const turn of page.data) if (turn.itemsView !== 'full') await this.hydrateTurn(id, turn);
+      for (const turn of page.data)
+        if (turn.itemsView !== 'full') await this.hydrateTurn(id, turn, false);
       thread.turns.push(...page.data);
       cursor = page.nextCursor;
       if (cursor && (seen.has(cursor) || seen.size >= 1000))
@@ -1380,7 +1432,20 @@ export class CodexAdapter implements CodexClient {
     const view = await this.readThreadPage(result.thread.id);
     return { ...view, runtimeSettings: await this.responseRuntimeSettings(result) };
   }
-  async forkThread(id: string, cwd: string, settings?: Settings): Promise<ThreadView> {
+  forkThread(id: string, cwd: string, settings?: Settings): Promise<ThreadView> {
+    return this.forkWithHistory(id, cwd, settings, false);
+  }
+
+  forkThreadPage(id: string, cwd: string, settings?: Settings): Promise<ThreadView> {
+    return this.forkWithHistory(id, cwd, settings, true);
+  }
+
+  private async forkWithHistory(
+    id: string,
+    cwd: string,
+    settings: Settings | undefined,
+    recentOnly: boolean,
+  ): Promise<ThreadView> {
     await this.validateSettings(
       settings,
       hasModelSettings(settings) ? await this.settingsContext(cwd, id) : undefined,
@@ -1403,7 +1468,7 @@ export class CodexAdapter implements CodexClient {
       if (metadata.id === id)
         throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Codex fork returned the source thread ID');
       forkedId = metadata.id;
-      const thread = await this.readThread(forkedId);
+      const thread = await (recentOnly ? this.readThreadPage(forkedId) : this.readThread(forkedId));
       if (thread.id !== forkedId)
         throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Codex returned a different fork thread ID');
       titles?.register(result);
