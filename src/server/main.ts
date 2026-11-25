@@ -154,6 +154,7 @@ export async function startGateway(
       server.once('error', reject);
     });
     const stopHeartbeats = socketServers.map(startHeartbeat);
+    service.startLoopScheduler();
     let closing: Promise<void> | undefined;
     const close = (): Promise<void> =>
       (closing ??= (async () => {

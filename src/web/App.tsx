@@ -6,6 +6,7 @@ import { ArrowLeft, CircleAlert, Pencil } from 'lucide-react';
 import type { Settings, ThreadSummary, ReviewTarget } from '../shared/types';
 import { useCommandPrompt } from './hooks/useCommandPrompt';
 import { ReviewTargetDialog } from './components/ReviewTargetDialog';
+import { SessionLoopDialog } from './components/SessionLoopDialog';
 import { ThreadGoalDialog, GoalSummary } from './components/ThreadGoalDialog';
 import { CommandDialog } from './components/CommandDialog';
 import { GuardianDenialsDialog } from './components/GuardianDenialsDialog';
@@ -400,6 +401,8 @@ export function App() {
     workspace.selectedId,
     system?.codexEpoch,
   ]);
+  const [loopDialog, setLoopDialog] = useState<string>();
+  useEffect(() => setLoopDialog(undefined), [commandScope]);
   const [goalDialog, setGoalDialog] = useState<{ scope: string; initial: string }>();
   useEffect(() => setGoalDialog(undefined), [commandScope]);
   const [recap, setRecap] = useState<{
@@ -423,6 +426,7 @@ export function App() {
       }),
     chooseReviewTarget: reviewPrompt.request,
     chooseDenial: denialPrompt.request,
+    openLoops: () => setLoopDialog(commandScope),
     openGoal: (initial) => setGoalDialog({ scope: commandScope, initial }),
     openRecap: (value) => setRecap({ ...value, scope: commandScope }),
     project,
@@ -1118,6 +1122,21 @@ export function App() {
                 {t('commands:goalManage')}
               </Button>
             </div>
+          )}
+          {loopDialog === commandScope && thread && (
+            <SessionLoopDialog
+              thread={thread}
+              onClose={() => setLoopDialog(undefined)}
+              disabled={
+                offline || workspace.authRequired || workspace.busy.includes(`loop:${thread.id}`)
+              }
+              run={(path, input) =>
+                workspace.run('loop', thread.id, path, {
+                  ...input,
+                  ...(path.endsWith('/loops') ? { settings: workspace.settings } : {}),
+                })
+              }
+            />
           )}
           {goalDialog?.scope === commandScope && thread && (
             <ThreadGoalDialog

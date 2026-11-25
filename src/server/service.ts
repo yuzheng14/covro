@@ -98,7 +98,16 @@ import { readLocalText } from './text-files.js';
 import { readLocalJson } from './json-files.js';
 import { sessionCreationResult } from './session-creation.js';
 import type { RestartBlocker, RestartRequest } from '../shared/service-restart.js';
-import { createSessionSchema } from '../shared/validation.js';
+import { createSessionLoopSchema, createSessionSchema } from '../shared/validation.js';
+import {
+  LOOP_DEFAULT_HOURS,
+  LOOP_DEFAULT_RUNS,
+  type CreateSessionLoop,
+  type SessionLoopAction,
+  type SessionLoopResult,
+} from '../shared/session-loop.js';
+import type { AppTransaction } from './db/index.js';
+import { SessionLoopStore, sessionLoopView, type SessionLoopRow } from './db/session-loops.js';
 
 export interface GatewayOptions {
   logger?: Logger;
@@ -116,6 +125,11 @@ export interface GatewayOptions {
 export class GatewayService {
   private readonly logger: Logger;
   private readonly capacityRetries: CapacityRetries;
+  private readonly loops: SessionLoopStore;
+  private loopTimer?: ReturnType<typeof setInterval>;
+  private loopTick?: Promise<void>;
+  private loopsOffline = false;
+  private readonly manualStarts = new Map<string, number>();
   readonly projectClones: ProjectClones;
   readonly shell: ShellService;
   readonly events: EventHub;
@@ -194,6 +208,8 @@ export class GatewayService {
     );
     this.currentEpoch = this.codex.epoch;
     this.store.recover();
+    this.loops = new SessionLoopStore(this.store.database);
+    this.loops.skipMissed(Date.now());
     this.removeListener = this.codex.onEvent((event) => this.consume(event));
   }
 
@@ -1035,6 +1051,7 @@ export class GatewayService {
 
   private updateArchiveState(threadId: string, archived: boolean): void {
     const thread = this.projection.get(threadId);
+    if (archived) this.loops.archive(threadId);
     if (!thread || Boolean(thread.archived) === archived) return;
     if (archived) this.capacityRetries.clear(threadId);
     thread.archived = archived;
@@ -1447,7 +1464,293 @@ export class GatewayService {
   }
 
   async startTurn(threadId: string, input: StartTurnInput): Promise<Operation> {
-    return this.dispatchTurn(threadId, input);
+    this.manualStarts.set(threadId, (this.manualStarts.get(threadId) ?? 0) + 1);
+    try {
+      return await this.dispatchTurn(threadId, input);
+    } finally {
+      const remaining = this.manualStarts.get(threadId)! - 1;
+      if (remaining) this.manualStarts.set(threadId, remaining);
+      else this.manualStarts.delete(threadId);
+    }
+  }
+
+  private loopWorkspace(threadId: string) {
+    const link = this.store.getThreadLink(threadId);
+    if (!link) throw new AppError('THREAD_NOT_FOUND', 'Session not found', 404);
+    return this.workspaces.assertOwnership(link.projectId, link.cwd, threadId);
+  }
+
+  async listSessionLoops(threadId: string) {
+    if (!this.store.getThreadLink(threadId)) await this.loadThread(threadId);
+    const workspace = this.loopWorkspace(threadId);
+    this.loops.expire(Date.now());
+    return this.loops.list(threadId, workspace.workspaceKey);
+  }
+
+  async createSessionLoop(threadId: string, input: CreateSessionLoop) {
+    input = createSessionLoopSchema.parse(input);
+    return this.perform('loop.create', threadId, input, async () => {
+      const thread = await this.loadThread(threadId);
+      this.ensureManaged(thread);
+      this.ensureCompatibilityConfirmed();
+      if (!(thread.hasMessages || thread.turns.some((turn) => isTerminal(turn.status))))
+        throw new AppError('LOOP_UNSAVED_THREAD', 'Send a message to save this session first', 409);
+      if (parseQuestionReplies(input.prompt))
+        throw new AppError('LOOP_INVALID_PROMPT', 'A loop requires a regular prompt', 400);
+      const workspace = this.loopWorkspace(threadId);
+      const runtime = thread.runtimeSettings;
+      const permissionMode = runtime?.permissionMode;
+      const hasPermissionOverrides =
+        input.settings?.permissionMode !== undefined ||
+        input.settings?.approvalPolicy !== undefined ||
+        input.settings?.approvalReviewer !== undefined ||
+        input.settings?.sandbox !== undefined;
+      const settings = this.retrySettings(runtime, {
+        ...(runtime?.collaborationMode ? { collaborationMode: runtime.collaborationMode } : {}),
+        ...(!hasPermissionOverrides && permissionMode && permissionMode !== 'custom'
+          ? { permissionMode }
+          : {}),
+        ...input.settings,
+      });
+      const now = Date.now();
+      this.store.dispatch(input.clientOperationId, undefined, undefined, (tx) =>
+        this.loops.create(tx, {
+          id: input.clientOperationId,
+          threadId,
+          workspaceKey: workspace.workspaceKey,
+          settings,
+          prompt: input.prompt,
+          intervalMs: input.intervalMs,
+          status: 'active',
+          expiresAt: now + (input.lifetimeHours ?? LOOP_DEFAULT_HOURS) * 3_600_000,
+          maxRuns: input.maxRuns ?? LOOP_DEFAULT_RUNS,
+          nextRunAt: now + input.intervalMs,
+        }),
+      );
+      return { result: sessionLoopView(this.loops.get(input.clientOperationId)!) };
+    });
+  }
+
+  async controlSessionLoop(
+    threadId: string,
+    loopId: string,
+    input: OperationInput & { action: SessionLoopAction; version: number },
+  ) {
+    return this.perform('loop.control', threadId, { ...input, loopId }, async () => {
+      const thread = input.action === 'resume' ? await this.loadThread(threadId) : undefined;
+      const { workspaceKey } = this.loopWorkspace(threadId);
+      const row = this.loops.get(loopId);
+      if (!row || row.threadId !== threadId || row.workspaceKey !== workspaceKey)
+        throw new AppError('LOOP_NOT_FOUND', 'Loop not found', 404);
+      const now = Date.now();
+      const canChange =
+        row.version === input.version &&
+        (input.action === 'cancel'
+          ? row.status === 'active' || row.status === 'paused'
+          : input.action === 'pause'
+            ? row.status === 'active'
+            : row.status === 'paused' &&
+              row.runs < row.maxRuns &&
+              now + row.intervalMs < row.expiresAt &&
+              thread?.archived !== true &&
+              row.lastResult !== 'unknown');
+      if (!canChange)
+        throw new AppError('LOOP_CONFLICT', 'The loop has changed or cannot be resumed', 409);
+      this.store.dispatch(input.clientOperationId, undefined, undefined, (tx) =>
+        this.loops.control(tx, row, input.action, now),
+      );
+      const retry = this.capacityRetries.current(threadId);
+      if (
+        input.action !== 'resume' &&
+        retry &&
+        row.lastOperationId &&
+        [retry.operationId, retry.previousOperationId].includes(row.lastOperationId) &&
+        this.capacityRetries.pending(threadId) &&
+        !this.store.activeForThread(threadId)
+      )
+        this.capacityRetries.cancel(retry);
+      return { result: sessionLoopView(this.loops.get(loopId)!) };
+    });
+  }
+
+  startLoopScheduler(): void {
+    if (this.loopTimer) return;
+    this.loopTimer = setInterval(() => {
+      void this.tickSessionLoops().catch((error) =>
+        this.logger.warn('loop.scheduler_failed', errorFields(error)),
+      );
+    }, 1_000);
+    this.loopTimer.unref();
+  }
+
+  tickSessionLoops(): Promise<void> {
+    this.loopTick ??= this.runSessionLoops().finally(() => {
+      this.loopTick = undefined;
+    });
+    return this.loopTick;
+  }
+
+  private async runSessionLoops(): Promise<void> {
+    if (!this.accepting || this.maintenance) return;
+    const now = Date.now();
+    this.loops.expire(now);
+    if (!this.codex.ready || this.codex.diagnostics().authenticated === false) {
+      this.loopsOffline = true;
+      return;
+    }
+    if (this.loopsOffline) {
+      this.loops.skipMissed(now);
+      this.loopsOffline = false;
+    }
+    // Each session is independent. Within a session, the oldest due loop wins.
+    const grouped = new Map<string, { unfinished: SessionLoopRow[]; due?: SessionLoopRow }>();
+    for (const row of this.loops.unfinished()) {
+      const group = grouped.get(row.threadId) ?? { unfinished: [] };
+      group.unfinished.push(row);
+      grouped.set(row.threadId, group);
+    }
+    for (const row of this.loops.due(now)) {
+      const group = grouped.get(row.threadId) ?? { unfinished: [] };
+      group.due ??= row;
+      grouped.set(row.threadId, group);
+    }
+    await Promise.all(
+      [...grouped.values()].map(async ({ unfinished, due }) => {
+        for (const row of unfinished) await this.settleLoopRun(row);
+        if (due) await this.runDueLoop(due);
+      }),
+    );
+  }
+
+  private async settleLoopRun(row: SessionLoopRow): Promise<void> {
+    const operationId = row.lastOperationId;
+    if (!operationId) return;
+    const retry = this.capacityRetries.current(row.threadId);
+    if (
+      this.capacityRetries.pending(row.threadId) &&
+      (retry?.operationId === operationId || retry?.previousOperationId === operationId)
+    )
+      return;
+    const operation = this.store.get(operationId);
+    const active = this.store.activeForThread(row.threadId);
+    const marker = active?.operationId === operationId ? active : undefined;
+    if (marker?.state === 'active') return;
+    let thread: ThreadView;
+    try {
+      thread = await this.loadThread(row.threadId);
+    } catch (error) {
+      const code = this.asAppError(error).code;
+      if (code === 'THREAD_NOT_FOUND') this.loops.suspend(row, 'deleted');
+      else if (
+        [
+          'PROJECT_NOT_FOUND',
+          'PROJECT_UNAVAILABLE',
+          'PROJECT_OWNERSHIP',
+          'WORKSPACE_UNAVAILABLE',
+        ].includes(code)
+      )
+        this.loops.suspend(row, 'unavailable');
+      return;
+    }
+    const turnId =
+      (operation?.result as { turnId?: string } | null)?.turnId ?? marker?.turnId ?? row.lastTurnId;
+    const turn = turnId
+      ? thread.turns.find((entry) => entry.id === turnId)
+      : thread.turns.find((entry) =>
+          entry.items.some((item) => item.type === 'userMessage' && item.clientId === operationId),
+        );
+    if (turn && isTerminal(turn.status)) {
+      this.loops.record(row, turn.status as SessionLoopResult, turn.id);
+    } else if (operation?.state === 'failed') {
+      this.loops.record(row, 'failed', turnId ?? null);
+    } else if (operation?.state === 'unknown' || marker?.state === 'unknown') {
+      this.loops.record(row, 'unknown', turnId ?? null);
+      this.loops.suspend(row, 'uncertain');
+    }
+  }
+
+  private recordLoopTurn(operationId: string, status: string, turnId: string): void {
+    const row = this.loops.byRun(operationId);
+    if (row && !this.capacityRetries.pending(row.threadId))
+      this.loops.record(row, status as SessionLoopResult, turnId);
+  }
+
+  private assertLoopIdle(thread: ThreadView, row: SessionLoopRow): void {
+    if (!this.accepting || this.maintenance)
+      throw new AppError('LOOP_WAITING', 'The service is busy', 409);
+    if (
+      this.manualStarts.has(thread.id) ||
+      this.capacityRetries.pending(thread.id) ||
+      this.resumes.has(thread.id) ||
+      this.store.activeForThread(thread.id) ||
+      isActive(thread.status) ||
+      thread.status === 'unknown' ||
+      thread.turns.some((turn) => isActive(turn.status) || turn.status === 'unknown') ||
+      thread.actions.some((action) => ['pending', 'responding'].includes(action.status))
+    )
+      throw new AppError('LOOP_WAITING', 'The session is busy', 409);
+    if (this.loopWorkspace(thread.id).workspaceKey !== row.workspaceKey)
+      throw new AppError('LOOP_WORKSPACE_CHANGED', 'The loop workspace has changed', 409);
+  }
+
+  private async runDueLoop(row: SessionLoopRow): Promise<void> {
+    const current = this.loops.get(row.id);
+    if (
+      current?.status !== 'active' ||
+      current.version !== row.version ||
+      ['running', 'unknown'].includes(current.lastResult ?? '')
+    )
+      return;
+    const operationId = randomUUID();
+    try {
+      const thread = await this.loadThread(row.threadId);
+      if (thread.archived) {
+        this.loops.archive(thread.id);
+        return;
+      }
+      this.assertLoopIdle(thread, row);
+      this.ensureCompatibilityConfirmed();
+      if (!thread.managed || this.store.getThreadLink(thread.id)?.managedEpoch !== this.codex.epoch)
+        await this.resumeThread(thread.id, {
+          clientOperationId: randomUUID(),
+          settings: row.settings,
+        });
+      await this.dispatchTurn(
+        thread.id,
+        {
+          clientOperationId: operationId,
+          text: row.prompt,
+          settings: row.settings,
+        },
+        undefined,
+        undefined,
+        row,
+      );
+    } catch (error) {
+      switch (this.asAppError(error).code) {
+        case 'THREAD_NOT_FOUND':
+          this.loops.suspend(row, 'deleted');
+          break;
+        case 'THREAD_ARCHIVED':
+          this.loops.archive(row.threadId);
+          break;
+        case 'LOOP_WAITING':
+        case 'LOOP_CONFLICT':
+        case 'THREAD_BUSY':
+        case 'CODEX_UNAVAILABLE':
+        case 'COMPATIBILITY_CONFIRMATION_REQUIRED':
+        case 'SERVICE_MAINTENANCE':
+          break;
+        case 'RESULT_UNKNOWN':
+          this.loops.suspend(row, 'uncertain');
+          break;
+        default: {
+          const dispatched = this.loops.byRun(operationId);
+          if (dispatched) this.loops.record(dispatched, 'failed', null);
+          else this.loops.suspend(row, 'unavailable');
+        }
+      }
+    }
   }
 
   private async dispatchTurn(
@@ -1455,9 +1758,15 @@ export class GatewayService {
     input: StartTurnInput,
     retry?: CapacityAttempt,
     expectedTurnId?: string,
+    loop?: SessionLoopRow,
   ): Promise<Operation> {
     return this.perform('turn.start', threadId, input, async () => {
-      if (!retry && !expectedTurnId && this.capacityRetries.view(threadId)?.status === 'waiting')
+      if (
+        !loop &&
+        !retry &&
+        !expectedTurnId &&
+        this.capacityRetries.view(threadId)?.status === 'waiting'
+      )
         this.capacityRetries.clear(threadId);
       const thread = await this.loadThread(threadId);
       this.ensureManaged(thread);
@@ -1494,6 +1803,21 @@ export class GatewayService {
         ...input,
         text: input.taskKind === 'init' ? PROJECT_INIT_PROMPT : fileText,
       };
+      if (loop) this.assertLoopIdle(this.projection.get(threadId) ?? thread, loop);
+      const retryLoop = retry?.previousOperationId
+        ? this.loops.byRun(retry.previousOperationId)
+        : undefined;
+      const claimLoop = loop
+        ? (tx: AppTransaction) => this.loops.claim(tx, loop, input.clientOperationId, Date.now())
+        : retryLoop && retry?.previousOperationId
+          ? (tx: AppTransaction) =>
+              this.loops.retry(
+                tx,
+                retryLoop.id,
+                retry.previousOperationId!,
+                input.clientOperationId,
+              )
+          : undefined;
       this.store.dispatch(
         input.clientOperationId,
         {
@@ -1507,6 +1831,7 @@ export class GatewayService {
               item: submittedUserMessage(input.clientOperationId, message),
             }
           : undefined,
+        claimLoop,
       );
       if (retry && !this.capacityRetries.owns(retry))
         throw new AppError('TURN_CONFLICT', '容量重试已取消或被替代', 409);
@@ -1546,8 +1871,10 @@ export class GatewayService {
       const projectedTurn = this.projection
         .get(threadId)
         ?.turns.find((entry) => entry.id === turn.id);
-      if (projectedTurn && isTerminal(projectedTurn.status))
+      if (projectedTurn && isTerminal(projectedTurn.status)) {
         this.store.finishTurn(threadId, turn.id, this.codex.epoch);
+        this.recordLoopTurn(input.clientOperationId, projectedTurn.status, turn.id);
+      }
       this.publishThread(threadId);
       return {
         result: { threadId, turnId: turn.id, ...(retryOf ? { retryOf } : {}) },
@@ -2155,6 +2482,7 @@ export class GatewayService {
 
   async shutdown(): Promise<void> {
     this.accepting = false;
+    if (this.loopTimer) clearInterval(this.loopTimer);
     await Promise.allSettled([...this.instructionWrites, ...this.defaultWrites]);
     this.capacityRetries.clearAll();
     await this.projectClones.close();
@@ -2162,6 +2490,7 @@ export class GatewayService {
     this.projection.runtimeReset();
     this.removeListener();
     await this.codex.stop();
+    await this.loopTick?.catch(() => {});
   }
 
   private async perform<T extends { clientOperationId: string }>(
@@ -2720,6 +3049,8 @@ export class GatewayService {
         this.retryLinks(event.threadId).set(event.turn.id, job.rootTurnId);
     }
     if (event.type === 'runtime') {
+      if (!event.diagnostics.ready || event.diagnostics.codexEpoch !== this.currentEpoch)
+        this.loopsOffline = true;
       this.compatibilityConfirmation(event.diagnostics);
       if (!event.diagnostics.ready || event.diagnostics.codexEpoch !== this.currentEpoch) {
         this.currentEpoch = event.diagnostics.codexEpoch;
@@ -2889,6 +3220,12 @@ export class GatewayService {
         this.turnBaselines.delete(marker.operationId);
       }
       if (isTerminal(event.turn.status)) {
+        if (marker?.turnId === event.turn.id || (matchesDispatch && eventMarker?.turnId === null))
+          this.recordLoopTurn(
+            (marker ?? eventMarker)!.operationId,
+            event.turn.status,
+            event.turn.id,
+          );
         this.store.finishTurn(thread.id, event.turn.id, this.codex.epoch);
         this.projection.expireTurn(thread.id, event.turn.id);
         if (newCompletion && !this.capacityRetries.pending(thread.id)) {

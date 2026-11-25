@@ -1,0 +1,175 @@
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { GatewayService } from '../../src/server/service';
+import {
+  LOOP_MIN_INTERVAL,
+  parseSessionLoop,
+  type SessionLoop,
+} from '../../src/shared/session-loop';
+import { harness, operationId } from './domain-helpers';
+
+let now = 1_000_000;
+const close: (() => void)[] = [];
+beforeEach(() => {
+  now = 1_000_000;
+  vi.spyOn(Date, 'now').mockImplementation(() => now);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  for (const fn of close.splice(0)) fn();
+});
+
+async function setup() {
+  const ctx = harness();
+  close.push(ctx.close);
+  const create = await ctx.service.createThread('project', { clientOperationId: operationId() });
+  const id = (create.result as { threadId: string }).threadId;
+  await ctx.service.startTurn(id, {
+    clientOperationId: operationId(),
+    text: 'Save the conversation',
+  });
+  ctx.codex.complete(id, 'turn-1');
+  const createLoop = async (options = {}) => {
+    const command = {
+      clientOperationId: operationId(),
+      intervalMs: LOOP_MIN_INTERVAL,
+      prompt: 'Check CI',
+      ...options,
+    };
+    const created = await ctx.service.createSessionLoop(id, command);
+    expect(await ctx.service.createSessionLoop(id, command)).toEqual(created);
+    return created.result as SessionLoop;
+  };
+  return { ...ctx, id, createLoop };
+}
+
+it('parses exact intervals and rejects unsupported durations and missing prompts', () => {
+  expect(parseSessionLoop('7m Check CI\nSummarize changes')).toEqual({
+    intervalMs: 7 * LOOP_MIN_INTERVAL,
+    prompt: 'Check CI\nSummarize changes',
+  });
+  expect(parseSessionLoop('90m Check CI')?.intervalMs).toBe(90 * LOOP_MIN_INTERVAL);
+  for (const input of ['30s Check CI', '0m Check CI', '2d Check CI', 'Check CI', '5m', '5m   '])
+    expect(parseSessionLoop(input)).toBeUndefined();
+});
+
+it('gives manual sends priority and coalesces missed ticks into one run', async () => {
+  const ctx = await setup();
+  await ctx.createLoop({ maxRuns: 2 });
+  now += 3 * LOOP_MIN_INTERVAL;
+  await Promise.all([
+    ctx.service.tickSessionLoops(),
+    ctx.service.startTurn(ctx.id, { clientOperationId: operationId(), text: 'Manual send' }),
+    ctx.service.tickSessionLoops(),
+  ]);
+  expect(ctx.codex.starts).toBe(2);
+  expect((await ctx.service.listSessionLoops(ctx.id))[0]?.runs).toBe(0);
+  ctx.codex.complete(ctx.id, 'turn-2');
+  await ctx.service.tickSessionLoops();
+  expect(ctx.codex.starts).toBe(3);
+  expect(ctx.codex.threads.get(ctx.id)?.turns.at(-1)?.items[0]?.text).toBe('Check CI');
+  expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+    runs: 1,
+    lastResult: 'running',
+    nextRunAt: now + LOOP_MIN_INTERVAL,
+  });
+  now += 5 * LOOP_MIN_INTERVAL;
+  await ctx.service.tickSessionLoops();
+  expect(ctx.codex.starts).toBe(3);
+  ctx.codex.complete(ctx.id, 'turn-3');
+  await ctx.service.tickSessionLoops();
+  expect(ctx.codex.starts).toBe(4);
+  ctx.codex.complete(ctx.id, 'turn-4');
+  expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+    status: 'finished',
+    reason: 'limit',
+    runs: 2,
+    lastResult: 'completed',
+    lastTurnId: 'turn-4',
+  });
+});
+
+it('persists controls across restarts and leaves a running turn alone on cancellation', async () => {
+  const ctx = await setup();
+  const loop = await ctx.createLoop();
+  const pause = { clientOperationId: operationId(), action: 'pause' as const, version: 0 };
+  await ctx.service.controlSessionLoop(ctx.id, loop.id, pause);
+  await ctx.service.controlSessionLoop(ctx.id, loop.id, pause);
+  await expect(
+    ctx.service.controlSessionLoop(ctx.id, loop.id, {
+      clientOperationId: operationId(),
+      action: 'resume',
+      version: 0,
+    }),
+  ).rejects.toMatchObject({ code: 'LOOP_CONFLICT' });
+
+  now += 10 * LOOP_MIN_INTERVAL;
+  await ctx.service.shutdown();
+  ctx.codex.reset();
+  const restarted = new GatewayService({
+    store: ctx.store,
+    projects: ctx.projects,
+    codex: ctx.codex,
+  });
+  expect((await restarted.listSessionLoops(ctx.id))[0]).toMatchObject({
+    status: 'paused',
+    version: 1,
+  });
+  await restarted.controlSessionLoop(ctx.id, loop.id, {
+    clientOperationId: operationId(),
+    action: 'resume',
+    version: 1,
+  });
+  await restarted.tickSessionLoops();
+  expect(ctx.codex.starts).toBe(1);
+  now += LOOP_MIN_INTERVAL;
+  await restarted.tickSessionLoops();
+  expect(ctx.codex.starts).toBe(2);
+  await restarted.controlSessionLoop(ctx.id, loop.id, {
+    clientOperationId: operationId(),
+    action: 'cancel',
+    version: 2,
+  });
+  expect(ctx.codex.threads.get(ctx.id)?.turns.at(-1)?.status).toBe('running');
+  ctx.codex.complete(ctx.id, 'turn-2');
+  now += LOOP_MIN_INTERVAL;
+  await restarted.tickSessionLoops();
+  expect(ctx.codex.starts).toBe(2);
+  expect((await restarted.listSessionLoops(ctx.id))[0]).toMatchObject({
+    status: 'cancelled',
+    lastResult: 'completed',
+  });
+  await restarted.shutdown();
+});
+
+it('skips downtime and holds an uncertain dispatch without replaying it', async () => {
+  const ctx = await setup();
+  const loop = await ctx.createLoop();
+  await ctx.service.shutdown();
+  ctx.codex.reset();
+  now += 5 * LOOP_MIN_INTERVAL;
+  const restarted = new GatewayService({
+    store: ctx.store,
+    projects: ctx.projects,
+    codex: ctx.codex,
+  });
+  await restarted.tickSessionLoops();
+  expect(ctx.codex.starts).toBe(1);
+  now += LOOP_MIN_INTERVAL;
+  const start = vi
+    .spyOn(ctx.codex, 'startTurn')
+    .mockRejectedValueOnce(new Error('Lost start receipt'));
+  await restarted.tickSessionLoops();
+  expect(start).toHaveBeenCalledTimes(1);
+  await restarted.tickSessionLoops();
+  expect((await restarted.listSessionLoops(ctx.id))[0]).toMatchObject({
+    id: loop.id,
+    status: 'paused',
+    lastResult: 'unknown',
+    reason: 'uncertain',
+    runs: 1,
+  });
+  now += 8 * LOOP_MIN_INTERVAL;
+  await restarted.tickSessionLoops();
+  expect(start).toHaveBeenCalledTimes(1);
+  await restarted.shutdown();
+});

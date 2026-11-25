@@ -177,3 +177,38 @@ export const backgroundTasks = sqliteTable('background_tasks', {
   fingerprint: text('fingerprint').notNull(),
   snapshot: text('snapshot', { mode: 'json' }).$type<{ id: string }>(),
 });
+
+/** Covro-owned schedules. Turn contents and full run history remain in Codex. */
+export const sessionLoops = sqliteTable(
+  'session_loops',
+  {
+    id: text('id')
+      .primaryKey()
+      .references(() => operations.clientOperationId),
+    threadId: text('thread_id').notNull(),
+    workspaceKey: text('workspace_key').notNull(),
+    settings: text('settings', { mode: 'json' })
+      .$type<import('../../shared/types.js').Settings>()
+      .notNull(),
+    prompt: text('prompt').notNull(),
+    intervalMs: integer('interval_ms').notNull(),
+    status: text('status')
+      .$type<import('../../shared/session-loop.js').SessionLoopStatus>()
+      .notNull(),
+    reason: text('reason').$type<import('../../shared/session-loop.js').SessionLoopReason>(),
+    version: integer('version').notNull().default(0),
+    expiresAt: integer('expires_at').notNull(),
+    maxRuns: integer('max_runs').notNull(),
+    runs: integer('runs').notNull().default(0),
+    nextRunAt: integer('next_run_at').notNull(),
+    lastStartedAt: integer('last_started_at'),
+    lastResult:
+      text('last_result').$type<import('../../shared/session-loop.js').SessionLoopResult>(),
+    lastTurnId: text('last_turn_id'),
+    lastOperationId: text('last_operation_id').references(() => operations.clientOperationId),
+  },
+  (table) => [
+    index('session_loops_thread_idx').on(table.threadId),
+    index('session_loops_due_idx').on(table.status, table.nextRunAt),
+  ],
+);
