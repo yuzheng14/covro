@@ -1,5 +1,5 @@
 import { devices, expect, test, type Page } from '@playwright/test';
-import { confirmCompatibility, controlRuntime } from './helpers';
+import { confirmCompatibility, controlRuntime, openModelSettings } from './helpers';
 
 const input = (page: Page) => page.locator('.composer-box textarea');
 const send = (page: Page) => page.getByRole('button', { name: '发送任务', exact: true });
@@ -11,6 +11,24 @@ async function flush(page: Page) {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
       ),
   );
+}
+
+// Simulate viewport data from an on-screen keyboard. Playwright does not open a native IME.
+async function setVisualViewport(
+  page: Page,
+  geometry: Partial<Pick<VisualViewport, 'height' | 'offsetTop' | 'scale'>>,
+) {
+  await page.evaluate((geometry) => {
+    const viewport = window.visualViewport!;
+    for (const key of ['height', 'offsetTop', 'scale'] as const) {
+      const value = geometry[key];
+      if (value === undefined) Reflect.deleteProperty(viewport, key);
+      else Object.defineProperty(viewport, key, { configurable: true, value });
+    }
+    viewport.dispatchEvent(new Event('resize'));
+    viewport.dispatchEvent(new Event('scroll'));
+  }, geometry);
+  await flush(page);
 }
 
 test.beforeEach(async ({ request }) => {
@@ -131,53 +149,115 @@ test.describe('mobile keyboard viewport', () => {
     isMobile: true,
     hasTouch: true,
   });
-  test('send stays visible when the visual viewport shrinks and pans; blur and pinch zoom restore layout', async ({
+  test('composer follows a shrunken, panning viewport and restores the bottom safe area on close', async ({
     page,
+    context,
   }, testInfo) => {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { bottom: 34 } });
     await page.goto('/');
     await confirmCompatibility(page);
-    await input(page).fill('键盘展开时\n也能点击发送');
+    const shell = page.locator('.app-shell');
+    const composer = page.locator('.composer-box');
+    const region = page.locator('.composer-region');
+    const draft = '键盘展开时\n也能点击发送';
+    await input(page).fill(draft);
+    await input(page).evaluate((element) =>
+      (element as HTMLTextAreaElement).setSelectionRange(2, 5),
+    );
+    await expect(shell).not.toHaveAttribute('data-mobile-input-viewport');
+    await expect(region).toHaveCSS('padding-bottom', '34px');
+
+    // A layout viewport scroll and a visual viewport pan are separate coordinates.
     await page.evaluate(() => {
-      Object.defineProperties(window.visualViewport!, {
-        height: { configurable: true, value: 390 },
-        offsetTop: { configurable: true, value: 45 },
-      });
-      window.visualViewport!.dispatchEvent(new Event('resize'));
-      window.visualViewport!.dispatchEvent(new Event('scroll'));
+      document.body.style.minHeight = '1100px';
+      window.scrollTo(0, 72);
     });
-    await expect(page.locator('.app-shell')).toHaveCSS('height', '390px');
-    await expect(page.locator('.app-shell')).toHaveCSS('top', '45px');
+    await setVisualViewport(page, { height: 390, offsetTop: 45 });
+    expect(await page.evaluate(() => scrollY)).toBe(72);
+    await expect(shell).toHaveCSS('height', '390px');
+    await expect(page.locator('.topbar[data-compact]')).toHaveCSS('flex-shrink', '1');
+    const bounds = (await composer.boundingBox())!;
+    expect(435 - bounds.y - bounds.height).toBeCloseTo(12, 0);
     const button = await send(page).boundingBox();
     expect(button!.y).toBeGreaterThanOrEqual(45);
     expect(button!.y + button!.height).toBeLessThanOrEqual(435);
     expect(button!.width).toBeGreaterThanOrEqual(44);
     expect(button!.height).toBeGreaterThanOrEqual(44);
     await page.screenshot({ path: testInfo.outputPath('mobile-viewport.png'), fullPage: true });
-    await page.evaluate(() => {
-      Object.defineProperty(window.visualViewport!, 'height', { configurable: true, value: 240 });
-      window.visualViewport!.dispatchEvent(new Event('resize'));
-    });
-    await expect(page.locator('.app-shell')).toHaveCSS('height', '240px');
-    await expect
-      .poll(async () => {
-        const bounds = (await send(page).boundingBox())!;
-        return bounds.y + bounds.height;
-      })
-      .toBeLessThanOrEqual(285);
-    await expect(send(page)).toBeInViewport({ ratio: 1 });
-    await page.screenshot({
-      path: testInfo.outputPath('mobile-viewport-short.png'),
-      fullPage: true,
-    });
+
+    // Blur can arrive before the keyboard has finished closing.
     await input(page).evaluate((element) => element.blur());
-    await expect(page.locator('.app-shell')).toHaveCSS('height', '844px');
-    await input(page).focus();
-    await expect(page.locator('.app-shell')).toHaveCSS('height', '240px');
+    await flush(page);
+    await expect(shell).toHaveCSS('height', '390px');
     await page.evaluate(() => {
-      Object.defineProperty(window.visualViewport!, 'scale', { configurable: true, value: 2 });
-      window.visualViewport!.dispatchEvent(new Event('resize'));
+      window.scrollTo(0, 0);
+      document.body.style.removeProperty('min-height');
     });
-    await expect(page.locator('.app-shell')).toHaveCSS('height', '844px');
+    await setVisualViewport(page, {});
+    await expect(shell).toHaveCSS('height', '844px');
+    await expect(region).toHaveCSS('padding-bottom', '34px');
+    await expect(shell).not.toHaveAttribute('data-mobile-input-viewport');
+    await expect(input(page)).toHaveJSProperty('selectionStart', 2);
+    await expect(input(page)).toHaveJSProperty('selectionEnd', 5);
+    await expect(input(page)).toHaveValue(draft);
+
+    await input(page).focus();
+    // A viewport change smaller than the safe area preserves the remaining inset.
+    await setVisualViewport(page, { height: 830 });
+    await expect(region).toHaveCSS('padding-bottom', '20px');
+    await setVisualViewport(page, {});
+    await expect(region).toHaveCSS('padding-bottom', '34px');
+    await expect(input(page)).toBeFocused();
+
+    await setVisualViewport(page, { height: 390, offsetTop: 45 });
+    await setVisualViewport(page, { height: 390, offsetTop: 30, scale: 2 });
+    await expect(shell).toHaveCSS('height', '844px');
+    await expect(region).toHaveCSS('padding-bottom', '34px');
+
+    await page.setViewportSize({ width: 844, height: 390 });
+    await setVisualViewport(page, { height: 320, offsetTop: 30 });
+    await expect(send(page)).toBeInViewport({ ratio: 1 });
+    await expect(input(page)).toBeInViewport({ ratio: 1 });
+    await setVisualViewport(page, { height: 240, offsetTop: 30 });
+    await expect(shell).toHaveCSS('height', '240px');
+    await expect(send(page)).toBeInViewport({ ratio: 1 });
+    const landscapeButton = (await send(page).boundingBox())!;
+    expect(landscapeButton.y + landscapeButton.height).toBeLessThanOrEqual(270);
+    // The fixture displays two banners. At this height the editor and action row share a scroller.
+    await page.locator('.bottom-region').evaluate((element) => (element.scrollTop = 0));
+    await expect(input(page)).toBeInViewport({ ratio: 0.95 });
+    await page.screenshot({ path: testInfo.outputPath('mobile-viewport-short.png') });
+    await setVisualViewport(page, {});
+    await expect(shell).toHaveCSS('height', '390px');
+    await expect(send(page)).toBeInViewport({ ratio: 1 });
+    await expect(input(page)).toHaveValue(draft);
+  });
+
+  test('opening and closing the composer viewport preserves the reading position and model menu', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await confirmCompatibility(page);
+    await input(page).fill('[sticky-prompt] 保持长回复的阅读位置');
+    await send(page).tap();
+    await expect(page.locator('.turn-heading .status')).toHaveText('已完成');
+    const conversation = page.locator('.conversation-scroll');
+    const readPosition = await conversation.evaluate((element) => {
+      element.scrollTop = 200;
+      return element.scrollTop;
+    });
+    expect(readPosition).toBe(200);
+    await input(page).fill('保留这份草稿');
+    await setVisualViewport(page, { height: 390, offsetTop: 45 });
+    await expect(page.locator('.app-shell')).toHaveCSS('height', '390px');
+    await expect(conversation).toHaveJSProperty('scrollTop', readPosition);
+    await openModelSettings(page);
+    await expect(page.getByRole('combobox', { name: '模型', exact: true })).toBeInViewport();
+    await page.keyboard.press('Escape');
+    await setVisualViewport(page, {});
+    await expect(conversation).toHaveJSProperty('scrollTop', readPosition);
+    await expect(input(page)).toHaveValue('保留这份草稿');
   });
 });
 
