@@ -31,6 +31,14 @@ export interface SessionLoop {
   lastTurnId: string | null;
 }
 
+export interface SessionLoopTask extends SessionLoop {
+  projectId: string | null;
+  projectName: string | null;
+  threadTitle: string;
+  archived: boolean;
+  waiting: boolean;
+}
+
 export function parseSessionLoop(text: string): { intervalMs: number; prompt: string } | undefined {
   const match = /^(\d+)([mhd])\s+([\s\S]+)$/i.exec(text.trim());
   if (!match) return;

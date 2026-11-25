@@ -34,7 +34,7 @@
 - 📖 **一边看产出，一边讨论。** 电脑上将文档、风格统一的图表和代码变更与会话并排阅读，手机上使用全屏阅读器；macOS、Linux 和 Windows x64 主机还可按需启用[开发预览代理](docs/dev-preview.zh-CN.md)，在隔离标签页中打开会话的开发服务。上下文压缩期间仍可查看已提交消息，新回复实时到达时，已加载的历史正文保持完整。
 - 🔔 **及时收到待办提醒。** 在支持通知的桌面或 Android 浏览器中，接收工作结束、需要回答或审批的提醒。需保持页面在线；页面冻结或关闭期间不推送通知。
 
-操作、快捷键和命令用法见[使用指南](docs/usage.zh-CN.md)、[Slash 命令说明](docs/slash-commands.md)和[配置生效时机](docs/session-live-settings.md)。
+操作、快捷键和命令用法见[使用指南](docs/usage.zh-CN.md)、[Slash 命令说明](docs/slash-commands.md)、[会话循环](docs/session-loops.md)和[配置生效时机](docs/session-live-settings.md)。
 
 <details>
   <summary><strong>📱 手机上也能舒服地使用</strong></summary>

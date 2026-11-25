@@ -84,6 +84,7 @@
   "PROJECT_EXISTS": "该目录已添加为项目，请使用已有项目或选择其他目录。",
   "PROJECT_NOT_FOUND": "项目不存在，请刷新项目列表。",
   "PROJECT_BUSY": "项目仍有运行任务或未确认操作，请先处理完成。",
+  "LOOP_CONFLICT": "此循环已变更或无法恢复，请查看当前状态。",
   "RESULT_UNKNOWN": "提交结果尚未确认，请核对提交，不要重复操作。",
   "OPERATION_BUSY": "操作正在处理，请等待提交回执。",
   "COMPATIBILITY_CONFIRMATION_REQUIRED": "请先确认当前 Codex 版本的兼容性提示。",

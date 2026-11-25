@@ -1086,6 +1086,7 @@ export function useWorkspace() {
       path: string,
       body: object = {},
       draft?: DraftSubmission,
+      options?: { throwOnError: boolean },
     ) => {
       if (operationNeedsCompatibilityConfirmation(kind, system)) {
         setError(
@@ -1250,19 +1251,14 @@ export function useWorkspace() {
                 : entry,
             ),
           );
-        if (
-          problem instanceof HttpError &&
-          problem.status >= 400 &&
-          problem.status < 500 &&
-          problem.status !== 408 &&
-          problem.problem.code !== 'RESULT_UNKNOWN'
-        ) {
+        if (definiteFailure) {
           conversationDrafts.current.discard(clientOperationId);
           settleSubmission(clientOperationId, 'failed');
           if (mutation) settleMutation(clientOperationId);
           track((previous) =>
             previous.filter((entry) => entry.clientOperationId !== clientOperationId),
           );
+          if (options?.throwOnError) throw problem;
           return undefined;
         }
         track((previous) =>
@@ -1291,6 +1287,11 @@ export function useWorkspace() {
             recordLookupError(entry, lookupProblem);
           }
         }
+        if (options?.throwOnError)
+          throw new HttpError(409, {
+            code: 'RESULT_UNKNOWN',
+            message: 'Operation result unconfirmed',
+          });
         return undefined;
       } finally {
         busyRef.current.delete(key);

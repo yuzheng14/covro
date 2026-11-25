@@ -33,6 +33,14 @@ export class SessionLoopStore {
       .map(sessionLoopView);
   }
 
+  threadIds(): string[] {
+    return this.db
+      .selectDistinct({ id: sessionLoops.threadId })
+      .from(sessionLoops)
+      .all()
+      .map(({ id }) => id);
+  }
+
   get(id: string): SessionLoopRow | undefined {
     return this.db.select().from(sessionLoops).where(eq(sessionLoops.id, id)).get();
   }

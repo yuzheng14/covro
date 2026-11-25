@@ -1,3 +1,7 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { parseConfig } from '../../src/server/config';
+import { createApp } from '../../src/server/http';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MODEL_CAPACITY_MESSAGE } from '../../src/shared/turn-errors';
 import { GatewayService } from '../../src/server/service';
@@ -321,4 +325,103 @@ it('keeps a queued loop retry from blocking restart or starting another turn dur
     runs: 1,
     lastResult: 'failed',
   });
+});
+
+it('lists persisted loops across scopes without hydrating cold sessions or exposing lost ownership', async () => {
+  const ctx = await setup();
+  const first = await ctx.createLoop();
+  const other = join(ctx.directory, 'other');
+  mkdirSync(other);
+  const project = ctx.service.addProject({ name: 'Other project', path: other });
+  const second = (
+    await ctx.service.createThread(project.id, {
+      clientOperationId: operationId(),
+    })
+  ).result as { threadId: string };
+  await ctx.service.startTurn(second.threadId, {
+    clientOperationId: operationId(),
+    text: 'Save history',
+  });
+  ctx.codex.complete(second.threadId, 'turn-2');
+  await ctx.codex.renameThread(second.threadId, 'Cold session');
+  const created = await ctx.service.createSessionLoop(second.threadId, {
+    clientOperationId: operationId(),
+    intervalMs: LOOP_MIN_INTERVAL,
+    prompt: 'A different project',
+  });
+  const loop = created.result as SessionLoop;
+  const control = {
+    clientOperationId: operationId(),
+    action: 'pause',
+    version: loop.version,
+  } as const;
+  await ctx.service.shutdown();
+  ctx.codex.reset();
+
+  const restarted = new GatewayService({
+    store: ctx.store,
+    projects: ctx.projects,
+    codex: ctx.codex,
+  });
+  try {
+    const coldRead = vi.spyOn(ctx.codex, 'readThreadMetadata');
+    const history = vi.spyOn(ctx.codex, 'readThread');
+    const resume = vi.spyOn(ctx.codex, 'resumeThread');
+    const config = parseConfig({}, join(ctx.directory, 'config.json'));
+    const app = createApp({ config, service: restarted, staticDir: ctx.directory });
+    const origin = config.publicOrigin[0]!;
+    // Selectors supplied by the browser have no authority over the instance snapshot.
+    const response = await app.request(
+      `${origin}/api/loop-tasks?projectId=foreign&instanceId=foreign`,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: first.id, projectId: 'project', projectName: '测试项目' }),
+        expect.objectContaining({
+          id: loop.id,
+          projectId: project.id,
+          projectName: 'Other project',
+          threadTitle: 'Cold session',
+        }),
+      ]),
+    );
+    expect(coldRead).toHaveBeenCalledWith(second.threadId);
+    expect(history).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+    expect(
+      (await app.request(`${origin}/api/loop-tasks`, { headers: { host: 'foreign.example' } }))
+        .status,
+    ).toBe(403);
+
+    await expect(restarted.controlSessionLoop(ctx.id, loop.id, control)).rejects.toMatchObject({
+      code: 'LOOP_NOT_FOUND',
+    });
+    const receipt = await restarted.controlSessionLoop(second.threadId, loop.id, control);
+    expect(await restarted.controlSessionLoop(second.threadId, loop.id, control)).toEqual(receipt);
+    await expect(
+      restarted.controlSessionLoop(second.threadId, loop.id, {
+        ...control,
+        clientOperationId: operationId(),
+      }),
+    ).rejects.toMatchObject({ code: 'LOOP_CONFLICT' });
+    expect(await restarted.listLoopTasks()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: loop.id, status: 'paused', version: 1 }),
+      ]),
+    );
+
+    // A cold session that now points outside its saved project must not expose its loop.
+    ctx.codex.threads.get(second.threadId)!.cwd = ctx.project;
+    expect((await restarted.listLoopTasks()).map((task) => task.id)).toEqual([first.id]);
+    ctx.codex.threads.get(second.threadId)!.cwd = other;
+    restarted.removeProject(project.id);
+    expect((await restarted.listLoopTasks()).map((task) => task.id)).toEqual([first.id]);
+    expect(() => restarted.getOperation(control.clientOperationId)).toThrow();
+    await expect(
+      restarted.controlSessionLoop(second.threadId, loop.id, control),
+    ).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
+  } finally {
+    await restarted.shutdown();
+  }
 });
