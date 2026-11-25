@@ -85,6 +85,10 @@ export interface UpdateStatus {
 }
 export const updateActive = (run?: UpdateRun) =>
   Boolean(run && ['installing', 'waiting', 'stopping', 'verifying'].includes(run.phase));
+export const automaticUpdateWaiting = (run?: UpdateRun) =>
+  Boolean(run?.phase === 'waiting' && run.automatic && !run.transactionStartedAt);
+export const updateCanCheck = (run?: UpdateRun) =>
+  !updateActive(run) || automaticUpdateWaiting(run);
 export interface UpdateController {
   isPending?(): boolean;
   status(): Promise<UpdateStatus>;

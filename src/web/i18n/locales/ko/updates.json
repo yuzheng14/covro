@@ -40,6 +40,8 @@
   "auto_update_is_paused_restore_the_codex_connection": "자동 업데이트가 일시 중지되었습니다. 재시작 후 Codex 실행 경로와 대상 버전의 호환성 정보를 확인한 후 다시 확인하세요.",
   "processing": "처리 중…",
   "check_for_updates": "업데이트 확인",
+  "checking_for_updates": "업데이트 확인 중…",
+  "no_updates_available": "사용 가능한 업데이트 없음",
   "use_this_channel": "이 채널 사용",
   "switch_and_restart": "전환 및 재시작",
   "update_and_restart": "업데이트 및 재시작",

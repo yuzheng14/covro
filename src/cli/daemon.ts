@@ -113,6 +113,7 @@ export async function runDaemon(configPath: string) {
       } else if (request.url === '/update-status') {
         response.end(JSON.stringify(await updates!.status()));
       } else if (request.url === '/update-check') {
+        if (runtime?.service.isInMaintenance()) throw runtime.service.maintenanceError();
         const channel = (input as { channel?: unknown }).channel;
         if (channel !== undefined && !['stable', 'beta', 'dev'].includes(String(channel)))
           throw new Error('Invalid channel');

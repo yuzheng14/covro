@@ -3,7 +3,13 @@ import { t, formatList } from '../i18n';
 import type { CodexCompatibility } from '../../shared/codex-compatibility';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpCircle, ExternalLink } from 'lucide-react';
-import { releaseChannels, updateActive, type ReleaseChannel } from '../../shared/updates';
+import {
+  automaticUpdateWaiting,
+  releaseChannels,
+  updateActive,
+  updateCanCheck,
+  type ReleaseChannel,
+} from '../../shared/updates';
 import { compareVersions, validVersion } from '../../shared/versions';
 import type { Updates } from '../hooks/useUpdates';
 import { Button } from './ui/button';
@@ -118,17 +124,33 @@ function CodexCompatibilityDetails({
 }
 export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const { status, busy, error, reloadError } = updates;
+  const { status, busy, checking, checkError, error, reloadError } = updates;
   const [selectedChannel, setChannel] = useState<ReleaseChannel>();
-  const channel = selectedChannel ?? status?.settings.channel ?? 'stable';
+  const active = updateActive(status?.run);
+  const pending = automaticUpdateWaiting(status?.run);
+  const channel = (pending ? undefined : selectedChannel) ?? status?.settings.channel ?? 'stable';
   const [allowDowngrade, setAllowDowngrade] = useState(false);
   const available =
     (status?.available?.requestedChannel ?? status?.available?.channel) === channel
       ? status?.available
       : undefined;
-  const active = updateActive(status?.run);
-  const pending = Boolean(active && status?.run?.automatic && !status.run.transactionStartedAt);
-  const selected = active && status?.run?.candidate ? status.run.candidate : available;
+  const run = status?.run;
+  const selected = active
+    ? (run?.candidate ??
+      (available &&
+      available.version === run?.target &&
+      (!run.commit || available.commit === run.commit)
+        ? available
+        : undefined))
+    : available;
+  const listed = pending ? available : selected;
+  const listedCurrent =
+    listed &&
+    status &&
+    validVersion(status.version) &&
+    compareVersions(listed.version, status.version) === 0;
+  const checkFailure = !checking && (checkError || status?.checkError);
+  const canCheck = updateCanCheck(status?.run);
   const migration = Boolean(status?.runtime?.migration);
   const current =
     selected &&
@@ -234,12 +256,16 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
         <Select
           value={channel}
           disabled={busy || (active && !pending)}
-          onValueChange={(value) => {
+          onValueChange={async (value) => {
             const next = value as ReleaseChannel;
-            setChannel(next);
             setAllowDowngrade(false);
             setCodexConsent(undefined);
-            if (pending && status) void updates.configure({ ...status.settings, channel: next });
+            if (pending && status) {
+              setChannel(undefined);
+              if (!(await updates.configure({ ...status.settings, channel: next }))) return;
+            } else {
+              setChannel(next);
+            }
             void updates.check(next);
           }}
         >
@@ -292,18 +318,24 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
           })}
         </p>
       )}
-      {selected && (
-        <div className="update-available">
+      {listed && (
+        <div className="update-available" role="status">
           <span>
-            {current
-              ? t('updates:this_channel_is_already_at_the_current_version')
-              : selected.downgrade
-                ? t('updates:target_version')
-                : t('updates:available_version')}
+            {active && !pending
+              ? t('updates:target_version')
+              : listedCurrent
+                ? t('updates:this_channel_is_already_at_the_current_version')
+                : listed.downgrade
+                  ? t(pending ? 'updates:no_updates_available' : 'updates:target_version')
+                  : t('updates:available_version')}
           </span>
-          <strong>{selected.version}</strong>
-          <span>{labels[selected.channel]}</span>
-          {selected.commit && <code>{selected.commit.slice(0, 8)}</code>}
+          {(!pending || !listed.downgrade) && (
+            <>
+              <strong>{listed.version}</strong>
+              <span>{labels[listed.channel]}</span>
+              {listed.commit && <code>{listed.commit.slice(0, 8)}</code>}
+            </>
+          )}
         </div>
       )}
       {selected && (
@@ -347,14 +379,17 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
       <div className="update-buttons">
         <Button
           variant="secondary"
-          disabled={busy || (active && !pending)}
-          onClick={() => void updates.check(channel)}
+          disabled={busy || checking || !canCheck}
+          onClick={() => void updates.check(pending ? undefined : channel)}
         >
-          {busy ? t('updates:processing') : t('updates:check_for_updates')}
+          {checking && canCheck
+            ? t('updates:checking_for_updates')
+            : t('updates:check_for_updates')}
         </Button>
         <Button
           disabled={
             busy ||
+            checking ||
             active ||
             !selected ||
             !status?.supported ||
@@ -392,12 +427,8 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
           {t('updates:allow_downgrade_incompatible_databases_still_block_switching')}
         </label>
       )}
-      {pending && status?.run && (
-        <Button
-          variant="secondary"
-          disabled={busy}
-          onClick={() => void updates.cancel(status.run!.id)}
-        >
+      {pending && run && (
+        <Button variant="secondary" disabled={busy} onClick={() => void updates.cancel(run.id)}>
           {t('updates:cancel_pending_update')}
         </Button>
       )}
@@ -417,13 +448,13 @@ export function UpdateSettings({ updates, onClose }: { updates: Updates; onClose
           {active && <progress aria-label={t('updates:update_progress')} />}
         </section>
       )}
-      {(error || status?.checkError || reloadError) && (
+      {(error || checkFailure || reloadError) && (
         <div className="inline-error" role="alert">
           <p>{displayMessage(reloadError ?? error) ?? t('updates:checkFailed')}</p>
-          {status?.checkError && (
+          {checkFailure && (
             <details>
               <summary>{t('common:technical_details')}</summary>
-              <pre>{status.checkError}</pre>
+              <pre>{checkFailure}</pre>
             </details>
           )}
         </div>

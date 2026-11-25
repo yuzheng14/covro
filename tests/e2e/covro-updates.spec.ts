@@ -37,6 +37,8 @@ async function updatesFixture(page: Page) {
   let candidateMetadata: unknown = CODEX_COMPATIBILITY;
   let restartVersion: string | null | undefined;
   let candidateRelease: { version: string; channel: ReleaseChannel } | undefined;
+  let checkGate: Promise<void> | undefined;
+  let checkError: string | undefined;
   const requests: { path: string; body: Record<string, unknown> }[] = [];
   let reload = false;
   await page.route('**/api/updates**', async (route) => {
@@ -56,21 +58,27 @@ async function updatesFixture(page: Page) {
       });
       return;
     }
-    if (path.endsWith('/check'))
-      state.available = {
-        version: body.channel === 'dev' ? developmentVersion : nextVersion,
-        channel: body.channel as ReleaseChannel,
-        ...candidateRelease,
-        requestedChannel: body.channel as ReleaseChannel,
-        downgrade: false,
-        commit: '8fb09cabcdef',
-        codex: assessCodexCompatibility(
-          candidateMetadata,
-          restartVersion === undefined ? state.codex.version : restartVersion,
-        ),
-        codexTarget: state.available?.codexTarget,
-        codexError: state.available?.codexError,
-      };
+    if (path.endsWith('/check')) {
+      await checkGate;
+      const channel = (body.channel as ReleaseChannel | undefined) ?? state.settings.channel;
+      state.checkError = checkError;
+      state.available = checkError
+        ? undefined
+        : {
+            version: channel === 'dev' ? developmentVersion : nextVersion,
+            channel,
+            ...candidateRelease,
+            requestedChannel: channel,
+            downgrade: false,
+            commit: '8fb09cabcdef',
+            codex: assessCodexCompatibility(
+              candidateMetadata,
+              restartVersion === undefined ? state.codex.version : restartVersion,
+            ),
+            codexTarget: state.available?.codexTarget,
+            codexError: state.available?.codexError,
+          };
+    }
     if (path.endsWith('/settings')) state.settings = body as unknown as UpdateStatus['settings'];
     if (path.endsWith('/run'))
       state.run = {
@@ -100,6 +108,10 @@ async function updatesFixture(page: Page) {
     },
     setRelease: (release: typeof candidateRelease) => {
       candidateRelease = release;
+    },
+    setCheck: (gate?: Promise<void>, error?: string) => {
+      checkGate = gate;
+      checkError = error;
     },
     setCodex: (version: string | null) => {
       state.codex = assessCodexCompatibility(CODEX_COMPATIBILITY, version);
@@ -666,7 +678,52 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
           dialog.getByRole('button', { name: strings.cancel_pending_update, exact: true }),
         ).toBeEnabled();
         await screenshot(page, `325-${locale}-${viewport.name}-${theme}-before.png`);
-        f.state.available = candidate(4);
+        const check = dialog.getByRole('button', { name: strings.check_for_updates, exact: true });
+        let finishCheck!: () => void;
+        f.setRelease({ version: candidate(4).version, channel: 'dev' });
+        f.setCheck(
+          new Promise<void>((resolve) => {
+            finishCheck = resolve;
+          }),
+        );
+        await expect(check).toBeEnabled();
+        await check.click();
+        const checking = dialog.getByRole('button', {
+          name: strings.checking_for_updates,
+          exact: true,
+        });
+        await expect(checking).toBeDisabled();
+        await expect(dialog.getByRole('switch')).toBeEnabled();
+        await screenshot(page, `390-${locale}-${viewport.name}-${theme}-checking.png`);
+        finishCheck();
+        await expect(dialog.locator('.update-available')).toContainText(candidate(4).version);
+        await expect(dialog.locator('.update-progress')).toContainText(candidate(3).version);
+        await screenshot(page, `390-${locale}-${viewport.name}-${theme}-available.png`);
+        expect(f.requests.filter((r) => r.path.endsWith('/check'))).toEqual([
+          { path: '/api/updates/check', body: {} },
+        ]);
+
+        f.setRelease({ version: currentVersion, channel: 'stable' });
+        await check.click();
+        await expect(dialog.locator('.update-available')).toContainText(
+          strings.this_channel_is_already_at_the_current_version!,
+        );
+        await expect(dialog.locator('.update-progress')).toContainText(candidate(3).version);
+        await dialog.locator('.update-available').scrollIntoViewIfNeeded();
+        await screenshot(page, `390-${locale}-${viewport.name}-${theme}-current.png`);
+
+        f.setCheck(undefined, 'npm dev returned 503');
+        await check.click();
+        const failure = dialog.getByRole('alert').filter({ hasText: strings.checkFailed });
+        await expect(failure).toBeVisible();
+        await expect(check).toBeEnabled();
+        await failure.scrollIntoViewIfNeeded();
+        await screenshot(page, `390-${locale}-${viewport.name}-${theme}-failed.png`);
+        f.setCheck();
+        f.setRelease({ version: candidate(4).version, channel: 'dev' });
+        await check.click();
+        await expect(failure).toHaveCount(0);
+        await expect(dialog.locator('.update-available')).toContainText(candidate(4).version);
         f.state.run = {
           ...f.state.run!,
           target: candidate(4).version,
@@ -695,6 +752,9 @@ for (const locale of ['zh-Hans', 'en', 'ja', 'ko']) {
           dialog.getByRole('region', { name: strings.target_version_compatibility, exact: true }),
         ).toContainText(CODEX_COMPATIBILITY.recommended);
         await expect(dialog.getByRole('switch')).toBeDisabled();
+        await expect(check).toBeDisabled();
+        await dialog.locator('.update-progress').scrollIntoViewIfNeeded();
+        await screenshot(page, `390-${locale}-${viewport.name}-${theme}-installing.png`);
         f.state.run = { ...f.state.run!, phase: 'succeeded', committed: true };
         f.state.available = candidate(4);
         await page.clock.fastForward(5000);

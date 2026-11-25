@@ -40,6 +40,8 @@
   "auto_update_is_paused_restore_the_codex_connection": "Auto-update is paused. Check the Codex launch source after restart and the target compatibility declaration, then check again.",
   "processing": "Processing…",
   "check_for_updates": "Check for updates",
+  "checking_for_updates": "Checking for updates…",
+  "no_updates_available": "No updates available",
   "use_this_channel": "Use this channel",
   "switch_and_restart": "Switch and restart",
   "update_and_restart": "Update and restart",

@@ -40,6 +40,8 @@
   "auto_update_is_paused_restore_the_codex_connection": "自动升级已暂停。请核对重启后的 Codex 来源及目标版本的兼容声明，再重新检查。",
   "processing": "正在处理…",
   "check_for_updates": "检查更新",
+  "checking_for_updates": "正在检查更新…",
+  "no_updates_available": "没有可用更新",
   "use_this_channel": "使用此渠道",
   "switch_and_restart": "切换并重启",
   "update_and_restart": "升级并重启",

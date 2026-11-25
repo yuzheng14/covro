@@ -40,6 +40,8 @@
   "auto_update_is_paused_restore_the_codex_connection": "自動更新を停止しています。再起動後の Codex の起動元と更新先の互換性情報を確認し、再確認してください。",
   "processing": "処理中…",
   "check_for_updates": "更新を確認",
+  "checking_for_updates": "更新を確認中…",
+  "no_updates_available": "利用可能な更新はありません",
   "use_this_channel": "このチャンネルを使用",
   "switch_and_restart": "切り替えて再起動",
   "update_and_restart": "更新して再起動",
