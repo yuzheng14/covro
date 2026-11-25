@@ -158,6 +158,15 @@ export const turnTokenTotals = sqliteTable(
   (table) => [primaryKey({ columns: [table.threadId, table.turnId] })],
 );
 
+export const turnCompletionReads = sqliteTable(
+  'turn_completion_reads',
+  {
+    threadId: text('thread_id').notNull(),
+    turnId: text('turn_id').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.threadId, table.turnId] })],
+);
+
 /** Removing a registration retains its identity and all existing thread links. */
 export const projectRegistrations = sqliteTable('project_registrations', {
   id: text('id').primaryKey(),

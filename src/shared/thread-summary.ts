@@ -1,6 +1,13 @@
 import type { ThreadSummary, ThreadView } from './types.js';
 import { pendingAttention } from './thread-attention.js';
 
+export function completedTurnId(thread: ThreadSummary): string | undefined {
+  const completed =
+    (thread.status === 'completed' || thread.status === 'idle') &&
+    thread.lastTurnStatus === 'completed';
+  return completed ? thread.lastTurnId : undefined;
+}
+
 /** Overview messages deliberately omit conversation content and control payloads. */
 export function toThreadSummary(thread: ThreadView): ThreadSummary {
   const lastTurn = thread.turns.at(-1);

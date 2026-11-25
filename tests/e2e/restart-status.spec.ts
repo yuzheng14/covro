@@ -1,6 +1,12 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import type { Operation, ThreadSummaryPage, ThreadView } from '../../src/shared/types';
-import { confirmCompatibility, controlRuntime, projectGroup, testOrigin } from './helpers';
+import {
+  confirmCompatibility,
+  controlRuntime,
+  projectGroup,
+  testOrigin,
+  trackOperationPosts,
+} from './helpers';
 
 const headers = { Origin: testOrigin };
 
@@ -80,10 +86,7 @@ for (const mobile of [false, true]) {
     expect(pending.status).toBe('unknown');
     expect(pending.execution).toMatchObject({ ended: false });
 
-    const posts: string[] = [];
-    page.on('request', (outgoing) => {
-      if (outgoing.method() === 'POST') posts.push(outgoing.url());
-    });
+    const posts = trackOperationPosts(page);
     await page.goto('/');
     await page.evaluate((id) => {
       localStorage.setItem('codex-web.project', 'fixture');

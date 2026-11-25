@@ -13,6 +13,7 @@ import type {
   ProjectClone,
   CloneProjectInput,
   SystemInfo,
+  ThreadMutationResult,
   ThreadSummaryPage,
   ThreadView,
 } from '../../shared/types';
@@ -130,6 +131,10 @@ export const api = {
       undefined,
       signal,
     ),
+  readTurnCompletion: (threadId: string, turnId: string) =>
+    request<ThreadMutationResult>(`/api/threads/${encodeURIComponent(threadId)}/completion-read`, {
+      turnId,
+    }),
   thread: (threadId: string, signal?: AbortSignal) =>
     request<ThreadView>(`/api/threads/${encodeURIComponent(threadId)}`, undefined, signal),
   threadSnapshot: (threadId: string, signal?: AbortSignal) =>

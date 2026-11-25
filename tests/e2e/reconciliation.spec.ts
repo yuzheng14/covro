@@ -7,6 +7,7 @@ import {
   expectThreadReady,
   openHeaderDiagnostics,
   testOrigin,
+  trackOperationPosts,
 } from './helpers';
 
 const panel = (page: Page) => page.getByRole('region', { name: '状态诊断详情' });
@@ -109,10 +110,7 @@ for (const mobile of [false, true]) {
       mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
     );
     await input(page).fill('恢复后继续的草稿');
-    const posts: string[] = [];
-    page.on('request', (request) => {
-      if (request.method() === 'POST') posts.push(request.url());
-    });
+    const posts = trackOperationPosts(page);
     await expect(page.locator('.pending-notice')).toHaveCount(0);
     await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
     await expect(send(page)).toBeEnabled();
@@ -169,10 +167,7 @@ for (const mobile of [false, true]) {
     else await page.setViewportSize({ width: 1440, height: 1000 });
     await page.reload();
     await expect(checkButton(page)).toBeVisible();
-    const submissions: string[] = [];
-    page.on('request', (request) => {
-      if (request.method() === 'POST') submissions.push(request.url());
-    });
+    const submissions = trackOperationPosts(page);
     await input(page).fill('核对期间保留的草稿');
     await checkButton(page).click();
     await expect(panel(page)).toBeVisible();
@@ -249,11 +244,8 @@ for (const mobile of [false, true]) {
     await page.setViewportSize(
       mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
     );
-    const posts: string[] = [];
+    const posts = trackOperationPosts(page);
     let missingId = '';
-    page.on('request', (outgoing) => {
-      if (outgoing.method() === 'POST') posts.push(outgoing.url());
-    });
     await page.route('**/api/threads/*/turns', async (route) => {
       missingId = route.request().postDataJSON().clientOperationId;
       await route.abort('failed'); // Browser identity persists, but no server operation is created.

@@ -50,7 +50,7 @@ import {
   validateElicitationResolution,
   validatePermissionResolution,
 } from '../shared/elicitation.js';
-import { toThreadSummary } from '../shared/thread-summary.js';
+import { completedTurnId, toThreadSummary } from '../shared/thread-summary.js';
 import type {
   DismissQuestionsInput,
   ArchiveThreadInput,
@@ -82,7 +82,9 @@ import type {
   SteerInput,
   SystemInfo,
   ThreadPage,
+  ThreadSummary,
   ThreadSummaryPage,
+  ThreadMutationResult,
   ThreadView,
 } from '../shared/types.js';
 import {
@@ -94,6 +96,7 @@ import {
 } from './db/operations.js';
 import { EventHub } from './events.js';
 import { TurnUsageStore } from './db/turn-usage.js';
+import { TurnCompletionReads } from './db/turn-completion-reads.js';
 import { Projection, isActive, isTerminal } from './projection.js';
 import { ProjectRegistry } from './projects.js';
 import { BackgroundTasks } from './background-tasks.js';
@@ -166,6 +169,7 @@ export class GatewayService {
   readonly projection: Projection;
   private readonly store: OperationStore;
   private readonly turnUsage: TurnUsageStore;
+  private readonly turnCompletionReads: TurnCompletionReads;
   private readonly questionTracking: QuestionTrackingStore;
   private readonly questionHistories = new Map<string, QuestionHistory>();
   private readonly projects: ProjectRegistry;
@@ -207,6 +211,7 @@ export class GatewayService {
     this.logger = (options.logger ?? nullLogger).child({ component: 'operations' });
     this.store = options.store;
     this.turnUsage = new TurnUsageStore(this.store.database);
+    this.turnCompletionReads = new TurnCompletionReads(this.store.database);
     this.questionTracking = new QuestionTrackingStore(
       this.store.database,
       this.logger.child({ component: 'question_tracking' }),
@@ -931,7 +936,25 @@ export class GatewayService {
     // The list can race with live updates. Browsers retain updates newer than this boundary.
     const boundary = this.events.cursor();
     const page = await this.listThreads(projectId, cursor, archived);
-    return { data: page.data.map(toThreadSummary), nextCursor: page.nextCursor, cursor: boundary };
+    return {
+      data: page.data.map((thread) => this.threadSummary(thread)),
+      nextCursor: page.nextCursor,
+      cursor: boundary,
+    };
+  }
+
+  async readTurnCompletion(threadId: string, turnId: string): Promise<ThreadMutationResult> {
+    await this.loadThread(threadId);
+    const thread = this.projection.get(threadId)!;
+    this.workspaces.assertOwnership(thread.projectId, thread.cwd, threadId);
+    const summary = this.threadSummary(this.threadView(thread, false));
+    if (completedTurnId(summary) === turnId) {
+      if (this.turnCompletionReads.record(threadId, turnId))
+        this.logger.info('completion.read', { threadId, turnId });
+      summary.lastTurnRead = true;
+      this.publishThreadSummary(summary, true);
+    }
+    return { threadId, summary, cursor: this.events.cursor() };
   }
 
   async setThreadArchived(threadId: string, input: ArchiveThreadInput): Promise<Operation> {
@@ -991,7 +1014,7 @@ export class GatewayService {
           result: {
             threadId,
             archived: input.archived,
-            summary: toThreadSummary(this.threadView(this.projection.get(threadId)!)),
+            summary: this.threadSummary(this.threadView(this.projection.get(threadId)!)),
             cursor: this.events.cursor(),
           },
         };
@@ -1037,7 +1060,7 @@ export class GatewayService {
           result: {
             threadId,
             name,
-            summary: toThreadSummary(this.threadView(this.projection.get(threadId)!)),
+            summary: this.threadSummary(this.threadView(this.projection.get(threadId)!)),
             cursor: this.events.cursor(),
           },
         };
@@ -3335,16 +3358,26 @@ export class GatewayService {
     const view = this.detailThreadView(thread, false, !streamed || !thread.pendingQuestions);
     if (view.pendingQuestions) thread.pendingQuestions = view.pendingQuestions;
     this.events.publishThread(view, streamed);
-    const summary = toThreadSummary({ ...view, turns: thread.turns });
-    const encoded = JSON.stringify(summary);
-    if (this.summaries.get(threadId) === encoded) return;
     try {
       this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
     } catch {
       return;
     }
-    this.summaries.set(threadId, encoded);
-    this.events.publishSummary(summary);
+    this.publishThreadSummary(this.threadSummary({ ...view, turns: thread.turns }));
+  }
+
+  private threadSummary(view: ThreadView): ThreadSummary {
+    const summary = toThreadSummary(view);
+    const turnId = completedTurnId(summary);
+    if (turnId) summary.lastTurnRead = this.turnCompletionReads.has(view.id, turnId);
+    return summary;
+  }
+
+  private publishThreadSummary(summary: ThreadSummary, advanceCursor = false): void {
+    const encoded = JSON.stringify(summary);
+    if (this.summaries.get(summary.id) === encoded) return;
+    this.summaries.set(summary.id, encoded);
+    this.events.publishSummary(summary, advanceCursor);
   }
 
   private historyVisible(thread: ThreadView): boolean {

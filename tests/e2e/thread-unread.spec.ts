@@ -67,7 +67,7 @@ async function open(page: Page) {
 
 async function screenshot(page: Page, testInfo: TestInfo, name: string) {
   const path = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path, animations: 'disabled' });
+  await page.locator('.sidebar').screenshot({ path, animations: 'disabled' });
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
@@ -124,22 +124,22 @@ test('completion stays unread until its latest result is viewed and later turns 
   await expect(unread(page, target)).toHaveCount(0);
 });
 
-test('an unfocused tab cannot read a completion and receives another tab read update', async ({
+test('an unfocused browser receives another browser’s read update without shared storage', async ({
   page,
   request,
-  context,
-}) => {
+  browser,
+}, testInfo) => {
   await open(page);
   const target = await create(request, '后台标签中的会话');
   const current = await create(request, '前台正在查看的会话');
   await link(page, current).click();
-  const other = await context.newPage();
+  const other = await browser.newPage({ locale: 'zh-CN' });
   // Headless Chromium reports every page focused, even after bringToFront. Model the
-  // unfocused browser state explicitly while keeping completion and storage events real.
+  // unfocused browser state explicitly while keeping the WebSocket events real.
   await other.addInitScript(() => {
     Object.defineProperty(document, 'hasFocus', { value: () => false });
   });
-  await other.goto('/');
+  await other.goto(testOrigin);
   await expect(other.locator('.connection-badge')).toHaveText('实时连接正常');
   await link(other, target).click();
   const turnId = await start(request, target, '[approval] 等待前台阅读');
@@ -151,14 +151,53 @@ test('an unfocused tab cannot read a completion and receives another tab read up
   await expect(other.locator('.turn-heading .status').last()).toHaveText('已完成');
   await expect(unread(page, target)).toHaveAccessibleName('已完成 · 未读');
   await expect(unread(other, target)).toHaveAccessibleName('已完成 · 未读');
+  await row(other, target).locator('.thread-details-trigger').click();
+  await expect(row(other, target).locator('.thread-details')).toContainText('未读');
+  await screenshot(other, testInfo, 'second-browser-before-reading');
 
   await link(page, target).click();
   await expect(latestResult(page)).toBeInViewport();
   await expect(unread(page, target)).toHaveCount(0);
-  // The second page stays unfocused; its DOM must react to the shared read record.
   await expect.poll(() => other.evaluate(() => document.hasFocus())).toBe(false);
   await expect(unread(other, target)).toHaveCount(0);
+  await expect(row(other, target).locator('.thread-details')).toContainText('已读');
+  await screenshot(other, testInfo, 'second-browser-after-reading');
+  await other.reload();
+  await expect(link(other, target)).toBeVisible();
+  await expect(unread(other, target)).toHaveCount(0);
   await other.close();
+});
+
+test('imports a browser’s existing read receipt without opening the conversation', async ({
+  page,
+  request,
+}) => {
+  await open(page);
+  const threadId = await create(request, '已读记录迁移');
+  const turnId = (await history(request, threadId)).turns.at(-1)!.id;
+  await page.addInitScript(
+    ({ threadId, turnId }) => {
+      localStorage.setItem(
+        `codex-web.read-completion:${encodeURIComponent(threadId)}:${encodeURIComponent(turnId)}`,
+        '1',
+      );
+    },
+    { threadId, turnId },
+  );
+  await page.route(
+    `**/api/threads/${threadId}/completion-read`,
+    (route) => route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE' } } }),
+    { times: 1 },
+  );
+  const migration = page.waitForResponse(
+    (response) => response.ok() && response.url().endsWith(`/${threadId}/completion-read`),
+  );
+  await page.reload();
+  await migration;
+  await expect(link(page, threadId)).toBeVisible();
+  await expect(unread(page, threadId)).toHaveCount(0);
+  const summary = (await (await request.get('/api/projects/fixture/threads')).json()).data;
+  expect(summary).toContainEqual(expect.objectContaining({ id: threadId, lastTurnRead: true }));
 });
 
 test.describe('touch reading', () => {

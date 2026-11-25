@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ThreadSummary } from '../../src/shared/types';
-import { completedTurnId, CompletionReads } from '../../src/web/lib/thread-read-state';
+import { completedTurnId } from '../../src/shared/thread-summary';
+import { CompletionReads } from '../../src/web/lib/thread-read-state';
 
 const completed: ThreadSummary = {
   id: 'thread',
@@ -20,6 +21,9 @@ function storage() {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => {
       values.set(key, value);
+    },
+    removeItem: (key: string) => {
+      values.delete(key);
     },
   };
 }
@@ -45,6 +49,9 @@ describe('completion read receipts', () => {
     expect(reloaded.isRead('thread', 'turn-1')).toBe(true);
     expect(reloaded.isRead('thread', 'turn-2')).toBe(false);
     expect(reloaded.isRead('other-thread', 'turn-1')).toBe(false);
+    first.clear('thread', 'turn-1');
+    expect(first.isRead('thread', 'turn-1')).toBe(false);
+    expect(reloaded.isRead('thread', 'turn-1')).toBe(false);
   });
 
   it('keeps newer read receipts when an older tab reads an earlier turn afterwards', () => {
@@ -67,6 +74,7 @@ describe('completion read receipts', () => {
       setItem: () => {
         throw new Error('quota');
       },
+      removeItem: () => {},
     }));
     for (const reads of [denied, full]) {
       expect(reads.markRead('thread', 'turn')).toBe(true);

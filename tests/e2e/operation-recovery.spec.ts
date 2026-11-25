@@ -7,6 +7,7 @@ import {
   createEmptyThread,
   openHeaderDiagnostics,
   testOrigin,
+  trackOperationPosts,
 } from './helpers';
 
 const headers = { Origin: testOrigin };
@@ -49,6 +50,9 @@ for (const mobile of [false, true]) {
     page,
     request,
   }, info) => {
+    await page.setViewportSize(
+      mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
+    );
     const first = await namedThread(request, 'fixture', '整理发布计划');
     const second = await namedThread(request, 'fixture-other', '检查仓库依赖');
     await page.evaluate(
@@ -70,9 +74,6 @@ for (const mobile of [false, true]) {
     await expect(page.locator('.turn')).toHaveCount(1);
     await input(page).fill('当前会话可以正常发送');
     await expect(send(page)).toBeEnabled();
-    await page.setViewportSize(
-      mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
-    );
     await openHeaderDiagnostics(page);
     const others = panel(page).getByRole('region', { name: '其他会话与操作' });
     // section landmarks require an accessible name; each card names the real source conversation.
@@ -140,10 +141,7 @@ test('explains and clears a missing approval receipt next to the blocked approva
   await expect(approve).toBeDisabled();
   const notice = page.locator('.action-recovery-group .recovery-notice');
   await expect(notice).toContainText('服务端找不到这次提交记录');
-  const posts: string[] = [];
-  page.on('request', (outgoing) => {
-    if (outgoing.method() === 'POST') posts.push(outgoing.url());
-  });
+  const posts = trackOperationPosts(page);
   await notice.getByRole('button', { name: '查看处理方式' }).click();
   const card = panel(page).getByRole('article', { name: '处理审批或输入 · 审批恢复演示' });
   await expect(card).toBeFocused();
@@ -196,10 +194,7 @@ test('silently removes an uncertain receipt with terminal evidence after reload 
       ),
     receipt,
   );
-  const posts: string[] = [];
-  page.on('request', (outgoing) => {
-    if (outgoing.method() === 'POST') posts.push(outgoing.url());
-  });
+  const posts = trackOperationPosts(page);
   await page.reload();
   await expect(page.locator('.turn')).toHaveCount(2);
   await input(page).fill('继续处理下一件事');
@@ -250,10 +245,7 @@ test('removes an old approval record after the same approval was handled elsewhe
     data: { clientOperationId: randomUUID(), resolution: { decision: 'accept' } },
   });
   expect(answered.ok()).toBe(true);
-  const posts: string[] = [];
-  page.on('request', (outgoing) => {
-    if (outgoing.method() === 'POST') posts.push(outgoing.url());
-  });
+  const posts = trackOperationPosts(page);
   await page.reload();
   await expect(page.locator('.turn-heading .status').last()).toHaveText('已完成');
   await expect(page.locator('.action-card')).toHaveCount(0);

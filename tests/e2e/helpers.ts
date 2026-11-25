@@ -2,6 +2,20 @@ import { randomUUID } from 'node:crypto';
 import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import type { SystemInfo } from '../../src/shared/types';
 export const testOrigin = `http://127.0.0.1:${process.env.E2E_PORT ?? 8788}`;
+/** Watch operation requests while allowing the sidebar to sync completed reads. */
+export function trackOperationPosts(page: Page): string[] {
+  const posts: string[] = [];
+  page.on('request', (request) => {
+    const url = request.url();
+    if (
+      request.method() === 'POST' &&
+      !/^\/api\/threads\/[^/]+\/completion-read$/.test(new URL(url).pathname)
+    )
+      posts.push(url);
+  });
+  return posts;
+}
+
 export const compatibilityDialog = (page: Page) =>
   page.getByRole('dialog', { name: 'Codex 版本兼容性未经验证' });
 export const projectGroup = (page: Page, name = '测试项目') =>
