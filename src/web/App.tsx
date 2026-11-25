@@ -324,6 +324,10 @@ export function App() {
     if (thread && canFork) void forkConversation(thread);
   };
   const offline = workspace.connection !== 'connected';
+  const loopControlsDisabled = (id: string) =>
+    offline || workspace.authRequired || busyFor('loop', id);
+  const runLoop = (id: string, path: string, input: object) =>
+    run('loop', id, path, input, undefined, { throwOnError: true });
   const compatibilityOperations = workspace.operations.filter(
     (entry) => entry.kind === 'confirmCompatibility' && entry.target === compatibilityTarget,
   );
@@ -677,6 +681,12 @@ export function App() {
             >
               <BackgroundTasks
                 tasks={backgroundTasks}
+                runLoop={runLoop}
+                loopControlsDisabled={loopControlsDisabled}
+                onOpenLoopThread={(task) => {
+                  setSidebarOpen(false);
+                  void workspace.selectThread(task.threadId, task.projectId ?? UNASSIGNED_SCOPE);
+                }}
                 onDetails={(cloneId) => {
                   setSidebarOpen(false);
                   setProjectDialog({ kind: 'add', cloneId });
@@ -1127,11 +1137,9 @@ export function App() {
             <SessionLoopDialog
               thread={thread}
               onClose={() => setLoopDialog(undefined)}
-              disabled={
-                offline || workspace.authRequired || workspace.busy.includes(`loop:${thread.id}`)
-              }
-              run={(path, input) =>
-                workspace.run('loop', thread.id, path, {
+              disabled={loopControlsDisabled(thread.id)}
+              run={(id, path, input) =>
+                runLoop(id, path, {
                   ...input,
                   ...(path.endsWith('/loops') ? { settings: workspace.settings } : {}),
                 })

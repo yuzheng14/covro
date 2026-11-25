@@ -579,6 +579,7 @@ export function createApp({
     );
     return c.json(op, status(op));
   });
+  app.get('/api/loop-tasks', async (c) => c.json(await service.listLoopTasks()));
   app.get('/api/threads/:threadId/loops', async (c) =>
     c.json(await service.listSessionLoops(id(c.req.param('threadId')))),
   );

@@ -2,6 +2,8 @@
 
 Use `/loop 5m Check the current PR's CI status` in a saved Covro session. A bare `/loop` opens the session's loop manager. It shows the prompt, interval, last result, and next run, and lets you create, pause, resume or cancel a loop. The command accepts whole numbers followed by `m`, `h` or `d`, from `1m` through `1d`. The first run is due after one interval. A loop runs until paused or cancelled.
 
+From a conversation or project overview, open **Tasks → Loop tasks**. On narrow screens, open **More actions** first. Each row shows the prompt, project, session, schedule state, and next run time while active. Select the prompt to open its conversation. Pause, resume, and cancel update the same loop shown in `/loop`.
+
 Covro schedules runs on the server, so the browser may be closed. The prompt starts a regular turn in the same session, using the settings selected at creation and the normal workspace and permission checks. Approval and input requests are handled in the conversation. The scheduler waits while the session is busy, has unanswered requests, or has a capacity retry pending. A manual send already submitted to the gateway takes priority. When several ticks become due during one busy period, each loop has only one pending run. After dispatch, its next due time is one interval later.
 
 Pause and cancel stop future dispatches and leave any current turn running. Use `/stop` to interrupt that turn. Resume schedules the next run one interval later. Capacity retries are part of the originating run. A failed run appears in the loop manager and in the conversation if Codex created a turn.
@@ -11,6 +13,8 @@ While an update or manual restart is waiting for the service to become idle, the
 ## 会话循环
 
 在已保存的 Covro 会话中输入 `/loop 5m 检查当前 PR 的 CI 状态`。单独输入 `/loop` 打开当前会话的循环管理，查看任务、间隔、上次结果和下次时间，并可新建、暂停、恢复或取消。间隔使用整数和 `m`、`h`、`d`，范围为 `1m` 到 `1d`。创建一个间隔后首次执行。循环持续运行，直到暂停或取消。
+
+在任意会话或项目概览中打开**任务 → 循环任务**。窄屏上先打开**更多操作**。每条任务显示内容、项目、会话、调度状态，以及排程中的下一次运行时间。点击任务内容可回到所属会话。这里的暂停、恢复与取消和 `/loop` 管理同一条循环。
 
 服务端负责调度，关闭浏览器后仍能运行。每次在原会话中发起普通轮次，使用创建任务时选择的设置，并经过现有工作区和权限检查。审批和回答继续在会话里处理。会话忙碌、有未处理的请求或正在等待容量重试时，循环等待。先到达服务端的手动发送优先。忙碌期间多次到期只保留一次，派发后从实际派发时间重新计算下次时间。
 

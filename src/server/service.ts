@@ -103,6 +103,7 @@ import {
   type CreateSessionLoop,
   type SessionLoopAction,
   type SessionLoopResult,
+  type SessionLoopTask,
 } from '../shared/session-loop.js';
 import type { AppTransaction } from './db/index.js';
 import { SessionLoopStore, sessionLoopView, type SessionLoopRow } from './db/session-loops.js';
@@ -1485,14 +1486,94 @@ export class GatewayService {
     return this.workspaces.assertOwnership(link.projectId, link.cwd, threadId);
   }
 
+  private requireOwnedLoop(threadId: string, loopId: string): SessionLoopRow {
+    const row = this.loops.get(loopId);
+    if (
+      !row ||
+      row.threadId !== threadId ||
+      row.workspaceKey !== this.loopWorkspace(threadId).workspaceKey
+    )
+      throw new AppError('LOOP_NOT_FOUND', 'Loop not found', 404);
+    return row;
+  }
+
   async listSessionLoops(threadId: string) {
     if (!this.store.getThreadLink(threadId)) await this.loadThread(threadId);
     const workspace = this.loopWorkspace(threadId);
     return this.loops.list(threadId, workspace.workspaceKey);
   }
 
+  async listLoopTasks(): Promise<SessionLoopTask[]> {
+    // The gateway authorizes access at the instance level. Resolve session and project
+    // ownership from this instance's database, independently of the browser's sidebar.
+    const threadIds = this.loops.threadIds();
+    const metadata = new Map<string, ThreadView>();
+    const missing = new Set<string>();
+    if (this.codex.ready) {
+      // Bound cold metadata reads (no history loading or session resume).
+      for (let start = 0; start < threadIds.length; start += 4) {
+        await Promise.all(
+          threadIds.slice(start, start + 4).map(async (id) => {
+            if (this.projection.get(id)) return;
+            try {
+              const workspace = this.loopWorkspace(id);
+              if (!this.loops.list(id, workspace.workspaceKey).length) return;
+            } catch {
+              return;
+            }
+            try {
+              metadata.set(id, await this.codex.readThreadMetadata(id));
+            } catch (error) {
+              if (this.asAppError(error).code === 'THREAD_NOT_FOUND') missing.add(id);
+            }
+          }),
+        );
+      }
+    }
+    // Revalidate all workspaces after metadata reads and take the latest loop snapshot.
+    const now = Date.now();
+    return threadIds.flatMap((id): SessionLoopTask[] => {
+      const thread = this.projection.get(id) ?? metadata.get(id);
+      if ((thread && thread.id !== id) || (!thread && missing.has(id))) return [];
+      try {
+        const workspace = this.loopWorkspace(id);
+        const workspaceKey = workspace.workspaceKey;
+        if (thread) {
+          const actual = this.workspaces.assertOwnership(workspace.projectId, thread.cwd, id);
+          if (actual.cwd !== workspace.cwd && actual.workspaceKey !== workspaceKey) return [];
+        }
+        const projectName =
+          workspace.projectId === null ? null : this.projects.describe(workspace.projectId).name;
+        const busy =
+          (thread !== undefined && isActive(thread.status)) ||
+          Boolean(this.store.activeForThread(id)) ||
+          this.capacityRetries.pending(id);
+        return this.loops
+          .list(id, workspaceKey)
+          .filter((loop) => loop.reason !== 'deleted')
+          .map((loop) => ({
+            ...loop,
+            projectId: workspace.projectId,
+            projectName,
+            threadTitle: thread?.title || id,
+            archived: thread?.archived ?? loop.reason === 'archived',
+            waiting: loop.status === 'active' && loop.nextRunAt <= now && busy,
+          }));
+      } catch (error) {
+        // Removed projects, changed directories and unassigned allocations that
+        // no longer match the saved link cannot expose their prompts.
+        if (!(error instanceof AppError) && !(error instanceof Error && 'code' in error))
+          throw error;
+        return [];
+      }
+    });
+  }
+
   async createSessionLoop(threadId: string, input: CreateSessionLoop) {
     input = createSessionLoopSchema.parse(input);
+    // A creation receipt can be replayed only while its loop is still accessible.
+    if (this.loops.get(input.clientOperationId))
+      this.requireOwnedLoop(threadId, input.clientOperationId);
     return this.perform('loop.create', threadId, input, async () => {
       const thread = await this.loadThread(threadId);
       this.ensureManaged(thread);
@@ -1538,12 +1619,10 @@ export class GatewayService {
     loopId: string,
     input: OperationInput & { action: SessionLoopAction; version: number },
   ) {
+    const owned = this.requireOwnedLoop(threadId, loopId);
     return this.perform('loop.control', threadId, { ...input, loopId }, async () => {
       const thread = input.action === 'resume' ? await this.loadThread(threadId) : undefined;
-      const { workspaceKey } = this.loopWorkspace(threadId);
-      const row = this.loops.get(loopId);
-      if (!row || row.threadId !== threadId || row.workspaceKey !== workspaceKey)
-        throw new AppError('LOOP_NOT_FOUND', 'Loop not found', 404);
+      const row = thread ? this.requireOwnedLoop(threadId, loopId) : owned;
       const now = Date.now();
       const canChange =
         row.version === input.version &&
@@ -2417,6 +2496,11 @@ export class GatewayService {
   getOperation(id: string): Operation {
     const row = this.store.get(id);
     if (!row) throw new AppError('OPERATION_NOT_FOUND', '未找到该操作', 404);
+    if (row.kind === 'loop.create' || row.kind === 'loop.control') {
+      const result = row.result as { id?: string } | null;
+      if (result?.id) this.requireOwnedLoop(row.target, result.id);
+      else this.loopWorkspace(row.target);
+    }
     return this.operation(row);
   }
 

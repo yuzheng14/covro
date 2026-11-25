@@ -34,7 +34,7 @@
 - 📖 **Read results while you chat.** Preview documents, diagrams styled to match the workspace, and code changes beside the conversation on desktop, or full-screen on mobile; on macOS, Linux and Windows x64 hosts, opt into the [development preview proxy](docs/dev-preview.md) to open session services in isolated tabs. Submitted messages stay visible during context compaction, and loaded history stays complete as new responses stream in.
 - 🔔 **Know when your attention is needed.** Enable browser notifications for completed work, questions, and approvals in a supported desktop or Android browser. Keep the page online; notifications are not pushed while it is frozen or closed.
 
-Find controls, shortcuts, and supported commands in the [usage guide · 中文](docs/usage.zh-CN.md), [command guide](docs/slash-commands.md), and [setting timing](docs/session-live-settings.md).
+Find controls, shortcuts, and supported commands in the [usage guide · 中文](docs/usage.zh-CN.md), [command guide](docs/slash-commands.md), [session loops](docs/session-loops.md), and [setting timing](docs/session-live-settings.md).
 
 <details>
   <summary><strong>📱 A workspace that fits your phone</strong></summary>
