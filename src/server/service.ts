@@ -1073,7 +1073,7 @@ export class GatewayService {
     return { ...metadata, turns: [], actions: [] };
   }
 
-  async getThread(threadId: string): Promise<ThreadView> {
+  private async refreshThreadDetail(threadId: string): Promise<ThreadView> {
     const cached = this.projection.get(threadId);
     await this.loadThread(threadId);
     if (cached && this.codex.ready) await this.refreshThreadMetadata(threadId);
@@ -1081,7 +1081,11 @@ export class GatewayService {
     // A completed project can be removed while its metadata request is in flight.
     this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
     await this.refreshGoal(thread);
-    return this.threadView(thread);
+    return thread;
+  }
+
+  async getThread(threadId: string): Promise<ThreadView> {
+    return this.threadView(await this.refreshThreadDetail(threadId));
   }
 
   getThreadAttention(threadId: string) {
@@ -1092,7 +1096,7 @@ export class GatewayService {
   }
 
   async getThreadSnapshot(threadId: string) {
-    await this.getThread(threadId);
+    await this.refreshThreadDetail(threadId);
     const thread = this.projection.get(threadId)!;
     this.workspaces.assertOwnership(thread.projectId, thread.cwd, thread.id);
     // Copy and cursor share one synchronous boundary; later events are replayable.

@@ -76,6 +76,7 @@ it('hydrates item-summary pages and retains the legacy history fallback', async 
   const resource = harness();
   cleanups.push(resource.close);
   for (const paginated of [true, false]) {
+    const logPath = join(resource.directory, `history-${paginated}.jsonl`);
     const adapter = new CodexAdapter({
       binary: process.execPath,
       args: [
@@ -85,6 +86,7 @@ it('hydrates item-summary pages and retains the legacy history fallback', async 
         '--options',
         JSON.stringify({
           paginated,
+          logPath,
           historyItemSummaries: true,
           historyPageSize: 2,
           history: { turns: 5, itemsPerTurn: 3, itemBytes: 10 },
@@ -98,5 +100,13 @@ it('hydrates item-summary pages and retains the legacy history fallback', async 
     expect(page.turns).toHaveLength(paginated ? 2 : 5);
     expect(page.turns.every((turn) => turn.items.length >= 3)).toBe(true);
     expect(Boolean(page.history?.olderCursor)).toBe(paginated);
+    if (!paginated) {
+      const reads = (await readFile(logPath, 'utf8'))
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as { method?: string; params?: { includeTurns: boolean } })
+        .filter((request) => request.method === 'thread/read');
+      expect(reads.map((request) => request.params?.includeTurns)).toEqual([false, true]);
+    }
   }
 });
