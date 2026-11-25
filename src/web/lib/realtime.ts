@@ -266,7 +266,7 @@ export class ThreadStream {
     window.addEventListener('online', this.retry);
     window.addEventListener('offline', this.offline);
     window.addEventListener('focus', this.retry);
-    window.addEventListener('pageshow', this.resume);
+    window.addEventListener('pageshow', this.pageShown);
     if (typeof document !== 'undefined') {
       document.addEventListener('freeze', this.offline);
       document.addEventListener('resume', this.resume);
@@ -280,7 +280,7 @@ export class ThreadStream {
     window.removeEventListener('online', this.retry);
     window.removeEventListener('offline', this.offline);
     window.removeEventListener('focus', this.retry);
-    window.removeEventListener('pageshow', this.resume);
+    window.removeEventListener('pageshow', this.pageShown);
     if (typeof document !== 'undefined') {
       document.removeEventListener('freeze', this.offline);
       document.removeEventListener('resume', this.resume);
@@ -387,6 +387,9 @@ export class ThreadStream {
     if (this.stopped || this.blocked) return;
     this.retry();
     this.handlers.refresh?.();
+  };
+  private pageShown = (event: PageTransitionEvent) => {
+    if (event.persisted) this.resume();
   };
   private visible = () => {
     if (document.visibilityState === 'visible') this.resume();

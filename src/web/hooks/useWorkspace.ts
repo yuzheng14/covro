@@ -70,6 +70,7 @@ export function useWorkspace() {
   const operationsRef = useRef(operations);
   const projectStore = useRef(new ProjectThreadsStore(operations));
   const [archiveView, setArchiveView] = useState(false);
+  const listBatch = useRef<{ queued: Set<string>; reading: Set<string> } | undefined>(undefined);
   const [projectThreads, setProjectThreads] = useState(projectStore.current.snapshot);
   const [thread, setThread] = useState<ThreadView>();
   const [localSubmissions, setLocalSubmissions] = useState<Record<string, PendingUserMessage>>({});
@@ -238,7 +239,10 @@ export function useWorkspace() {
   }, []);
   const loadProjectThreads = useCallback(
     async (id: string, cursor?: string) => {
-      if (id !== UNASSIGNED_SCOPE && !projectsRef.current.some((project) => project.id === id))
+      if (
+        id !== UNASSIGNED_SCOPE &&
+        !projectsRef.current.some((project) => project.id === id && project.available)
+      )
         return;
       const store = projectStore.current;
       const previous = store.snapshot[id];
@@ -281,19 +285,49 @@ export function useWorkspace() {
     },
     [report],
   );
+  const loadProjectThreadLists = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) return;
+      if (listBatch.current) {
+        for (const id of ids)
+          if (!listBatch.current.reading.has(id)) listBatch.current.queued.add(id);
+        return;
+      }
+
+      const batch = { queued: new Set(ids), reading: new Set<string>() };
+      listBatch.current = batch;
+      const load = async () => {
+        while (listBatch.current === batch) {
+          const active = projectRef.current;
+          const id = batch.queued.has(active) ? active : batch.queued.values().next().value;
+          if (id === undefined) {
+            if (batch.reading.size === 0) listBatch.current = undefined;
+            return;
+          }
+          batch.queued.delete(id);
+          batch.reading.add(id);
+          await loadProjectThreads(id);
+          batch.reading.delete(id);
+        }
+      };
+      // Share the slots across overview refreshes. A waiting active project gets the next slot.
+      for (let slot = 0; slot < 4 && batch.queued.size > 0; slot++) void load();
+    },
+    [loadProjectThreads],
+  );
   const refreshProjectsThreads = useCallback(
     () =>
-      Promise.all([
-        loadProjectThreads(UNASSIGNED_SCOPE),
-        ...projectsRef.current
-          .filter((entry) => entry.available)
-          .map((entry) => loadProjectThreads(entry.id)),
+      loadProjectThreadLists([
+        UNASSIGNED_SCOPE,
+        ...projectsRef.current.filter((entry) => entry.available).map((entry) => entry.id),
       ]),
-    [loadProjectThreads],
+    [loadProjectThreadLists],
   );
   const changeArchiveView = useCallback(
     (archived: boolean) => {
       if (!projectStore.current.setArchived(archived)) return;
+      listBatch.current = undefined;
+      for (const read of listReads.current.values()) read.abort();
       setArchiveView(archived);
       setProjectThreads(projectStore.current.snapshot);
       void refreshProjectsThreads();
@@ -585,7 +619,8 @@ export function useWorkspace() {
     [activateProject, selectThread],
   );
   const applyProjects = useCallback(
-    (data: Project[]) => {
+    (data: Project[], refreshLists = false) => {
+      const initial = !projectsLoadedRef.current;
       const ids = new Set([UNASSIGNED_SCOPE, ...data.map((entry) => entry.id)]);
       const removed = projectsRef.current.filter((entry) => !ids.has(entry.id));
       if (removed.length > 0) {
@@ -603,38 +638,49 @@ export function useWorkspace() {
       }
       const added = data.filter(
         (entry) =>
-          entry.available && !projectsRef.current.some((project) => project.id === entry.id),
+          entry.available &&
+          !projectsRef.current.some((project) => project.id === entry.id && project.available),
       );
       projectsRef.current = data;
       setProjects(data);
       const preferred = projectRef.current;
-      if (!projectsLoadedRef.current || !ids.has(preferred)) {
+      if (initial || !ids.has(preferred)) {
         selectProject(
           ids.has(preferred)
             ? preferred
             : (data.find((entry) => entry.available)?.id ?? data[0]?.id ?? UNASSIGNED_SCOPE),
-          !projectsLoadedRef.current,
+          initial,
         );
       }
-      if (!projectsLoadedRef.current) void loadProjectThreads(UNASSIGNED_SCOPE);
       projectsLoadedRef.current = true;
       setProjectsLoaded(true);
-      for (const project of added) void loadProjectThreads(project.id);
+      if (initial || refreshLists) void refreshProjectsThreads();
+      else void loadProjectThreadLists(added.map((project) => project.id));
     },
-    [loadProjectThreads, selectProject],
+    [loadProjectThreadLists, refreshProjectsThreads, selectProject],
   );
-  const refreshProjects = useCallback(async () => {
-    const sequence = ++projectReadSequence.current;
-    const revision = projectRevision.current;
-    try {
-      const { data } = await api.projects();
-      if (sequence === projectReadSequence.current && revision === projectRevision.current)
-        applyProjects(data);
-    } catch (problem) {
-      if (sequence === projectReadSequence.current && revision === projectRevision.current)
-        report(problem);
-    }
-  }, [applyProjects, report]);
+  const refreshProjects = useCallback(
+    async (refreshLists = false) => {
+      const sequence = ++projectReadSequence.current;
+      const revision = projectRevision.current;
+      try {
+        const { data } = await api.projects();
+        if (sequence !== projectReadSequence.current) return;
+        if (revision === projectRevision.current) applyProjects(data, refreshLists);
+        else if (refreshLists) void refreshProjectsThreads();
+      } catch (problem) {
+        if (sequence !== projectReadSequence.current) return;
+        if (revision === projectRevision.current) report(problem);
+        if (
+          refreshLists &&
+          projectsLoadedRef.current &&
+          !(problem instanceof HttpError && problem.authenticationRequired)
+        )
+          refreshProjectsThreads();
+      }
+    },
+    [applyProjects, refreshProjectsThreads, report],
+  );
   const settleMutation = useCallback(
     (id: string, result?: ThreadMutationResult, rollback = !result) => {
       const summary = projectStore.current.settleMutation(id, result);
@@ -924,19 +970,22 @@ export function useWorkspace() {
   const notifyAttention = notifications.notifyAttention;
 
   useEffect(() => {
-    void refreshProjects();
-    void refreshSystem();
-    return () => {
-      projectReadSequence.current++;
+    let overviewRead: Promise<unknown> | undefined;
+    const refreshOverview = () => {
+      if (overviewRead) return;
+      overviewRead = Promise.all([refreshProjects(true), refreshSystem()]).finally(() => {
+        overviewRead = undefined;
+      });
     };
-  }, [refreshSystem, refreshProjects]);
-  useEffect(() => {
+    // Attach the overview stream before reading its initial data when possible.
+    // HTTP still starts promptly if the socket cannot open.
+    const startupFallback = setTimeout(refreshOverview, 150);
     const stream = new ThreadStream({
       connection: (state) => {
         setConnection(state);
         if (state === 'connected') {
-          void refreshSystem();
-          void refreshProjects().then(refreshProjectsThreads);
+          clearTimeout(startupFallback);
+          refreshOverview();
           void refreshOperations(true);
         }
       },
@@ -953,9 +1002,8 @@ export function useWorkspace() {
         void notifyAttention(request);
       },
       refresh: () => {
-        void refreshProjects().then(refreshProjectsThreads);
+        refreshOverview();
         void refreshThread().then(() => refreshOperations(true));
-        void refreshSystem();
       },
       system: (next) => {
         systemSnapshotGuard.current.runtimeEvent();
@@ -979,6 +1027,8 @@ export function useWorkspace() {
         projectRef.current === UNASSIGNED_SCOPE ? null : projectRef.current,
       );
     return () => {
+      clearTimeout(startupFallback);
+      projectReadSequence.current++;
       stream.stop();
       streamRef.current = undefined;
     };
@@ -987,7 +1037,6 @@ export function useWorkspace() {
     refreshSystem,
     updateThread,
     updateSummary,
-    refreshProjectsThreads,
     refreshProjects,
     applyProjects,
     notifyCompletion,
@@ -998,6 +1047,8 @@ export function useWorkspace() {
   ]);
   useEffect(() => {
     if (authRequired) {
+      listBatch.current = undefined;
+      for (const read of listReads.current.values()) read.abort();
       streamRef.current?.stop();
       setConnection('authenticationRequired');
     }
@@ -1485,7 +1536,6 @@ export function useWorkspace() {
     run,
     loadThreads,
     loadProjectThreads,
-    refreshProjectsThreads,
     refreshProjects,
     refreshThread,
     refreshSystem,

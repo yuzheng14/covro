@@ -80,6 +80,63 @@ test.beforeEach(async ({ request }) => {
   await controlRuntime(request, { reset: true });
 });
 
+test('loads the preferred project first and bounds other startup reads', async ({ page }, info) => {
+  const projects = Array.from({ length: 6 }, (_, i) => ({
+    id: `startup-${i}`,
+    name: `测试项目 ${i}`,
+    rootPath: `/fixture/startup-${i}`,
+    canonicalRoot: `/fixture/startup-${i}`,
+    workspaceKey: `/fixture/startup-${i}`,
+    available: true,
+  }));
+  const preferred = projects.at(-1)!;
+  await page.addInitScript((id) => localStorage.setItem('codex-web.project', id), preferred.id);
+  let overviewReads = 0;
+  let releaseOverview!: () => void;
+  const overviewGate = new Promise<void>((resolve) => {
+    releaseOverview = resolve;
+  });
+  await page.route('**/api/projects', async (route) => {
+    overviewReads++;
+    await overviewGate;
+    return route.fulfill({ json: { data: projects } });
+  });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const requested: string[] = [];
+  let pending = 0;
+  let peak = 0;
+  await page.route(/\/api\/(?:projects\/startup-\d+|unassigned)\/threads$/, async (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-2)!;
+    requested.push(id);
+    peak = Math.max(peak, ++pending);
+    if (id !== preferred.id) await gate;
+    pending--;
+    await route.fulfill({ json: pageOf(id === 'unassigned' ? [] : [summary(id, 1000, id)]) });
+  });
+
+  try {
+    await page.goto('/');
+    await expect(page.locator('.connection-badge')).toHaveText('实时连接正常');
+    releaseOverview();
+    await expect(row(page, preferred.id)).toBeVisible();
+    await expect.poll(() => requested.length).toBe(5);
+    expect(overviewReads).toBe(1);
+    expect(new Set(requested).size).toBe(5);
+    expect(peak).toBeLessThanOrEqual(4);
+    await page.screenshot({ path: info.outputPath('preferred-project-first.png') });
+  } finally {
+    releaseOverview();
+    release();
+  }
+  await expect.poll(() => requested.length).toBe(7);
+  expect(overviewReads).toBe(1);
+  expect(new Set(requested).size).toBe(7);
+  expect(peak).toBeLessThanOrEqual(4);
+});
+
 test('shows a partial cached list before HTTP, reconciles incrementally and preserves the visible row during sorting', async ({
   page,
 }, info) => {
