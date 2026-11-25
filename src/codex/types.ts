@@ -101,6 +101,8 @@ export interface CodexClient {
   renameThread(id: string, name: string): Promise<void>;
   unarchiveThread(id: string): Promise<ThreadView>;
   readThread(id: string): Promise<ThreadView>;
+  /** Recovery evidence for a known turn, without loading its items. */
+  readExecutionHistory?(id: string, turnId: string): Promise<ThreadView>;
   /** One recent-to-old history page, without reading the rest of the conversation. */
   readThreadPage?(id: string, cursor?: string): Promise<ThreadView>;
   loadedThreadActivity?(): Promise<ReadonlySet<ThreadView['status']>>;

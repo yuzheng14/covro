@@ -163,3 +163,37 @@ it('releases only the matching execution when history recovers a missed completi
   await ctx.service.startTurn(ctx.id, { clientOperationId: operationId(), text: 'after recovery' });
   expect(ctx.codex.starts).toBe(3);
 });
+
+it('returns a snapshot while a durable execution is checked, then publishes its recovery', async () => {
+  const ctx = await unloadedThread();
+  await ctx.service.getThread(ctx.id);
+  const pendingOperation = operationId();
+  await ctx.service.startTurn(ctx.id, {
+    clientOperationId: pendingOperation,
+    text: 'missed completion during snapshot',
+  });
+  const native = ctx.codex.threads.get(ctx.id)!;
+  native.turns.at(-1)!.status = 'completed';
+  native.status = 'completed';
+  const gate = deferred<ThreadView>();
+  const reading = vi.spyOn(ctx.codex, 'readThread').mockReturnValueOnce(gate.promise);
+
+  const first = await ctx.service.getThreadSnapshot(ctx.id);
+  const second = await ctx.service.getThreadSnapshot(ctx.id);
+  expect(first.data.execution?.operationId).toBe(pendingOperation);
+  expect(second.data.execution?.operationId).toBe(pendingOperation);
+  expect(reading).toHaveBeenCalledTimes(1);
+
+  const changes: ServerMessage[] = [];
+  const unsubscribe = await ctx.service.subscribe(
+    ctx.id,
+    first.cursor,
+    (event) => changes.push(event),
+    true,
+    true,
+  );
+  gate.resolve(structuredClone(native));
+  await vi.waitFor(() => expect(ctx.store.activeForThread(ctx.id)).toBeUndefined());
+  expect(changes).toContainEqual(expect.objectContaining({ type: 'event', kind: 'threadPatch' }));
+  unsubscribe();
+});
