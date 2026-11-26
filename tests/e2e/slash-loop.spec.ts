@@ -56,3 +56,48 @@ test('creates a fixed loop and retains its controls and state after reload', asy
   await expect(dialog.getByRole('spinbutton')).toHaveCount(0);
   await dialog.screenshot({ path: join(tmpdir(), 'covro-345-loop-form.png') });
 });
+
+test('shows adaptive scheduling and completion in the session manager and the Tasks panel', async ({
+  page,
+  request,
+}) => {
+  await controlRuntime(request, { reset: true });
+  await page.goto('/');
+  await confirmCompatibility(page);
+  await createEmptyThread(page);
+  await expectThreadReady(page);
+  await saveConversationHistory(page);
+  const input = page.locator('.composer-box textarea');
+  const dialog = page.getByRole('dialog', { name: '会话循环' });
+  const row = dialog.locator('.session-loop-row');
+
+  await input.fill('/loop 检查当前 PR 的 CI 状态，通过后结束');
+  await input.press('Enter');
+  await expect(row).toContainText('自适应间隔');
+  await expect(row).toContainText('当前 PR 的构建仍在运行。');
+  await expect(row).toContainText('构建尚未结束，五分钟后复查。');
+  await expect(row).toContainText('下次');
+  await expect(row).toContainText('1 次');
+  await dialog.screenshot({ path: join(tmpdir(), 'covro-386-adaptive-scheduled.png') });
+
+  await dialog.getByRole('button', { name: '新建循环', exact: true }).click();
+  await dialog.getByRole('textbox', { name: '间隔', exact: true }).clear();
+  await dialog.getByRole('textbox', { name: '任务', exact: true }).fill('检查站点恢复后结束');
+  await dialog.screenshot({ path: join(tmpdir(), 'covro-386-adaptive-create.png') });
+  await dialog.getByRole('button', { name: '创建循环', exact: true }).click();
+  const stopped = row.filter({ hasText: '检查站点恢复后结束' });
+  await expect(stopped).toContainText('已完成');
+  await expect(stopped).toContainText('健康检查已全部通过。');
+  await expect(stopped).not.toContainText('下次');
+  await expect(stopped.getByRole('button')).toHaveCount(0);
+
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: '后台任务', exact: true }).click();
+  const tasks = page.getByRole('dialog', { name: '后台任务', exact: true });
+  await tasks.getByRole('button', { name: '循环任务', exact: true }).click();
+  await expect(tasks.locator('.session-loop-row')).toHaveCount(2);
+  await expect(
+    tasks.locator('.session-loop-row').filter({ hasText: '检查站点恢复后结束' }),
+  ).toContainText('已完成');
+  await tasks.screenshot({ path: join(tmpdir(), 'covro-386-adaptive-tasks.png') });
+});

@@ -196,6 +196,7 @@ export interface ItemView {
   error?: string;
   autoReview?: AutoReviewView;
   delivery?: 'async';
+  phase?: 'commentary' | 'partial_answer' | 'final_answer';
   /** Answer-scoped upstream metadata. Display actions are not executable Web instructions. */
   moderation?: {
     moderated: boolean;

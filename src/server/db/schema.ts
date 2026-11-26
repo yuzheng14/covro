@@ -200,14 +200,19 @@ export const sessionLoops = sqliteTable(
       .$type<import('../../shared/types.js').Settings>()
       .notNull(),
     prompt: text('prompt').notNull(),
-    intervalMs: integer('interval_ms').notNull(),
+    mode: text('mode').$type<'fixed' | 'adaptive'>().notNull().default('fixed'),
+    intervalMs: integer('interval_ms'),
     status: text('status')
       .$type<import('../../shared/session-loop.js').SessionLoopStatus>()
       .notNull(),
     reason: text('reason').$type<import('../../shared/session-loop.js').SessionLoopReason>(),
     version: integer('version').notNull().default(0),
     runs: integer('runs').notNull().default(0),
-    nextRunAt: integer('next_run_at').notNull(),
+    nextRunAt: integer('next_run_at'),
+    runVersion: integer('run_version'),
+    lastDecision: text('last_decision', { mode: 'json' }).$type<
+      import('../../shared/session-loop.js').SessionLoopDecision
+    >(),
     lastStartedAt: integer('last_started_at'),
     lastResult:
       text('last_result').$type<import('../../shared/session-loop.js').SessionLoopResult>(),

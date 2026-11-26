@@ -1742,6 +1742,7 @@ describe('verified protocol adapter with a real subprocess', () => {
         moderation: null,
         id: 'timed-message',
         text: 'Still working',
+        phase: 'commentary',
       });
     },
   );

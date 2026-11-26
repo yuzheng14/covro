@@ -92,3 +92,32 @@ it('reads Beta compatibility from its source tag without confusing its unstamped
   expect(() => requireReleaseTag('v0.3.0', '0.2.0')).toThrow('does not match');
   expect(() => requireReleaseTag('v0.3.0-dev.1', '0.2.0')).toThrow('Invalid');
 });
+
+it('keeps saved fixed schedules and their run identity during the adaptive-loop migration', () => {
+  const db = open();
+  db.pragma('foreign_keys = ON');
+  const beforeAdaptive = migrations.slice(0, 13);
+  migrateSqlite(db, beforeAdaptive);
+  const operation = db.prepare(
+    "INSERT INTO operations (client_operation_id, kind, target, request_digest, state, created_at, updated_at) VALUES (?, ?, 'session', 'digest', 'acknowledged', 1, 1)",
+  );
+  operation.run('loop', 'loop.create');
+  operation.run('run', 'turn.start');
+  db.prepare(
+    "INSERT INTO session_loops (id, thread_id, workspace_key, settings, prompt, interval_ms, status, runs, next_run_at, last_result, last_turn_id, last_operation_id) VALUES ('loop', 'session', 'workspace', '{}', 'Check CI', 300000, 'active', 3, 123, 'completed', 'turn', 'run')",
+  ).run();
+
+  migrateSqlite(db, migrations);
+  expect(db.prepare('SELECT * FROM session_loops WHERE id = ?').get('loop')).toMatchObject({
+    mode: 'fixed',
+    interval_ms: 300_000,
+    next_run_at: 123,
+    status: 'active',
+    runs: 3,
+    last_result: 'completed',
+    last_turn_id: 'turn',
+    last_operation_id: 'run',
+    last_decision: null,
+  });
+  expect(db.pragma('foreign_key_check')).toEqual([]);
+});

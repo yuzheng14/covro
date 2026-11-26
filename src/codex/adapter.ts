@@ -1591,6 +1591,7 @@ export class CodexAdapter implements CodexClient {
     images?: string[],
     skills?: import('../shared/skills.js').SkillReference[],
     clientUserMessageId?: string,
+    outputSchema?: import('./generated/serde_json/JsonValue.js').JsonValue,
   ): Promise<TurnView> {
     await this.validateSettings(
       settings,
@@ -1606,6 +1607,7 @@ export class CodexAdapter implements CodexClient {
           cwd,
           input: taskInput(text, images, skills),
           ...(clientUserMessageId ? { clientUserMessageId } : {}),
+          ...(outputSchema ? { outputSchema } : {}),
           ...turnSettings(cwd, settings),
           ...collaborationSelection(settings, this.permissionState.get(id)),
         })

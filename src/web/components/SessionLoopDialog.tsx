@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { parseSessionLoop } from '../../shared/session-loop';
+import { parseAdaptiveSessionLoop, parseSessionLoop } from '../../shared/session-loop';
 import type { ThreadView } from '../../shared/types';
 import { sessionLoopsPath, useSessionLoops, type RunLoopOperation } from '../hooks/useSessionLoops';
 import { t } from '../i18n';
@@ -31,7 +31,9 @@ export function SessionLoopDialog({
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const parsed = parseSessionLoop(`${interval} ${prompt}`);
+    const parsed = interval.trim()
+      ? parseSessionLoop(`${interval.trim()} ${prompt}`)
+      : parseAdaptiveSessionLoop(prompt);
     if (!parsed) {
       setActionError(t('commands:loopInvalid'));
       return;
@@ -60,6 +62,7 @@ export function SessionLoopDialog({
             archived={Boolean(thread.archived)}
             waiting={
               loop.status === 'active' &&
+              loop.nextRunAt !== null &&
               loop.nextRunAt <= Date.now() &&
               (isActive(thread.status) || Boolean(thread.execution && !thread.execution.ended))
             }
@@ -73,8 +76,8 @@ export function SessionLoopDialog({
           <label className="project-field">
             <span>{t('commands:loopInterval')}</span>
             <input
-              required
               value={interval}
+              placeholder={t('commands:loopAdaptive')}
               onChange={(event) => setIntervalText(event.target.value)}
             />
           </label>

@@ -158,9 +158,9 @@
   "goal_usageLimited": "사용량 제한",
   "goal_budgetLimited": "예산 제한",
   "goal_complete": "완료됨",
-  "loopDescription": "고정 간격 세션 루프 생성 및 관리",
-  "loopUsage": "/loop [간격 프롬프트]",
-  "loopInvalid": "1m부터 1d까지의 정수 간격과 프롬프트를 입력하세요. 예 /loop 5m CI 확인.",
+  "loopDescription": "고정 또는 자동 조정 간격의 세션 루프 생성 및 관리",
+  "loopUsage": "/loop [[간격] 프롬프트]",
+  "loopInvalid": "프롬프트를 입력하세요. 고정 간격은 1m에서 1d 사이의 정수로 지정하세요. 예 /loop 5m CI 확인.",
   "loopUnconfirmed": "생성 여부를 확인할 수 없습니다. /loop에서 확인하세요.",
   "loopCreated": "루프를 만들었습니다",
   "loopOpened": "세션 루프를 열었습니다",
@@ -190,5 +190,9 @@
   "loopReason_archived": "세션이 보관됨",
   "loopReason_unavailable": "세션 또는 설정을 사용할 수 없음",
   "loopReason_uncertain": "마지막 실행 결과를 확인해야 함",
-  "loopReason_deleted": "세션이 삭제됨"
+  "loopReason_deleted": "세션이 삭제됨",
+  "loopAdaptive": "자동 조정 간격",
+  "loopDeciding": "이 턴이 끝난 뒤 다음 실행 결정",
+  "loopReason_invalid_decision": "유효한 일정 결정이 반환되지 않았습니다",
+  "loopReason_run_failed": "이번 실행이 정상적으로 끝나지 않았습니다"
 }

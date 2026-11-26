@@ -10,6 +10,12 @@ Pause and cancel stop future dispatches and leave any current turn running. Use 
 
 While an update or manual restart is waiting for the service to become idle, the scheduler yields. Active turns finish under the normal idle rules. After a server restart, Covro skips missed intervals and resumes the saved session on demand. A dispatch whose result cannot be confirmed is held for reconciliation before the loop can be resumed. Archiving a session pauses its loops. Unarchive the session before resuming them. A confirmed missing session is cancelled, and a fork does not inherit loops. The host and Covro service must be available for scheduled runs to start.
 
+## Adaptive loops
+
+Use `/loop Check the current PR’s CI and stop when it passes` for an adaptive loop. Leave the interval field blank when creating one from the loop manager. The first run is due immediately and starts when the session is available. Codex reports a result and chooses whether to stop or check again in 60 seconds to 24 hours. The Tasks panel and session loop manager show the last result, reasoning and next run time. The bounds apply to the delay between runs.
+
+A failed or interrupted run, or a completed run without a valid decision, pauses the loop. Resume to request a fresh run when the session is available. Pausing or cancelling during a run takes precedence over that run’s scheduling decision. After a restart or disconnect, a saved overdue check fires once as soon as the session is available. An unfinished run is reconciled with Codex history first. A run whose outcome remains uncertain stays paused pending reconciliation and manual resume.
+
 ## 会话循环
 
 在已保存的 Covro 会话中输入 `/loop 5m 检查当前 PR 的 CI 状态`。单独输入 `/loop` 打开当前会话的循环管理，查看任务、间隔、上次结果和下次时间，并可新建、暂停、恢复或取消。间隔使用整数和 `m`、`h`、`d`，范围为 `1m` 到 `1d`。创建一个间隔后首次执行。循环持续运行，直到暂停或取消。
@@ -21,3 +27,9 @@ While an update or manual restart is waiting for the service to become idle, the
 暂停或取消会停止后续派发，当前轮次可以继续执行。用 `/stop` 中断当前轮次。恢复后等待一个间隔再执行。容量重试记在同一次运行里。失败可在管理窗口查看，Codex 已创建的轮次也保留在会话中。
 
 更新或手动重启一旦进入空闲等待，循环停止派发，已经开始的轮次按正常规则结束。服务重启后跳过停机期间错过的触发点，在到期时恢复原会话。派发结果无法确认时先核对，再恢复循环。归档会暂停循环，取消归档后可手动恢复。确认会话已不存在时，任务会被取消。Fork 创建的新会话不继承循环。运行仍依赖 Covro 服务与宿主机可用。
+
+### 自适应循环
+
+输入 `/loop 检查当前 PR 的 CI，通过后告诉我并结束`。在管理窗口新建时，留空间隔字段即可使用自适应模式。首次运行在会话可用时开始。Codex 每轮报告结果，选择结束或在 60 秒至 24 小时内复查。任务面板和会话循环管理窗口会显示最近结果、调整原因和下次时间。这个范围适用于单次等待时长。
+
+轮次失败、被中断或完成后没有给出有效决策时，循环暂停。恢复后会话空闲时重新检查。运行中手动暂停或取消后，本轮的决策不会改变排程。重启或断线恢复后，已保存的过期检查会在会话可用时执行一次。未完成的轮次先核对 Codex 历史，仍待确认的循环保持暂停，核对后可手动恢复。
