@@ -10,9 +10,9 @@ Codex 可以在继续执行任务时提问。选择选项或输入自由回答�
 
 ## Find pending questions / 定位待回答问题
 
-Select **Awaiting answer** in the conversation header on desktop or mobile. The list includes unanswered questions from earlier turns, even when their messages are outside the current view. Select a question to go to its original card. You can skip an **answer later** question from the list. For a native question, use the card to answer or submit skipped questions.
+The conversation header shows **Awaiting answer** when a loaded turn has unanswered questions or Codex is waiting for an answer. To find questions in earlier turns without paging through the conversation, choose **More actions → Check pending questions**. Covro searches older turns when you open the list. Select a question to go to its original card. You can skip an **answer later** question from the list. For a native question, use the card to answer or submit skipped questions.
 
-在桌面或手机上，点击会话顶部的**等待回答**，可查看当前会话所有待回答问题，包括尚未加载的旧轮次。选择一项即可定位原卡片。标记为**可稍后回答**的问题可在列表中逐项跳过；原生问题仍在卡片中回答或提交跳过项。
+已加载的轮次有未回答的问题，或 Codex 正在等待输入时，会话顶部会显示**等待回答**。要查找尚未加载的旧问题，选择**更多操作 → 查看待回答问题**。Covro 在打开列表时查询旧轮次。选择一项即可定位原卡片。标记为**可稍后回答**的问题可在列表中逐项跳过，原生问题仍在卡片中回答或提交跳过项。
 
 ## Skip a question / 跳过问题
 

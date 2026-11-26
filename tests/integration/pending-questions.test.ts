@@ -46,9 +46,15 @@ async function paged(questionCount: number) {
   ]);
   const latest = turn('latest');
   thread.turns = [old, reply, latest];
-  const read = { hold: undefined as Promise<void> | undefined, moved: false };
+  thread.hasMessages = true;
+  const read = {
+    hold: undefined as Promise<void> | undefined,
+    moved: false,
+    older: [] as string[],
+  };
   const codex: CodexClient = ctx.codex;
   codex.readThreadPage = async (_id, cursor) => {
+    if (cursor) read.older.push(cursor);
     if (cursor === 'older') await read.hold;
     return structuredClone({
       ...thread,
@@ -60,7 +66,8 @@ async function paged(questionCount: number) {
     });
   };
   codex.readThreadTurnItems = async (_id, turnId) => (turnId === old.id ? old.items : []);
-  await ctx.service.getThreadSnapshot(thread.id);
+  expect((await ctx.service.getThreadSnapshot(thread.id)).data.pendingQuestions?.count).toBe(0);
+  expect(read.older).toEqual([]);
   await expect
     .poll(async () => (await ctx.service.getPendingQuestions(thread.id)).history)
     .toBe('ready');
@@ -77,8 +84,11 @@ const target = (row: PendingQuestion) => ({
 it('pages complete pending rows after applying external replies and rejects a changed continuation', async () => {
   const { service, thread, old, read } = await paged(43);
   const first = await service.getPendingQuestions(thread.id);
+  expect(read.older).toEqual(['middle', 'older']);
   expect(first.data).toHaveLength(40);
   expect(first.data[0]).toMatchObject({ summary: 'Question 2?', turnNumber: 1, turnId: old.id });
+  const overview = await service.listThreadSummaries('project');
+  expect(overview.data.find(({ id }) => id === thread.id)?.pendingQuestionCount).toBe(0);
   const second = await service.getPendingQuestions(thread.id, first.nextCursor!);
   expect(second.data.map((row) => row.summary)).toEqual(['Question 42?', 'Question 43?']);
   expect(second.nextCursor).toBeNull();

@@ -26,9 +26,9 @@ export function toThreadSummary(thread: ThreadView): ThreadSummary {
     pendingActionCount: thread.actions.filter(
       (action) => action.status === 'pending' || action.status === 'responding',
     ).length,
-    pendingQuestionCount:
-      thread.pendingQuestions?.groups ??
-      pendingAttention(thread).filter((request) => request.target.kind === 'question').length,
+    pendingQuestionCount: pendingAttention(thread).filter(
+      (request) => request.target.kind === 'question',
+    ).length,
     ...(lastTurn === undefined ? {} : { lastTurnId: lastTurn.id, lastTurnStatus: lastTurn.status }),
   };
 }

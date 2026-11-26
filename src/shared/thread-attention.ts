@@ -1,8 +1,12 @@
 import { asyncQuestionId } from './async-questions.js';
-import type { AttentionRequest, ThreadView } from './types.js';
+import { indexQuestionReplies, questionAnswer } from './pending-questions.js';
+import type { AsyncQuestionReply, AttentionRequest, ThreadView } from './types.js';
 
 /** Uses request identities only; prompts, answers and approval details stay in the page. */
-export function pendingAttention(thread: ThreadView): AttentionRequest[] {
+export function pendingAttention(
+  thread: ThreadView,
+  locatedReplies: AsyncQuestionReply[] = [],
+): AttentionRequest[] {
   if (thread.archived) return [];
   const metadata = { threadId: thread.id, projectId: thread.projectId, title: thread.title };
   const requests: AttentionRequest[] = thread.actions.flatMap((action) => {
@@ -18,22 +22,28 @@ export function pendingAttention(thread: ThreadView): AttentionRequest[] {
       },
     ];
   });
-  const replies = thread.turns.flatMap((turn) =>
-    turn.items.flatMap((item) => item.questionReplies ?? []),
-  );
+  const replies = indexQuestionReplies(thread.turns);
+  for (const reply of locatedReplies) {
+    const previous = replies.get(reply.questionItemId);
+    if (previous) previous.push(reply);
+    else replies.set(reply.questionItemId, [reply]);
+  }
   for (const turn of thread.turns) {
     if (turn.status === 'failed' || turn.status === 'interrupted') continue;
     for (const item of turn.items) {
       if (!item.questions?.length || item.type !== 'agentMessage') continue;
-      const unanswered = item.questions.some(
-        (question, index) =>
-          thread.questionTracking?.[asyncQuestionId(item.id, index)]?.status !== 'dismissed' &&
-          !replies.some(
-            (reply) =>
-              reply.questionItemId === asyncQuestionId(item.id, index) ||
-              (reply.questionItemId === item.id && reply.question === question.title),
-          ),
-      );
+      const unanswered = item.questions.some((question, index) => {
+        const id = asyncQuestionId(item.id, index);
+        return (
+          thread.questionTracking?.[id]?.status !== 'dismissed' &&
+          questionAnswer(
+            [...(replies.get(id) ?? []), ...(replies.get(item.id) ?? [])],
+            id,
+            item.id,
+            question.title,
+          ) === undefined
+        );
+      });
       if (unanswered)
         requests.push({ ...metadata, kind: 'answer', target: { kind: 'question', id: item.id } });
     }

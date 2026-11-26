@@ -32,6 +32,7 @@ interface Props {
   onProject: (id: string) => void;
   projectThreads: Record<string, ProjectThreads>;
   selectedId?: string;
+  selectedQuestionCount?: number;
   isUnreadCompletion: (thread: ThreadSummary) => boolean;
   onThread: (id: string, projectId: string) => void;
   onMore: (projectId: string, cursor: string) => void;
@@ -302,7 +303,11 @@ export function Sidebar(props: Props) {
                   {threads.map((entry) => (
                     <ThreadLink
                       key={entry.id}
-                      thread={entry}
+                      thread={
+                        entry.id === props.selectedId && props.selectedQuestionCount !== undefined
+                          ? { ...entry, pendingQuestionCount: props.selectedQuestionCount }
+                          : entry
+                      }
                       selected={entry.id === props.selectedId}
                       unreadCompletion={props.isUnreadCompletion(entry)}
                       offline={props.offline}

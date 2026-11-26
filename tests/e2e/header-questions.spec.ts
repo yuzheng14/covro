@@ -7,6 +7,9 @@ const dialog = (page: Page) => page.locator('.pending-questions-dialog[open]');
 const cards = (page: Page) => page.locator('.async-question-card');
 const sidebarWaiting = (page: Page) =>
   page.locator('.thread-row:has(.thread-selected) .thread-status-waitingInput');
+const moreActions = (page: Page) => page.locator('.topbar-more');
+const findQuestions = (page: Page) =>
+  page.getByRole('button', { name: /^(查看待回答问题|Check pending questions)$/ });
 
 async function send(page: Page, text: string, status = '已完成') {
   const turns = page.locator('.conversation-content .turn');
@@ -35,26 +38,42 @@ test('paged questions jump to the exact old card and skip only the chosen questi
   for (const text of ['Intervening work A', 'Intervening work B', 'Latest work'])
     await send(page, text);
   const id = await page.locator('.thread-selected').getAttribute('data-thread-id');
+  const discovery: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.endsWith(`/threads/${id}/questions`))
+      discovery.push(request.url());
+  });
   await controlRuntime(request, { restart: true });
   await page.reload();
   await confirmCompatibility(page);
   await expect(page.locator('.turn')).toHaveCount(2);
   await expect(cards(page)).toHaveCount(0);
-  await expect(entry(page)).toBeVisible();
-  await expect(sidebarWaiting(page)).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 880 });
-  await entry(page).click();
+  await expect(entry(page)).toHaveCount(0);
+  await expect(sidebarWaiting(page)).toHaveCount(0);
+  await moreActions(page).click();
+  await expect(findQuestions(page)).toBeVisible();
+  expect(discovery).toHaveLength(0);
+  await page.screenshot({ path: info.outputPath('desktop-zh-more-actions.png') });
+  await findQuestions(page).click();
   await expect(dialog(page).locator('li')).toHaveCount(3);
+  expect(discovery.length).toBeGreaterThan(0);
   await expect(dialog(page).locator('li').first()).toContainText('第 1 轮');
   await page.screenshot({ path: info.outputPath('desktop-zh-list.png') });
   await page.keyboard.press('Escape');
-  await expect(entry(page)).toBeFocused();
+  await expect(moreActions(page)).toBeFocused();
+  await expect(entry(page)).toHaveCount(0);
+  await expect(sidebarWaiting(page)).toHaveCount(0);
   await page.evaluate(() => localStorage.setItem('covro.locale', 'en'));
   await page.reload();
-  await expect(entry(page)).toBeVisible();
+  await expect(page.locator('.turn')).toHaveCount(2);
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.setViewportSize({ width: 390, height: 844 });
-  await entry(page).click();
+  await expect(page.locator('.topbar')).toHaveAttribute('data-compact', 'true');
+  await moreActions(page).click();
+  await expect(findQuestions(page)).toBeVisible();
+  await page.screenshot({ path: info.outputPath('mobile-en-more-actions.png') });
+  await findQuestions(page).click();
   await expect(dialog(page).getByRole('heading', { name: 'Pending questions' })).toBeVisible();
   await expect(dialog(page).locator('li')).toHaveCount(3);
   await page.screenshot({ path: info.outputPath('mobile-en-list.png') });
@@ -79,8 +98,22 @@ test('paged questions jump to the exact old card and skip only the chosen questi
     if (r.url().includes('/history?')) locationTraffic.push(r.url());
   });
   const second = await context.newPage();
+  await second.setViewportSize({ width: 1440, height: 900 });
+  const secondDiscovery: string[] = [];
+  second.on('request', (request) => {
+    if (new URL(request.url()).pathname.endsWith(`/threads/${id}/questions`))
+      secondDiscovery.push(request.url());
+  });
   await second.goto('/');
+  await expect(second.locator('.turn')).toHaveCount(2);
+  await expect(entry(second)).toHaveCount(0);
+  await second.getByRole('button', { name: 'Load earlier messages', exact: true }).click();
+  await expect(cards(second)).not.toHaveCount(0);
   await expect(entry(second)).toBeVisible();
+  await expect(sidebarWaiting(second)).toBeVisible();
+  expect(secondDiscovery).toHaveLength(0);
+  await cards(second).first().scrollIntoViewIfNeeded();
+  await second.screenshot({ path: info.outputPath('desktop-en-after-pagination.png') });
   await entry(second).click();
   await expect(dialog(second).locator('li')).toHaveCount(3);
   await entry(page).click();

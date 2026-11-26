@@ -1034,7 +1034,7 @@ svg {
 .topbar[data-measuring] [data-compact-action] {
   position: absolute;
 }
-.topbar[data-measuring] .topbar-tools[popover] {
+.topbar[data-measuring] .topbar-tools[popover]:not([data-header-overflow]) {
   display: flex;
   position: fixed;
   inset: auto;
@@ -3552,44 +3552,6 @@ dd {
     color: inherit;
     font-size: 10px;
   }
-  .topbar-tools[popover] {
-    position: fixed;
-    inset: var(--topbar-tools-top, auto) var(--topbar-tools-right, 8px) auto auto;
-    margin: 0;
-    width: min(248px, calc(100vw - 16px));
-    max-height: var(--topbar-tools-max-height, none);
-    overflow: auto;
-    overscroll-behavior: contain;
-    padding: 4px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: var(--surface, #fff);
-    color: inherit;
-    box-shadow: 0 12px 32px #1a382426;
-  }
-  .topbar-tools[popover]:not(:popover-open) {
-    display: none;
-  }
-  .topbar-tools[popover]:popover-open {
-    display: grid;
-    gap: 0;
-  }
-  .topbar-tools[popover] > .button {
-    justify-content: flex-start;
-    min-height: 44px;
-    color: inherit;
-    gap: 10px;
-    font-size: 13px;
-    text-align: start;
-    white-space: normal;
-  }
-  .topbar-tools[popover] > .dev-preview-entry > span:not(.dev-preview-count) {
-    display: inline;
-  }
-  .topbar-tools[popover] > .button:focus-visible {
-    outline-offset: -2px;
-  }
-
   .diagnostics-panel {
     top: calc(100% + 4px);
     right: 8px;
@@ -5695,6 +5657,44 @@ dd {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.topbar-tools[popover] {
+  position: fixed;
+  inset: var(--topbar-tools-top, auto) var(--topbar-tools-right, 8px) auto auto;
+  margin: 0;
+  width: min(248px, calc(100vw - 16px));
+  max-height: var(--topbar-tools-max-height, none);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: light-dark(#fff, var(--dark-surface-raised));
+  color: inherit;
+  box-shadow: 0 12px 32px #1a382426;
+}
+.topbar-tools[popover]:not(:popover-open) {
+  display: none;
+}
+.topbar-tools[popover]:popover-open {
+  display: grid;
+  gap: 0;
+}
+.topbar-tools[popover] > .button {
+  justify-content: flex-start;
+  min-height: 44px;
+  color: inherit;
+  gap: 10px;
+  font-size: 13px;
+  text-align: start;
+  white-space: normal;
+}
+.topbar-tools[popover] > .dev-preview-entry > span:not(.dev-preview-count) {
+  display: inline;
+}
+.topbar-tools[popover] > .button:focus-visible {
+  outline-offset: -2px;
 }
 
 /* Explicit references use the same visual hierarchy in suggestions and selected tokens. */
