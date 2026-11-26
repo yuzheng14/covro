@@ -34,9 +34,11 @@ test('global defaults persist across reload, affect new threads, and preserve ex
   await permission.press('Enter');
   const menu = page.getByRole('listbox', { name: permissionName, exact: true });
   await expect(menu.getByRole('option')).toHaveCount(5);
+  await expect(menu.getByRole('option', { name: '只读', exact: true })).toBeFocused();
   await page.keyboard.press('Home');
   await expect(menu.getByRole('option', { name: keepPermission, exact: true })).toBeFocused();
   await page.keyboard.press('ArrowDown');
+  await expect(menu.getByRole('option', { name: '请求批准', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(menu.getByRole('option', { name: '帮我批准', exact: true })).toBeFocused();
   await page.keyboard.press('Enter');
