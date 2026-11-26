@@ -203,6 +203,7 @@ export class GatewayService {
   private titleReadSequence = 0;
   private readonly titleReads = new Map<string, number>();
   private readonly liveSettingsWrites = new Map<string, Promise<unknown>>();
+  private readonly questionDismissals = new Map<string, Promise<unknown>>();
   // A status/title/history update must not discard a lifecycle response's full configuration.
   private runtimeSettingsSequence = 0;
   private readonly runtimeSettingsUpdates = new Map<string, number>();
@@ -2771,25 +2772,44 @@ export class GatewayService {
   /** This ends Covro tracking only. It must never start/steer/interrupt a native turn. */
   async dismissQuestions(threadId: string, input: DismissQuestionsInput): Promise<Operation> {
     return this.perform('question.dismiss', threadId, input, async () => {
-      await this.loadThread(threadId);
-      const history = this.normalize(await this.codex.readThread(threadId));
-      this.workspaces.assertOwnership(history.projectId, history.cwd, history.id);
-      this.mergeQuestionHistory(history);
-      const states = this.questionTracking.states(threadId);
-      for (const id of new Set(input.questionIds)) {
-        const question = this.findAsyncQuestion(history, id);
-        if (!question) throw new AppError('QUESTION_EXPIRED', '该问题已不存在，请刷新会话', 409);
-        if (this.questionAnswered(history, id)) continue;
-        if (states[id] && states[id].status !== 'dismissed')
-          throw new AppError('QUESTION_BUSY', '回答正在提交或结果待核对，请刷新后继续', 409);
+      // A lost response can leave the previous skip running. Serialize the writes,
+      // while accepting the receipt immediately so that either request can be checked.
+      const previous = this.questionDismissals.get(threadId) ?? Promise.resolve();
+      const dismissing = previous
+        .catch(() => {})
+        .then(async () => {
+          await this.loadThread(threadId);
+          const history = this.normalize(await this.codex.readThread(threadId));
+          this.workspaces.assertOwnership(history.projectId, history.cwd, history.id);
+          this.mergeQuestionHistory(history);
+          const states = this.questionTracking.states(threadId);
+          const ids: string[] = [];
+          for (const id of new Set(input.questionIds)) {
+            const question = this.findAsyncQuestion(history, id);
+            if (!question)
+              throw new AppError('QUESTION_EXPIRED', '该问题已不存在，请刷新会话', 409);
+            if (this.questionAnswered(history, id)) continue;
+            if (states[id] && states[id].status !== 'dismissed')
+              throw new AppError('QUESTION_BUSY', '回答正在提交或结果待核对，请刷新后继续', 409);
+            ids.push(id);
+          }
+          this.store.dispatch(input.clientOperationId);
+          this.questionTracking.save(
+            threadId,
+            ids.filter((id) => states[id]?.status !== 'dismissed'),
+            'dismissed',
+            input.clientOperationId,
+          );
+          this.publishThread(threadId);
+          return { result: { threadId, questionIds: ids } };
+        });
+      this.questionDismissals.set(threadId, dismissing);
+      try {
+        return await dismissing;
+      } finally {
+        if (this.questionDismissals.get(threadId) === dismissing)
+          this.questionDismissals.delete(threadId);
       }
-      const ids = [...new Set(input.questionIds)].filter(
-        (id) => !this.questionAnswered(history, id),
-      );
-      this.store.dispatch(input.clientOperationId);
-      this.questionTracking.save(threadId, ids, 'dismissed', input.clientOperationId);
-      this.publishThread(threadId);
-      return { result: { threadId, questionIds: ids } };
     });
   }
 

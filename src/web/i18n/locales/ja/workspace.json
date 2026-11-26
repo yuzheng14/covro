@@ -95,6 +95,8 @@
   "no_pending_questions": "未回答の質問はありません",
   "question_turn_id": "ターン …{{id}}",
   "question_current_request": "現在のリクエスト",
+  "question_skips_in_progress": "質問をスキップしています…",
+  "question_skip_failed": "スキップできませんでした。もう一度お試しください。",
   "question_skip_unconfirmed": "スキップを確認できませんでした。再試行する前にセッションの状態を確認してください。",
   "question_history_incomplete": "一部の過去の質問を読み込めませんでした。",
   "question_history_gap": "途中のターンの一部はまだ読み込まれていません。"

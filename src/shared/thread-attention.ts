@@ -6,6 +6,7 @@ import type { AsyncQuestionReply, AttentionRequest, ThreadView } from './types.j
 export function pendingAttention(
   thread: ThreadView,
   locatedReplies: AsyncQuestionReply[] = [],
+  hiddenQuestionIds?: ReadonlySet<string>,
 ): AttentionRequest[] {
   if (thread.archived) return [];
   const metadata = { threadId: thread.id, projectId: thread.projectId, title: thread.title };
@@ -35,6 +36,7 @@ export function pendingAttention(
       const unanswered = item.questions.some((question, index) => {
         const id = asyncQuestionId(item.id, index);
         return (
+          !hiddenQuestionIds?.has(id) &&
           thread.questionTracking?.[id]?.status !== 'dismissed' &&
           questionAnswer(
             [...(replies.get(id) ?? []), ...(replies.get(item.id) ?? [])],

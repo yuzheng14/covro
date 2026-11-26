@@ -95,6 +95,8 @@
   "no_pending_questions": "No pending questions",
   "question_turn_id": "Turn …{{id}}",
   "question_current_request": "Current request",
+  "question_skips_in_progress": "Skipping questions…",
+  "question_skip_failed": "Could not skip. Try again.",
   "question_skip_unconfirmed": "Skip could not be confirmed. Check the session status before trying again.",
   "question_history_incomplete": "Some earlier questions could not be loaded.",
   "question_history_gap": "Some intervening turns are outside this view."

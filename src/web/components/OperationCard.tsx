@@ -15,6 +15,7 @@ import { isActive, runStatusLabels } from './Status';
 import { Button } from './ui/button';
 
 export function operationName(kind: string) {
+  if (kind === 'dismissQuestions') return t('workspace:end_question_tracking');
   const key: Record<string, string> = {
     send: 'send',
     steer: 'steer',

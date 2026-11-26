@@ -31,10 +31,22 @@ export interface SavedOperation {
   projectId?: string;
   navigateToResult?: boolean;
   mutation?: ThreadMutation;
+  /** Persist identities for receipt lookup after a reload, never question text. */
+  questionSkipIds?: string[];
   /** Navigation when Fork was clicked, which can differ from its source row and project. */
   navigationSource?: { projectId: string; threadId: string | null };
   /** Human-readable ownership only; never store the submitted message or approval answer. */
   context?: { threadId: string; projectId: string | null; title: string };
+}
+
+function readQuestionSkipIds(kind: string, value: unknown): string[] | undefined {
+  if (
+    kind === 'dismissQuestions' &&
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((id) => typeof id === 'string')
+  )
+    return value;
 }
 
 function readContext(value: SavedOperation['context']): SavedOperation['context'] {
@@ -110,6 +122,7 @@ export function readOperations(storage?: Pick<Storage, 'getItem'>): SavedOperati
           navigateToResult,
           navigationSource,
           mutation,
+          questionSkipIds,
           context,
         }) => ({
           clientOperationId,
@@ -119,6 +132,7 @@ export function readOperations(storage?: Pick<Storage, 'getItem'>): SavedOperati
           status: 'unknown',
           ...(readContext(context) ? { context: readContext(context) } : {}),
           ...(readMutation(kind, mutation) ? { mutation: readMutation(kind, mutation) } : {}),
+          ...(readQuestionSkipIds(kind, questionSkipIds) ? { questionSkipIds } : {}),
           ...((kind === 'fork' || kind === 'create') && typeof projectId === 'string'
             ? { projectId, navigateToResult: navigateToResult === true }
             : {}),
@@ -154,6 +168,7 @@ export function saveOperations(operations: SavedOperation[], storage?: Pick<Stor
             navigateToResult,
             navigationSource,
             mutation,
+            questionSkipIds,
             context,
           }) => ({
             clientOperationId,
@@ -163,6 +178,7 @@ export function saveOperations(operations: SavedOperation[], storage?: Pick<Stor
             ...(readContext(context) ? { context: readContext(context) } : {}),
             ...(kind === 'fork' || kind === 'create' ? { projectId, navigateToResult } : {}),
             ...(readMutation(kind, mutation) ? { mutation: readMutation(kind, mutation) } : {}),
+            ...(readQuestionSkipIds(kind, questionSkipIds) ? { questionSkipIds } : {}),
             ...(kind === 'fork' && navigationSource ? { navigationSource } : {}),
           }),
         ),
@@ -193,8 +209,9 @@ export function isSettled(operation: Operation) {
 
 export function blocksTarget(entry: SavedOperation, target: string) {
   return (
-    // A settings receipt cannot reserve execution or block further explicit edits.
+    // Settings and question tracking receipts do not reserve thread execution.
     entry.kind !== 'liveSettings' &&
+    entry.kind !== 'dismissQuestions' &&
     entry.target === target &&
     !entry.operation?.reconciliation &&
     !entry.operation?.execution?.ended &&

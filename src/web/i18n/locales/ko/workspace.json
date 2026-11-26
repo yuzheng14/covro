@@ -95,6 +95,8 @@
   "no_pending_questions": "답변 대기 중인 질문이 없습니다",
   "question_turn_id": "턴 …{{id}}",
   "question_current_request": "현재 요청",
+  "question_skips_in_progress": "질문을 건너뛰는 중…",
+  "question_skip_failed": "건너뛸 수 없습니다. 다시 시도하세요.",
   "question_skip_unconfirmed": "건너뛰기를 확인하지 못했습니다. 다시 시도하기 전에 세션 상태를 확인하세요.",
   "question_history_incomplete": "이전 질문 중 일부를 불러오지 못했습니다.",
   "question_history_gap": "중간의 일부 턴은 아직 불러오지 않았습니다."

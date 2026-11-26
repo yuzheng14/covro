@@ -97,6 +97,38 @@ it('ends selected tracking durably without native submission, while other groups
   expect(toThreadSummary(await restarted.getThread(ctx.id)).pendingQuestionCount).toBe(0);
 });
 
+it('serializes competing skips and does not rewrite an already dismissed question', async () => {
+  const ctx = await setup();
+  const releaseRead = deferred<void>();
+  const read = ctx.codex.readThread.bind(ctx.codex);
+  // The first request is already in the gateway, as it could be after a lost response.
+  const reads = vi.spyOn(ctx.codex, 'readThread').mockImplementationOnce(async (id) => {
+    await releaseRead.promise;
+    return read(id);
+  });
+  const firstInput = dismissInput([ctx.ids[0]!]);
+  const secondInput = dismissInput([ctx.ids[0]!, ctx.ids[1]!]);
+  const first = ctx.service.dismissQuestions(ctx.id, firstInput);
+  await vi.waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
+  const second = ctx.service.dismissQuestions(ctx.id, secondInput);
+  expect(ctx.service.getOperation(secondInput.clientOperationId).status).toBe('accepted');
+  await Promise.resolve();
+  expect(reads).toHaveBeenCalledTimes(1);
+  releaseRead.resolve();
+  const receipts = await Promise.all([first, second]);
+  expect(receipts.map(({ result }) => result)).toEqual([
+    { threadId: ctx.id, questionIds: firstInput.questionIds },
+    { threadId: ctx.id, questionIds: secondInput.questionIds },
+  ]);
+  expect(ctx.logs.records.filter(({ event }) => event === 'question.dismissed')).toEqual([
+    expect.objectContaining({ operationId: firstInput.clientOperationId, count: 1 }),
+    expect.objectContaining({ operationId: secondInput.clientOperationId, count: 1 }),
+  ]);
+  expect((await ctx.service.getPendingQuestions(ctx.id)).data.map(({ id }) => id)).toEqual([
+    ctx.ids[2],
+  ]);
+});
+
 it('keeps a running task running and rejects unknown question identities without partial writes', async () => {
   const ctx = await setup('running');
   await expect(

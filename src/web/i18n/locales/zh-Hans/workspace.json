@@ -95,6 +95,8 @@
   "no_pending_questions": "没有待回答的问题",
   "question_turn_id": "轮次 …{{id}}",
   "question_current_request": "当前请求",
+  "question_skips_in_progress": "正在跳过问题…",
+  "question_skip_failed": "跳过失败，请重试。",
   "question_skip_unconfirmed": "无法确认跳过结果。请先核对会话状态再重试。",
   "question_history_incomplete": "部分早期问题加载失败。",
   "question_history_gap": "中间的部分轮次尚未加载。"
