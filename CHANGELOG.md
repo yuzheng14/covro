@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.14.0](https://github.com/yuzheng14/covro/compare/v0.13.0...v0.14.0) (2026-11-26)
+
+
+### Features
+
+* **automation:** add adaptive session loops ([#408](https://github.com/yuzheng14/covro/issues/408)) ([3fcf444](https://github.com/yuzheng14/covro/commit/3fcf444800de431a1f0f918b93905ea82906853c)), closes [#386](https://github.com/yuzheng14/covro/issues/386)
+* **automation:** surface session loops in the Tasks panel ([#403](https://github.com/yuzheng14/covro/issues/403)) ([5c8c82c](https://github.com/yuzheng14/covro/commit/5c8c82cd1a57af74874ac4fa24c6e19dce9a4e44)), closes [#398](https://github.com/yuzheng14/covro/issues/398)
+* **diagnostics:** add one-click copy for upgrade failures ([#402](https://github.com/yuzheng14/covro/issues/402)) ([ffb16be](https://github.com/yuzheng14/covro/commit/ffb16beab6ecc82baf0bf878a83e255df4b92948)), closes [#392](https://github.com/yuzheng14/covro/issues/392)
+* **questions:** open pending questions from the conversation header ([#405](https://github.com/yuzheng14/covro/issues/405)) ([232b5ee](https://github.com/yuzheng14/covro/commit/232b5ee75c45dfd023bc14d8dca98857f9c0c447)), closes [#397](https://github.com/yuzheng14/covro/issues/397)
+
+
+### Bug Fixes
+
+* **history:** decouple execution recovery from snapshots ([#399](https://github.com/yuzheng14/covro/issues/399)) ([d1226d5](https://github.com/yuzheng14/covro/commit/d1226d5b4f9deab6daa10f07495b9a495e73b678))
+* **history:** page snapshots and defer stored tool output ([#400](https://github.com/yuzheng14/covro/issues/400)) ([d84352b](https://github.com/yuzheng14/covro/commit/d84352b668a8663bf6947991d46822e38ff15e2f))
+* **sidebar:** sync completion reads across browsers ([#381](https://github.com/yuzheng14/covro/issues/381)) ([0c646f7](https://github.com/yuzheng14/covro/commit/0c646f7586e50f0c93bcbde565f152b983cfec9c))
+* **updates:** allow manual checks while waiting for idle ([#404](https://github.com/yuzheng14/covro/issues/404)) ([ec673bd](https://github.com/yuzheng14/covro/commit/ec673bd9a3c67bd673ad632cbedb5b8788d48284)), closes [#390](https://github.com/yuzheng14/covro/issues/390)
+
 ## [0.13.0](https://github.com/yuzheng14/covro/compare/v0.12.0...v0.13.0) (2026-11-25)
 
 
