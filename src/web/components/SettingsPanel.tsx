@@ -13,7 +13,7 @@ import type {
 } from '../../shared/types';
 import { useRuntimeDefaults } from '../hooks/useRuntimeDefaults';
 import { chooseModel, pendingSettings, selectedModelDefaults, speedLabel } from '../lib/settings';
-import { PermissionModeSelect } from './PermissionModeSelect';
+import { SessionPermissionModeSelect } from './SessionPermissionModeSelect';
 import { permissionModes } from '../lib/permissions';
 import { permissionLabel } from '../lib/settings';
 import { ContextUsage } from './ContextUsage';
@@ -315,7 +315,7 @@ export function SettingsPanel({
       <div className="composer-actions">
         <div className="composer-context">
           {attachmentControl}
-          <PermissionModeSelect
+          <SessionPermissionModeSelect
             settings={changes}
             current={permissions}
             unknown={unknown}

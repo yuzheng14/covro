@@ -1,14 +1,14 @@
 import { SettingsSurface, useSettingsLeaveGuard } from './SettingsSurface';
 import { useEffect, useRef, useState } from 'react';
 import type { GlobalDefaultsSnapshot, GlobalDefaultSettings } from '../../shared/global-defaults';
-import type { PermissionMode } from '../../shared/types';
 import { api, HttpError } from '../lib/api';
 import { readableError } from '../lib/utils';
-import { permissionModes, permissionModeUnavailable } from '../lib/permissions';
+import { permissionModeUnavailable } from '../lib/permissions';
 import { displayMessage } from '../i18n/messages';
 import { t } from '../i18n';
 import { Button } from './ui/button';
 import { Icon } from './Icon';
+import { PermissionModeSelect } from './PermissionModeSelect';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 const automatic = '__codex_default__';
 function notifyDefaultsChanged() {
@@ -241,38 +241,21 @@ export function GlobalDefaultsDialog({
           </label>
           <label className="project-field">
             <span>{t('settings:global_default_permission')}</span>
-            <Select
+            <PermissionModeSelect
               value={draft.permissionMode ?? automatic}
-              onValueChange={(value) =>
-                change({ permissionMode: value === automatic ? null : (value as PermissionMode) })
-              }
-            >
-              <SelectTrigger aria-label={t('settings:global_default_permission')}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={automatic}>
-                  {t('settings:global_defaults_keep_permission')}
-                </SelectItem>
-                {(Object.keys(permissionModes) as PermissionMode[]).map((mode) => {
-                  const reason = permissionModeUnavailable(
-                    mode,
-                    snapshot.capabilities,
-                    draft.model,
-                  );
-                  return (
-                    <SelectItem
-                      key={mode}
-                      value={mode}
-                      disabled={Boolean(reason)}
-                      description={reason ?? permissionModes[mode].description}
-                    >
-                      {permissionModes[mode].label}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+              label={t('settings:global_default_permission')}
+              capabilities={snapshot.capabilities}
+              model={draft.model}
+              disabled={disabled || loading || saving}
+              extraOptions={[
+                {
+                  value: automatic,
+                  label: t('settings:global_defaults_keep_permission'),
+                  icon: 'settings',
+                },
+              ]}
+              onChange={(value) => change({ permissionMode: value === automatic ? null : value })}
+            />
           </label>
         </fieldset>
       )}
