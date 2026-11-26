@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import {
+  chooseSelectOption,
   confirmCompatibility,
   controlRuntime,
   createEmptyThread,
+  openSidebarSettings,
   saveConversationHistory,
   testOrigin,
 } from './helpers';
@@ -77,6 +79,57 @@ test('compact tools keep keyboard order and restore focus after dismissal and di
   await expect(taskButton).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(toolbar(page)).not.toBeVisible();
+});
+
+test('an open compact menu follows app and system appearance without losing keyboard focus', async ({
+  page,
+  context,
+}) => {
+  const peer = await context.newPage();
+  await peer.goto('/');
+  const settings = await openSidebarSettings(peer);
+  const appearance = settings.getByRole('combobox', { name: '外观', exact: true });
+
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await more(page).press('Enter');
+  const menu = toolbar(page);
+  const task = menu.getByRole('button', { name: '后台任务', exact: true });
+  await page.keyboard.press('Tab');
+  await expect(task).toBeFocused();
+  await expect(menu).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(task).toHaveCSS('outline-color', 'rgb(19, 118, 93)');
+
+  await chooseSelectOption(peer, appearance, '暗色');
+  await expect(menu).toBeVisible();
+  await expect(task).toBeFocused();
+  await expect(menu).toHaveCSS('background-color', 'rgb(41, 44, 49)');
+  await expect(menu).toHaveCSS('border-color', 'rgb(58, 62, 69)');
+  await expect(task).toHaveCSS('color', 'rgb(205, 208, 213)');
+  await expect(task.locator('svg')).toHaveCSS('stroke', 'rgb(205, 208, 213)');
+  await expect(task).toHaveCSS('outline-color', 'rgb(138, 183, 161)');
+  await task.hover();
+  await expect(task).toHaveCSS('background-color', 'rgb(48, 52, 58)');
+
+  const shell = menu.getByRole('button', { name: '打开 Shell 面板', exact: true });
+  await shell.click();
+  await more(page).click();
+  await expect(shell).toHaveAttribute('aria-expanded', 'true');
+  await expect(shell).toHaveCSS('background-color', 'rgb(41, 59, 51)');
+  await expect(shell).toHaveCSS('color', 'rgb(138, 183, 161)');
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await chooseSelectOption(peer, appearance, '浅色');
+  await expect(menu).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(shell).toHaveCSS('background-color', 'rgb(234, 244, 239)');
+  await chooseSelectOption(peer, appearance, '跟随系统');
+  await expect(menu).toHaveCSS('background-color', 'rgb(41, 44, 49)');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(menu).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await page.keyboard.press('Escape');
+  await expect(menu).not.toBeVisible();
+  await more(page).click();
+  await expect(menu).toHaveCSS('background-color', 'rgb(255, 255, 255)');
 });
 
 test('intermediate viewports fit the header with a long title and preserve focus through resize', async ({
