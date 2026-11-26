@@ -149,6 +149,45 @@ test.describe('mobile keyboard viewport', () => {
     isMobile: true,
     hasTouch: true,
   });
+  test('interrupt and send have equal outlines and separate touch targets', async ({ page }) => {
+    await page.goto('/');
+    await confirmCompatibility(page);
+    const submit = page.locator('.composer-submit > button');
+    const interrupt = page.getByRole('button', { name: '中断', exact: true });
+    await input(page).fill('[approval] 验证触控目标');
+    const idle = await submit.boundingBox();
+    await submit.tap();
+    await expect(page.locator('.action-card')).toBeVisible();
+    await expect(interrupt).toBeEnabled();
+    await expect(submit).toBeDisabled();
+    expect(await submit.boundingBox()).toEqual(idle);
+
+    await input(page).fill('保留这份草稿');
+    await expect(submit).toBeEnabled();
+    expect(await submit.boundingBox()).toEqual(idle);
+    expect(await interrupt.boundingBox()).toMatchObject({
+      width: idle!.width,
+      height: idle!.height,
+      y: idle!.y,
+    });
+
+    for (const action of [interrupt, submit]) {
+      expect(
+        await action.evaluate((button) => {
+          const { x, y, width, height } = button.getBoundingClientRect();
+          const xs = [x + width / 2 - 21, x + width / 2 + 21];
+          const ys = [y + height / 2 - 21, y + height / 2 + 21];
+          return xs.every((px) => ys.every((py) => document.elementFromPoint(px, py) === button));
+        }),
+      ).toBe(true);
+    }
+
+    await interrupt.tap();
+    await expect(interrupt).toHaveCount(0);
+    expect(await submit.boundingBox()).toEqual(idle);
+    await expect(input(page)).toHaveValue('保留这份草稿');
+  });
+
   test('composer follows a shrunken, panning viewport and restores the bottom safe area on close', async ({
     page,
     context,
@@ -179,11 +218,11 @@ test.describe('mobile keyboard viewport', () => {
     await expect(page.locator('.topbar[data-compact]')).toHaveCSS('flex-shrink', '1');
     const bounds = (await composer.boundingBox())!;
     expect(435 - bounds.y - bounds.height).toBeCloseTo(12, 0);
-    const button = await send(page).boundingBox();
-    expect(button!.y).toBeGreaterThanOrEqual(45);
-    expect(button!.y + button!.height).toBeLessThanOrEqual(435);
-    expect(button!.width).toBeGreaterThanOrEqual(44);
-    expect(button!.height).toBeGreaterThanOrEqual(44);
+    const touchTarget = (await page.locator('.composer-submit').boundingBox())!;
+    expect(touchTarget.y).toBeGreaterThanOrEqual(45);
+    expect(touchTarget.y + touchTarget.height).toBeLessThanOrEqual(435);
+    expect(touchTarget.width).toBeGreaterThanOrEqual(44);
+    expect(touchTarget.height).toBeGreaterThanOrEqual(44);
     await page.screenshot({ path: testInfo.outputPath('mobile-viewport.png'), fullPage: true });
 
     // Blur can arrive before the keyboard has finished closing.

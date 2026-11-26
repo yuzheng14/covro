@@ -2771,6 +2771,21 @@ html.composer-resizing * {
     height: 32px;
     padding: 0;
   }
+  .composer-region[data-mobile-input] :is(.composer-interrupt, .composer-submit) > .button {
+    position: relative;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    margin: 4px;
+  }
+  .composer-region[data-mobile-input] :is(.composer-interrupt, .composer-submit) > .button::after {
+    /* Center the 44px touch target within the outline and its reserved margin. */
+    content: '';
+    position: absolute;
+    width: 44px;
+    height: 44px;
+  }
 }
 @container (max-width: 600px) {
   .composer-actions {
@@ -3636,6 +3651,17 @@ dd {
   }
   .composer-note {
     font-size: 8px;
+  }
+  :where(.composer-region[data-mobile-input]) .composer-note {
+    /* Keep the action row in place when the footer messages wrap differently. */
+    display: grid;
+  }
+  :where(.composer-region[data-mobile-input]) .composer-note > span {
+    grid-area: 1 / 1;
+  }
+  :where(.composer-region[data-mobile-input]) .composer-note > [hidden] {
+    display: block;
+    visibility: hidden;
   }
   .error-banner.dismissible,
   .persistent-banner {

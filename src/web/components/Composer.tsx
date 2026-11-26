@@ -977,7 +977,7 @@ export function Composer(props: Props) {
           }
         >
           {active && (
-            <ControlHint content={t('composer:interrupt')}>
+            <ControlHint className="composer-interrupt" content={t('composer:interrupt')}>
               <Button
                 aria-label={props.interrupting ? t('composer:requesting') : t('composer:interrupt')}
                 variant="secondary"
@@ -1048,9 +1048,12 @@ export function Composer(props: Props) {
         />
       </div>
       <p className="composer-note">
-        {active
-          ? t('composer:closing_this_page_does_not_stop_tasks_interruptions')
-          : t('composer:codex_runs_with_the_server_project_s_permissions')}
+        <span hidden={!active}>
+          {t('composer:closing_this_page_does_not_stop_tasks_interruptions')}
+        </span>
+        <span hidden={active}>
+          {t('composer:codex_runs_with_the_server_project_s_permissions')}
+        </span>
       </p>
     </div>
   );
