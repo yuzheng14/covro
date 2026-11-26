@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  type HTMLAttributes,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { Ellipsis } from 'lucide-react';
 import { t } from '../i18n';
 import { Button } from './ui/button';
@@ -8,15 +16,18 @@ export function HeaderActions({
   compact,
   trigger,
   onOpen,
+  overflow,
   children,
 }: {
   compact: boolean;
   trigger: RefObject<HTMLButtonElement | null>;
   onOpen: () => void;
+  overflow?: ReactNode;
   children: ReactNode;
 }) {
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
+  const hasPopover = compact || Boolean(overflow);
 
   const position = useCallback(() => {
     const anchor = trigger.current?.getBoundingClientRect();
@@ -34,7 +45,7 @@ export function HeaderActions({
   }, [trigger]);
 
   useEffect(() => {
-    if (!compact) return;
+    if (!hasPopover) return;
     const popup = panel.current;
     const viewport = window.visualViewport;
     const header = popup?.closest('.topbar');
@@ -52,15 +63,38 @@ export function HeaderActions({
       popup?.style.removeProperty('--topbar-tools-right');
       popup?.style.removeProperty('--topbar-tools-max-height');
     };
-  }, [compact, position]);
+  }, [compact, hasPopover, position]);
+
+  const popup: HTMLAttributes<HTMLDivElement> & { ref: typeof panel } = {
+    ref: panel,
+    id,
+    popover: 'auto',
+    onBeforeToggle(event) {
+      if (event.newState !== 'open') return;
+      position();
+      onOpen();
+    },
+    onClickCapture(event) {
+      // Portalled dialogs still bubble through this React tree.
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        event.currentTarget.contains(target) &&
+        target.closest('button:not(:disabled)')
+      ) {
+        event.currentTarget.hidePopover();
+        trigger.current?.focus();
+      }
+    },
+  };
 
   return (
     <>
-      {compact && (
+      {hasPopover && (
         <Button
           ref={trigger}
           className="topbar-more"
-          data-compact-action=""
+          data-compact-action={overflow ? undefined : ''}
           variant="ghost"
           size="icon"
           aria-label={t('workspace:more_actions')}
@@ -69,32 +103,15 @@ export function HeaderActions({
           <Ellipsis size={22} aria-hidden="true" />
         </Button>
       )}
-      <div
-        ref={panel}
-        id={id}
-        className="topbar-tools"
-        popover={compact ? 'auto' : undefined}
-        onBeforeToggle={(event) => {
-          if (event.newState !== 'open') return;
-          position();
-          onOpen();
-        }}
-        onClickCapture={(event) => {
-          // Portalled dialogs still bubble through this React tree.
-          const target = event.target;
-          if (
-            compact &&
-            target instanceof Element &&
-            event.currentTarget.contains(target) &&
-            target.closest('button:not(:disabled)')
-          ) {
-            event.currentTarget.hidePopover();
-            trigger.current?.focus();
-          }
-        }}
-      >
+      <div className="topbar-tools" {...(compact ? popup : {})}>
         {children}
+        {compact && overflow}
       </div>
+      {!compact && overflow && (
+        <div className="topbar-tools" data-header-overflow="" data-compact-action="" {...popup}>
+          {overflow}
+        </div>
+      )}
     </>
   );
 }

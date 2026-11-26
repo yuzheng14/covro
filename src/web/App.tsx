@@ -148,7 +148,6 @@ export function App() {
     setProjectDialog({ kind: 'add' });
   };
   const { thread, system } = workspace;
-  const attention = thread ? pendingAttention(thread) : [];
   const [questionDialog, setQuestionDialog] = useState<string>();
   const questionReturn = useRef<HTMLButtonElement | null>(null);
   const [locatedQuestion, setLocatedQuestion] = useState<{
@@ -157,44 +156,14 @@ export function App() {
   }>();
   const questionFocus = useRef<PendingQuestion | undefined>(undefined);
   const questions = thread?.pendingQuestions;
-  const questionThreadId = thread?.id;
-  const questionHistoryCursor = thread?.history?.olderCursor;
-  useEffect(() => {
-    if (
-      !workspace.selectedId ||
-      questionThreadId !== workspace.selectedId ||
-      !questionHistoryCursor ||
-      questions?.history !== 'loading' ||
-      workspace.connection !== 'connected' ||
-      workspace.authRequired
-    )
-      return;
-    const controller = new AbortController();
-    // Let the session snapshot arrive before opening the independent history scan.
-    void api.pendingQuestions(workspace.selectedId, null, controller.signal).catch(() => {});
-    return () => controller.abort();
-  }, [
-    workspace.selectedId,
-    workspace.connection,
-    workspace.authRequired,
-    questions?.history,
-    questionHistoryCursor,
-    questionThreadId,
-  ]);
   const questionsOpen = Boolean(
     thread &&
     thread.id === workspace.selectedId &&
     questionDialog === thread.id &&
     !workspace.authRequired,
   );
-  const canOpenQuestions = Boolean(
-    thread &&
-    !thread.archived &&
-    questions &&
-    (questions.count > 0 || questions.history === 'error'),
-  );
-  const openQuestions = (event: React.MouseEvent<HTMLButtonElement>) => {
-    questionReturn.current = event.currentTarget;
+  const openQuestions = (from: HTMLButtonElement | null) => {
+    questionReturn.current = from;
     workspace.clearNotificationTarget();
     setQuestionDialog(thread?.id);
   };
@@ -275,6 +244,23 @@ export function App() {
     scope: workspace.cacheScope,
     forbidden: historyForbidden,
   });
+  const loadedThread = history.thread;
+  const attention = useMemo(() => {
+    if (!loadedThread) return [];
+    const turn = location?.turn;
+    const view =
+      turn && !loadedThread.turns.some(({ id }) => id === turn.id)
+        ? { ...loadedThread, turns: [turn, ...loadedThread.turns] }
+        : loadedThread;
+    return pendingAttention(view, location?.replies);
+  }, [loadedThread, location]);
+  const loadedQuestionCount = attention.filter(
+    (request) => request.target.kind === 'question',
+  ).length;
+  const canOpenQuestions = Boolean(thread && questions && !thread.archived && !historyForbidden);
+  const hasNativeQuestions = thread?.actions.some(
+    (action) => action.kind === 'questions' && ['pending', 'responding'].includes(action.status),
+  );
   const { notificationTarget, clearNotificationTarget } = workspace;
   useEffect(() => {
     if (!notificationTarget || history.thread?.id !== notificationTarget.threadId || !thread)
@@ -632,18 +618,14 @@ export function App() {
     (location?.turn?.id === targetId || location?.turn?.items.some((item) => item.id === targetId)
       ? location?.cursor
       : undefined);
-  const waitingQuestion = canOpenQuestions ? (
-    <Status
-      status="waitingInput"
-      offline={offline}
-      onClick={openQuestions}
-      label={
-        questions?.count === 0 && thread?.status !== 'waitingInput'
-          ? t('workspace:check_pending_questions')
-          : undefined
-      }
-    />
-  ) : null;
+  const waitingQuestion =
+    canOpenQuestions && (loadedQuestionCount > 0 || hasNativeQuestions) ? (
+      <Status
+        status="waitingInput"
+        offline={offline}
+        onClick={(event) => openQuestions(event.currentTarget)}
+      />
+    ) : null;
   return (
     <WorkspaceLayout threadId={thread?.id} getHistoryCursor={getHistoryCursor}>
       <Sidebar
@@ -712,6 +694,7 @@ export function App() {
         }}
         projectThreads={workspace.projectThreads}
         selectedId={workspace.selectedId}
+        selectedQuestionCount={loadedThread && loadedQuestionCount}
         isUnreadCompletion={isUnreadCompletion}
         onThread={(id, projectId) => {
           void workspace.selectThread(id, projectId);
@@ -833,6 +816,19 @@ export function App() {
             <HeaderActions
               compact={compactHeader}
               trigger={moreActions}
+              overflow={
+                canOpenQuestions && thread?.history?.olderCursor ? (
+                  <Button
+                    data-compact-action=""
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openQuestions(moreActions.current)}
+                  >
+                    <Icon name="question" size={16} />
+                    {t('workspace:check_pending_questions')}
+                  </Button>
+                ) : undefined
+              }
               onOpen={() => {
                 setDiagnosticsOpen(false);
                 compactDiagnosticsReturn.current = null;

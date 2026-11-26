@@ -3421,11 +3421,15 @@ export class GatewayService {
     } catch {
       return;
     }
-    this.publishThreadSummary(this.threadSummary({ ...view, turns: thread.turns }));
+    this.publishThreadSummary(this.threadSummary(view));
   }
 
   private threadSummary(view: ThreadView): ThreadSummary {
-    const summary = toThreadSummary(view);
+    const summary = toThreadSummary(
+      view.historyMode === 'paginated' && view.turns.length > HISTORY_PAGE_SIZE
+        ? { ...view, turns: view.turns.slice(-HISTORY_PAGE_SIZE) }
+        : view,
+    );
     const turnId = completedTurnId(summary);
     if (turnId) summary.lastTurnRead = this.turnCompletionReads.has(view.id, turnId);
     return summary;
