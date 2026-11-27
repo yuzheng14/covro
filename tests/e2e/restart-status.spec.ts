@@ -1,5 +1,11 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import type { Operation, ThreadSummaryPage, ThreadView } from '../../src/shared/types';
+import type {
+  Operation,
+  ServerMessage,
+  SubscribeMessage,
+  ThreadSummaryPage,
+  ThreadView,
+} from '../../src/shared/types';
 import {
   confirmCompatibility,
   controlRuntime,
@@ -27,6 +33,53 @@ async function savedThread(request: APIRequestContext, text: string) {
 
 test.beforeEach(async ({ request }) => {
   await controlRuntime(request, { reset: true });
+});
+
+test('translates the session opening error and lets the user retry', async ({
+  page,
+  request,
+}, testInfo) => {
+  await page.goto('/');
+  await confirmCompatibility(page);
+  const id = await savedThread(request, '可以重试打开的会话');
+  let unavailable = true;
+  await page.routeWebSocket('**/ws?overview=1', (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((data) => {
+      const message = JSON.parse(data.toString()) as Partial<SubscribeMessage>;
+      if (unavailable && message.type === 'subscribe' && message.threadId === id) {
+        socket.send(
+          JSON.stringify({
+            type: 'error',
+            threadId: id,
+            subscriptionId: message.subscriptionId,
+            status: 503,
+            error: {
+              code: 'PROTOCOL_INCOMPATIBLE',
+              message: 'Codex does not support thread/turns/list',
+            },
+          } satisfies ServerMessage),
+        );
+        return;
+      }
+      server.send(data);
+    });
+  });
+
+  await page.evaluate((threadId) => {
+    localStorage.setItem('codex-web.project', 'fixture');
+    localStorage.setItem('codex-web.selected:fixture', threadId);
+  }, id);
+  await page.reload();
+  const opening = page.locator('.history-opening');
+  await expect(opening).toHaveAttribute('role', 'alert');
+  await opening.screenshot({ path: testInfo.outputPath('history-opening-error.png') });
+  await expect(opening.locator('p')).toHaveText(
+    '请求失败（PROTOCOL_INCOMPATIBLE）。请核对操作与服务状态后重试。',
+  );
+  unavailable = false;
+  await opening.getByRole('button', { name: '重试读取' }).click();
+  await expect(page.locator('.user-message')).toContainText('可以重试打开的会话');
 });
 
 for (const mobile of [false, true]) {
