@@ -643,8 +643,61 @@ describe('verified protocol adapter with a real subprocess', () => {
       const calls = await requests();
       expect(calls.filter((entry) => entry.method === 'thread/archive')).toHaveLength(1);
       expect(calls.filter((entry) => entry.method === 'thread/unarchive')).toHaveLength(1);
+      const indexed = calls.filter(
+        (entry) => entry.method === 'thread/list' && entry.params.includedThreadIds,
+      );
+      expect(indexed.map((entry) => entry.params.archived)).toEqual([true, true, true, false]);
+      for (const entry of indexed) {
+        expect(entry.params).toMatchObject({
+          cwd: '/tmp',
+          includedThreadIds: [thread.id],
+          useStateDbOnly: true,
+          limit: 1,
+        });
+      }
+      expect(
+        calls.filter((entry) => entry.method === 'thread/list' && !entry.params.includedThreadIds),
+      ).toHaveLength(2);
     },
   );
+
+  it.each([
+    ['missing', [true, false], 'thread_not_indexed'],
+    ['unavailable', [true], 'state_db_unavailable'],
+  ] as const)(
+    'falls back to native archive discovery if the thread index is %s',
+    async (archiveIndex, filters, reason) => {
+      const logs = captureLogger();
+      const { adapter, requests } = await fixture({ archiveIndex, paginated: true }, 5000, {
+        logger: logs.logger,
+      });
+      const thread = await adapter.createThread('/tmp/project');
+      await adapter.archiveThread(thread.id);
+      expect(await adapter.readThreadMetadata(thread.id)).toMatchObject({ archived: true });
+      const lookups = (await requests()).filter((entry) => entry.method === 'thread/list');
+      expect(
+        lookups.map((entry) => [entry.params.includedThreadIds, entry.params.archived]),
+      ).toEqual([...filters.map((archived) => [[thread.id], archived]), [undefined, true]]);
+      expect(
+        logs.records.find((entry) => entry.event === 'codex.archive_lookup_fallback'),
+      ).toMatchObject({
+        threadId: thread.id,
+        codexEpoch: adapter.epoch,
+        reason,
+      });
+    },
+  );
+
+  it('keeps archive discovery on older app-servers that ignore includedThreadIds', async () => {
+    const { adapter, requests } = await fixture({ codexVersion: '0.170.0' });
+    const thread = await adapter.createThread('/tmp/project');
+    await adapter.archiveThread(thread.id);
+    expect(await adapter.readThreadMetadata(thread.id)).toMatchObject({ archived: true });
+    const lookups = (await requests()).filter((entry) => entry.method === 'thread/list');
+    expect(lookups).toHaveLength(1);
+    expect(lookups[0]?.params).toMatchObject({ cwd: '/tmp/project', archived: true, limit: 100 });
+    expect(lookups[0]?.params).not.toHaveProperty('includedThreadIds');
+  });
 
   it('archives when an unrelated helper unloads after the loaded-thread snapshot', async () => {
     const { adapter } = await fixture({ vanishedLoadedThread: true });
@@ -885,7 +938,8 @@ describe('verified protocol adapter with a real subprocess', () => {
     );
     await adapter.listThreads('/tmp');
     const list = (await requests()).find(
-      (entry) => entry.method === 'thread/list' && !entry.params.archived,
+      (entry) =>
+        entry.method === 'thread/list' && !entry.params.archived && !entry.params.includedThreadIds,
     );
     const methods = (await requests()).map((entry) => entry.method);
     expect(methods.slice(0, 4)).toEqual([

@@ -51,6 +51,7 @@ import type { ActivePermissionProfile } from '../../src/codex/generated/v2/Activ
 import type { ConfigReadResponse } from '../../src/codex/generated/v2/ConfigReadResponse.js';
 
 export interface SimulatorOptions {
+  archiveIndex?: 'missing' | 'unavailable';
   optionsPath?: string;
   accountUsagePath?: string;
   accountResponse?: GetAccountResponse;
@@ -2200,10 +2201,19 @@ function receive(request: ClientRequest): void {
         nextCursor: null,
       });
       break;
-    case 'thread/list':
+    case 'thread/list': {
+      if (request.params.useStateDbOnly && options.archiveIndex === 'unavailable') {
+        error(request.id, 'State DB unavailable', -32603);
+        break;
+      }
+      const included = request.params.includedThreadIds;
       reply(request.id, {
         data: [...threads.values()]
           .filter((thread) => !thread.ephemeral)
+          .filter(
+            (thread) =>
+              !included || (options.archiveIndex !== 'missing' && included.includes(thread.id)),
+          )
           .filter((thread) => archived.has(thread.id) === Boolean(request.params.archived))
           .filter((thread) => {
             const providers = request.params.modelProviders ?? [options.modelProvider ?? 'openai'];
@@ -2220,6 +2230,7 @@ function receive(request: ClientRequest): void {
         nextCursor: null,
       });
       break;
+    }
     case 'thread/name/set': {
       const thread = threads.get(request.params.threadId);
       if (!thread) {
