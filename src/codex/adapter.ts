@@ -84,6 +84,7 @@ import type { ThreadSetNameResponse } from './generated/v2/ThreadSetNameResponse
 import type { ThreadUnarchiveResponse } from './generated/v2/ThreadUnarchiveResponse.js';
 import type { ThreadLoadedListResponse } from './generated/v2/ThreadLoadedListResponse.js';
 import type { ThreadListResponse } from './generated/v2/ThreadListResponse.js';
+import type { ThreadListParams } from './generated/v2/ThreadListParams.js';
 import type { ThreadReadResponse } from './generated/v2/ThreadReadResponse.js';
 import type { ThreadStartResponse } from './generated/v2/ThreadStartResponse.js';
 import type { ThreadForkResponse } from './generated/v2/ThreadForkResponse.js';
@@ -755,41 +756,65 @@ export class CodexAdapter implements CodexClient {
     this.emit({ type: 'threadArchive', threadId: id, archived });
   }
 
-  /** thread/read has no archive field. Query the native index, including paginated history,
-   * instead of guessing from the unstable rollout path or maintaining a second database. */
-  private async storedThread(thread: Thread, sequence: number): Promise<ThreadView> {
+  private async readArchiveState(thread: Thread): Promise<boolean> {
+    if (thread.ephemeral) return false;
+    const scope = {
+      cwd: thread.cwd,
+      modelProviders: [],
+      sourceKinds: [
+        'cli',
+        'vscode',
+        'exec',
+        'appServer',
+        'subAgent',
+        'subAgentReview',
+        'subAgentCompact',
+        'subAgentThreadSpawn',
+        'subAgentOther',
+        'unknown',
+      ],
+    } satisfies ThreadListParams;
+    // thread/read doesn't carry archive state. Older app-servers silently ignore the ID filter.
+    if (this.state.codexVersion === VERIFIED_ADAPTER_CODEX_VERSION) {
+      const indexed = { ...scope, includedThreadIds: [thread.id], useStateDbOnly: true, limit: 1 };
+      let reason = 'thread_not_indexed';
+      try {
+        for (const archived of [true, false]) {
+          const result = await this.call('thread/list', { ...indexed, archived });
+          if (result.data.some((entry) => entry.id === thread.id)) return archived;
+        }
+      } catch (error) {
+        // An unavailable state DB does not prove that a saved thread is unarchived.
+        if (!(error instanceof CodexError) || error.rpcCode !== -32603) throw error;
+        reason = 'state_db_unavailable';
+      }
+      this.logger.debug('codex.archive_lookup_fallback', {
+        threadId: thread.id,
+        codexEpoch: this.epoch,
+        reason,
+      });
+    }
+    // If neither index lookup found the thread, let Codex discover or repair rollout metadata.
     let cursor: string | null = null;
     const seen = new Set<string>();
-    let archived = false;
     do {
       const page: ThreadListResponse = await this.call('thread/list', {
+        ...scope,
         archived: true,
-        cwd: thread.cwd,
-        modelProviders: [],
         cursor,
         limit: 100,
-        sourceKinds: [
-          'cli',
-          'vscode',
-          'exec',
-          'appServer',
-          'subAgent',
-          'subAgentReview',
-          'subAgentCompact',
-          'subAgentThreadSpawn',
-          'subAgentOther',
-          'unknown',
-        ],
       });
-      if (page.data.some((entry) => entry.id === thread.id)) {
-        archived = true;
-        break;
-      }
+      if (page.data.some((entry) => entry.id === thread.id)) return true;
       cursor = page.nextCursor;
       if (cursor && (seen.has(cursor) || seen.size >= 1000))
         throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid archive pagination');
       if (cursor) seen.add(cursor);
     } while (cursor);
+    return false;
+  }
+
+  private async storedThread(thread: Thread, sequence: number): Promise<ThreadView> {
+    const archived = await this.readArchiveState(thread);
     const view = mapThread(thread);
     return {
       ...view,
