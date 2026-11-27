@@ -156,6 +156,12 @@ export function App() {
   }>();
   const questionFocus = useRef<PendingQuestion | undefined>(undefined);
   const questions = thread?.pendingQuestions;
+  const questionSkips = thread ? workspace.questionSkips.get(thread.id) : undefined;
+  const skipStatuses = [...(questionSkips ?? [])]
+    .filter(([id]) => thread?.questionTracking?.[id]?.status !== 'dismissed')
+    .map(([, entry]) => entry.status);
+  const skippingQuestions = skipStatuses.includes('skipping');
+  const unconfirmedQuestionSkips = skipStatuses.includes('unknown');
   const questionsOpen = Boolean(
     thread &&
     thread.id === workspace.selectedId &&
@@ -252,8 +258,11 @@ export function App() {
       turn && !loadedThread.turns.some(({ id }) => id === turn.id)
         ? { ...loadedThread, turns: [turn, ...loadedThread.turns] }
         : loadedThread;
-    return pendingAttention(view, location?.replies);
-  }, [loadedThread, location]);
+    const hidden = new Set(
+      [...(questionSkips ?? [])].flatMap(([id, { status }]) => (status === 'failed' ? [] : [id])),
+    );
+    return pendingAttention(view, location?.replies, hidden);
+  }, [loadedThread, location, questionSkips]);
   const loadedQuestionCount = attention.filter(
     (request) => request.target.kind === 'question',
   ).length;
@@ -585,17 +594,6 @@ export function App() {
     return operation?.status === 'acknowledged';
   }
 
-  const dismissQuestions = async (questionIds: string[]) => {
-    if (!thread) return false;
-    const result = await workspace.run(
-      'dismissQuestions',
-      thread.id,
-      `/api/threads/${encode(thread.id)}/questions/dismiss`,
-      { questionIds },
-    );
-    await workspace.refreshThread(thread.id);
-    return result?.status === 'acknowledged';
-  };
   const questionControlsDisabled =
     !canOperate ||
     !thread?.managed ||
@@ -604,6 +602,10 @@ export function App() {
     busyFor('send') ||
     busyFor('steer') ||
     busyFor('resume');
+  const dismissQuestions = (questionIds: string[]) => {
+    if (!thread || questionControlsDisabled) return;
+    void workspace.skipQuestions(thread.id, questionIds);
+  };
   const locateQuestion = async (question: PendingQuestion, signal: AbortSignal) => {
     if (!thread) return;
     const result = await api.locateQuestion(thread.id, question, signal);
@@ -817,7 +819,8 @@ export function App() {
               compact={compactHeader}
               trigger={moreActions}
               overflow={
-                canOpenQuestions && thread?.history?.olderCursor ? (
+                canOpenQuestions &&
+                (thread?.history?.olderCursor || skippingQuestions || unconfirmedQuestionSkips) ? (
                   <Button
                     data-compact-action=""
                     variant="ghost"
@@ -993,7 +996,11 @@ export function App() {
             key={thread.id}
             threadId={thread.id}
             state={questions}
-            canDismiss={!questionControlsDisabled && !busyFor('dismissQuestions')}
+            canDismiss={!questionControlsDisabled}
+            skips={questionSkips}
+            skipping={skippingQuestions}
+            unconfirmed={unconfirmedQuestionSkips}
+            tracking={thread.questionTracking}
             onClose={closeQuestions}
             onLocate={locateQuestion}
             onDismiss={(id) => dismissQuestions([id])}
@@ -1196,6 +1203,7 @@ export function App() {
           onAddProject={openAddProject}
           questionControls={{
             tracking: thread?.questionTracking,
+            skips: questionSkips,
             onDismiss: dismissQuestions,
             disabled: questionControlsDisabled,
             onReply: async (replies) =>

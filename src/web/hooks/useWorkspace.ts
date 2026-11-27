@@ -49,6 +49,7 @@ import {
   type SentDraft,
 } from '../lib/conversation-drafts';
 import { useUpgradeReloadState } from '../lib/upgrade-reload';
+import { useQuestionSkips, type QuestionSkip } from './useQuestionSkips';
 
 function preferredProject() {
   try {
@@ -68,6 +69,11 @@ export function useWorkspace() {
   const projectsRef = useRef<Project[]>([]);
   const [operations, setOperations] = useState<SavedOperation[]>(readOperations);
   const operationsRef = useRef(operations);
+  const {
+    byThread: questionSkips,
+    enqueue: enqueueQuestionSkip,
+    update: updateQuestionSkip,
+  } = useQuestionSkips(operations);
   const projectStore = useRef(new ProjectThreadsStore(operations));
   const [archiveView, setArchiveView] = useState(false);
   const listBatch = useRef<{ queued: Set<string>; reading: Set<string> } | undefined>(undefined);
@@ -163,6 +169,7 @@ export function useWorkspace() {
   }, [listCache, persistedLists, cacheProjects, archiveView, projectThreads]);
   const [busy, setBusy] = useState<string[]>([]);
   const busyRef = useRef(new Set<string>());
+  const activeSkipPosts = useRef(new Set<string>());
   const streamRef = useRef<ThreadStream | undefined>(undefined);
   const projectRef = useRef(projectId);
   const [settingsByScope, setSettingsByScope] = useState(readSessionSettings);
@@ -722,6 +729,14 @@ export function useWorkspace() {
     [selectThread, changeArchiveView],
   );
 
+  const refreshThread = useCallback(async (expectedId?: string) => {
+    const id = selectedRef.current;
+    const stream = streamRef.current;
+    if (!id || !stream || (expectedId && id !== expectedId)) return;
+    // A remembered session can be readable from cache before its metadata check recovers.
+    stream.select(id, projectRef.current === UNASSIGNED_SCOPE ? null : projectRef.current);
+    await stream.refresh(id);
+  }, []);
   const applyOperation = useCallback(
     (operation: Operation) => {
       const known = operationsRef.current.find(
@@ -736,6 +751,20 @@ export function useWorkspace() {
           (known.operation.reconciliation && !operation.reconciliation))
       )
         return;
+      if (
+        known.questionSkipIds &&
+        (operation.status === 'acknowledged' ||
+          operation.status === 'failed' ||
+          operation.status === 'unknown')
+      ) {
+        updateQuestionSkip(
+          known.target,
+          { clientOperationId: known.clientOperationId, questionIds: known.questionSkipIds },
+          operation.reconciliation && operation.status === 'unknown' ? 'failed' : operation.status,
+          (operation.result as { questionIds?: string[] } | undefined)?.questionIds,
+        );
+        if (isSettled(operation)) void refreshThread(known.target);
+      }
       const turnId = (operation.result as { turnId?: string } | undefined)?.turnId;
       settleSubmission(
         operation.clientOperationId,
@@ -787,7 +816,8 @@ export function useWorkspace() {
       if (
         operation.status === 'failed' &&
         operation.error?.code !== 'THREAD_IN_USE' &&
-        known.kind !== 'reconcile'
+        known.kind !== 'reconcile' &&
+        !known.questionSkipIds
       ) {
         errorOperation.current = operation.clientOperationId;
         setErrorThreadId(operationThreadId(known));
@@ -851,7 +881,16 @@ export function useWorkspace() {
         );
       }
     },
-    [refreshSystem, selectThread, track, loadProjectThreads, settleMutation, settleSubmission],
+    [
+      refreshSystem,
+      selectThread,
+      track,
+      loadProjectThreads,
+      settleMutation,
+      settleSubmission,
+      updateQuestionSkip,
+      refreshThread,
+    ],
   );
 
   useEffect(() => {
@@ -909,7 +948,12 @@ export function useWorkspace() {
         await Promise.all(
           operationsRef.current.map(async (entry) => {
             // A browser identity is saved before POST; it may not have reached the gateway yet.
-            if (busyRef.current.has(`${entry.kind}:${entry.target}`)) return;
+            if (
+              entry.questionSkipIds
+                ? activeSkipPosts.current.has(entry.clientOperationId)
+                : busyRef.current.has(`${entry.kind}:${entry.target}`)
+            )
+              return;
             try {
               let receipt = await api.operation(entry.clientOperationId);
               applyOperation(receipt);
@@ -953,14 +997,6 @@ export function useWorkspace() {
     },
     [applyOperation, report, recordLookupError],
   );
-  const refreshThread = useCallback(async (expectedId?: string) => {
-    const id = selectedRef.current;
-    const stream = streamRef.current;
-    if (!id || !stream || (expectedId && id !== expectedId)) return;
-    // A remembered session can be readable from cache before its metadata check recovers.
-    stream.select(id, projectRef.current === UNASSIGNED_SCOPE ? null : projectRef.current);
-    await stream.refresh(id);
-  }, []);
   const loadThreads = useCallback(
     (cursor?: string) => loadProjectThreads(projectRef.current, cursor),
     [loadProjectThreads],
@@ -1098,7 +1134,7 @@ export function useWorkspace() {
       path: string,
       body: object = {},
       draft?: DraftSubmission,
-      options?: { throwOnError: boolean },
+      options?: { throwOnError?: boolean; questionSkip?: QuestionSkip },
     ) => {
       if (operationNeedsCompatibilityConfirmation(kind, system)) {
         setError(
@@ -1133,11 +1169,16 @@ export function useWorkspace() {
         return;
       busyRef.current.add(key);
       setBusy([...busyRef.current]);
-      setError(undefined);
-      setErrorThreadId(undefined);
-      setErrorDetails(undefined);
+      const skip = options?.questionSkip;
+      if (!skip) {
+        setError(undefined);
+        setErrorThreadId(undefined);
+        setErrorDetails(undefined);
+      }
       const clientOperationId =
-        draft?.kind === 'create' && draft.creationId ? draft.creationId : crypto.randomUUID();
+        skip?.clientOperationId ??
+        (draft?.kind === 'create' && draft.creationId ? draft.creationId : crypto.randomUUID());
+      if (skip) activeSkipPosts.current.add(clientOperationId);
       if (draft) conversationDrafts.current.track(clientOperationId, draft);
       if (draft?.kind === 'send') {
         const message = body as import('../../shared/types').TaskMessage & {
@@ -1220,6 +1261,7 @@ export function useWorkspace() {
           status: 'accepted',
           ...(context ? { context } : {}),
           ...(mutation ? { mutation } : {}),
+          ...(skip ? { questionSkipIds: skip.questionIds } : {}),
           ...(kind === 'fork' || kind === 'create'
             ? {
                 projectId:
@@ -1250,7 +1292,11 @@ export function useWorkspace() {
           problem.status < 500 &&
           problem.status !== 408 &&
           problem.problem.code !== 'RESULT_UNKNOWN';
-        if (
+        if (skip) {
+          updateQuestionSkip(target, skip, definiteFailure ? 'failed' : 'unknown');
+          if (definiteFailure) void refreshThread(target);
+          if (problem instanceof HttpError && problem.authenticationRequired) report(problem);
+        } else if (
           (!errorOwner || (definiteFailure && kind !== 'reconcile')) &&
           !(problem instanceof HttpError && problem.problem.code === 'THREAD_IN_USE')
         )
@@ -1306,6 +1352,7 @@ export function useWorkspace() {
           });
         return undefined;
       } finally {
+        if (skip) activeSkipPosts.current.delete(clientOperationId);
         busyRef.current.delete(key);
         setBusy([...busyRef.current]);
       }
@@ -1320,6 +1367,8 @@ export function useWorkspace() {
       changeArchiveView,
       settleMutation,
       settleSubmission,
+      updateQuestionSkip,
+      refreshThread,
     ],
   );
 
@@ -1548,6 +1597,18 @@ export function useWorkspace() {
         : undefined;
     },
     run,
+    questionSkips,
+    skipQuestions: (threadId: string, questionIds: string[]) =>
+      enqueueQuestionSkip(threadId, questionIds, async (skip) => {
+        await run(
+          'dismissQuestions',
+          threadId,
+          `/api/threads/${encodeURIComponent(threadId)}/questions/dismiss`,
+          { questionIds: skip.questionIds },
+          undefined,
+          { questionSkip: skip },
+        );
+      }),
     loadThreads,
     loadProjectThreads,
     refreshProjects,
@@ -1559,11 +1620,19 @@ export function useWorkspace() {
       if (
         !entry ||
         !canDiscardMissingOperation(entry) ||
-        busyRef.current.has(`${entry.kind}:${entry.target}`)
+        (entry.questionSkipIds
+          ? activeSkipPosts.current.has(id)
+          : busyRef.current.has(`${entry.kind}:${entry.target}`))
       )
         return;
       conversationDrafts.current.discard(id);
       if (entry.mutation) settleMutation(id, undefined, false);
+      if (entry.questionSkipIds)
+        updateQuestionSkip(
+          entry.target,
+          { clientOperationId: id, questionIds: entry.questionSkipIds },
+          'failed',
+        );
       track((previous) => previous.filter((current) => current.clientOperationId !== id));
       setError((previous) => (previous === entry.lookupError?.message ? undefined : previous));
     },

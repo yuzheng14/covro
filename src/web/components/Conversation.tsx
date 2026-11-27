@@ -279,6 +279,7 @@ function Item({
               questions={item.questions}
               replies={replies}
               tracking={questionControls?.tracking}
+              skips={questionControls?.skips}
               onDismiss={questionControls?.onDismiss}
               disabled={questionControls?.disabled ?? true}
               onReply={questionControls?.onReply ?? (async () => false)}

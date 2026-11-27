@@ -6325,11 +6325,20 @@ dd {
   flex-shrink: 0;
 }
 
+.pending-question-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.pending-question-error {
+  margin: 0 6px 8px;
+}
+
 .pending-question-link {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 3px 8px;
-  flex: 1;
+  width: 100%;
   min-width: 0;
   padding: 10px 6px;
   border: 0;
