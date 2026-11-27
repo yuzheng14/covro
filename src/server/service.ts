@@ -1934,49 +1934,59 @@ export class GatewayService {
     // A creation receipt can be replayed only while its loop is still accessible.
     if (this.loops.get(input.clientOperationId))
       this.requireOwnedLoop(threadId, input.clientOperationId);
-    return this.perform(caller ? 'loop.create.mcp' : 'loop.create', threadId, input, async () => {
-      const thread = await this.loadThread(
-        threadId,
-        caller && { raw: true, waitForExecution: false },
-      );
-      caller?.assertCurrent(threadId);
-      this.ensureManaged(thread);
-      this.ensureCompatibilityConfirmed();
-      if (!(thread.hasMessages || thread.turns.some((turn) => isTerminal(turn.status))))
-        throw new AppError('LOOP_UNSAVED_THREAD', 'Send a message to save this session first', 409);
-      if (parseQuestionReplies(input.prompt))
-        throw new AppError('LOOP_INVALID_PROMPT', 'A loop requires a regular prompt', 400);
-      const workspace = this.loopWorkspace(threadId);
-      const runtime = thread.runtimeSettings;
-      const permissionMode = runtime?.permissionMode;
-      const hasPermissionOverrides =
-        input.settings?.permissionMode !== undefined ||
-        input.settings?.approvalPolicy !== undefined ||
-        input.settings?.approvalReviewer !== undefined ||
-        input.settings?.sandbox !== undefined;
-      const settings = this.retrySettings(runtime, {
-        ...(runtime?.collaborationMode ? { collaborationMode: runtime.collaborationMode } : {}),
-        ...(!hasPermissionOverrides && permissionMode && permissionMode !== 'custom'
-          ? { permissionMode }
-          : {}),
-        ...input.settings,
-      });
-      const now = Date.now();
-      this.store.dispatch(input.clientOperationId, undefined, undefined, (tx) =>
-        this.loops.create(tx, {
-          id: input.clientOperationId,
+    return this.perform(
+      caller ? 'loop.create.mcp' : 'loop.create',
+      threadId,
+      input,
+      async () => {
+        const thread = await this.loadThread(
           threadId,
-          workspaceKey: workspace.workspaceKey,
-          settings,
-          prompt: input.prompt,
-          mode: input.mode ?? 'fixed',
-          intervalMs: input.intervalMs ?? null,
-          status: 'active',
-          nextRunAt: now + (input.intervalMs ?? 0),
-        }),
-      );
-      return { result: sessionLoopView(this.loops.get(input.clientOperationId)!) };
-    });
+          caller && { raw: true, waitForExecution: false },
+        );
+        caller?.assertCurrent(threadId);
+        this.ensureManaged(thread);
+        this.ensureCompatibilityConfirmed();
+        if (!(thread.hasMessages || thread.turns.some((turn) => isTerminal(turn.status))))
+          throw new AppError(
+            'LOOP_UNSAVED_THREAD',
+            'Send a message to save this session first',
+            409,
+          );
+        if (parseQuestionReplies(input.prompt))
+          throw new AppError('LOOP_INVALID_PROMPT', 'A loop requires a regular prompt', 400);
+        const workspace = this.loopWorkspace(threadId);
+        const runtime = thread.runtimeSettings;
+        const permissionMode = runtime?.permissionMode;
+        const hasPermissionOverrides =
+          input.settings?.permissionMode !== undefined ||
+          input.settings?.approvalPolicy !== undefined ||
+          input.settings?.approvalReviewer !== undefined ||
+          input.settings?.sandbox !== undefined;
+        const settings = this.retrySettings(runtime, {
+          ...(runtime?.collaborationMode ? { collaborationMode: runtime.collaborationMode } : {}),
+          ...(!hasPermissionOverrides && permissionMode && permissionMode !== 'custom'
+            ? { permissionMode }
+            : {}),
+          ...input.settings,
+        });
+        const now = Date.now();
+        this.store.dispatch(input.clientOperationId, undefined, undefined, (tx) =>
+          this.loops.create(tx, {
+            id: input.clientOperationId,
+            threadId,
+            workspaceKey: workspace.workspaceKey,
+            settings,
+            prompt: input.prompt,
+            mode: input.mode ?? 'fixed',
+            intervalMs: input.intervalMs ?? null,
+            status: 'active',
+            nextRunAt: now + (input.intervalMs ?? 0),
+          }),
+        );
+        return { result: sessionLoopView(this.loops.get(input.clientOperationId)!) };
+      },
+      { returnFailure: Boolean(caller) },
+    );
   }
 
   async controlSessionLoop(
@@ -2027,6 +2037,7 @@ export class GatewayService {
           this.capacityRetries.cancel(retry);
         return { result: sessionLoopView(this.loops.get(loopId)!) };
       },
+      { returnFailure: Boolean(caller) },
     );
   }
 
@@ -3087,6 +3098,7 @@ export class GatewayService {
     target: string,
     input: T,
     work: () => Promise<{ result: unknown; turnId?: string; onAcknowledged?: () => void }>,
+    options?: { returnFailure: boolean },
   ): Promise<Operation> {
     if (!this.accepting) throw new AppError('CODEX_UNAVAILABLE', '服务正在关闭', 503);
     if (this.maintenance && kind !== 'service.restart') throw this.maintenanceError();
@@ -3166,6 +3178,7 @@ export class GatewayService {
       if (dispatched && (kind === 'turn.start' || kind === 'turn.steer'))
         this.publishThread(target);
       this.events.publish('operation', operation);
+      if (options?.returnFailure) return operation;
       if (uncertain)
         throw new AppError(
           'RESULT_UNKNOWN',

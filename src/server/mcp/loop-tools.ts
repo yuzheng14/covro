@@ -4,6 +4,7 @@ import { withLogContext } from '../../logging/context.js';
 import { errorFields } from '../../logging/fields.js';
 import type { Logger } from '../../logging/logger.js';
 import { AppError } from '../../shared/errors.js';
+import type { Operation } from '../../shared/types.js';
 import {
   LOOP_MAX_INTERVAL,
   LOOP_MAX_PROMPT,
@@ -53,6 +54,19 @@ type LoopCall =
   | { tool: 'list_loops'; input: z.infer<typeof listLoopsInput> }
   | { tool: 'create_loop'; input: z.infer<typeof createLoopInput> }
   | { tool: 'update_loop'; input: z.infer<typeof updateLoopInput> };
+
+function receipt(operation: Operation, requestKey: string) {
+  return toolResult(
+    {
+      request_key: requestKey,
+      operation_id: operation.clientOperationId,
+      status: operation.status,
+      ...(operation.result ? { loop: operation.result } : {}),
+      ...(operation.error ? { error: operation.error } : {}),
+    },
+    operation.status === 'failed' || operation.status === 'unknown',
+  );
+}
 
 export class SessionLoopTools {
   constructor(
@@ -120,16 +134,7 @@ export class SessionLoopTools {
             context,
           );
         }
-        return toolResult(
-          {
-            request_key: requestKey,
-            operation_id: operation.clientOperationId,
-            status: operation.status,
-            ...(operation.result ? { loop: operation.result } : {}),
-            ...(operation.error ? { error: operation.error } : {}),
-          },
-          operation.status === 'failed' || operation.status === 'unknown',
-        );
+        return receipt(operation, requestKey);
       });
     } catch (error) {
       if (!signal.aborted) {

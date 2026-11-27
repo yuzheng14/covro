@@ -440,13 +440,14 @@ it('shares version checks and persisted loop state with the browser and keeps th
   });
 
   // A browser cancellation races the session's change at the same optimistic version.
+  const racingUpdate = { ...change, interval_minutes: 15, version: 1, request_key: operationId() };
   const [browser, agent] = await Promise.allSettled([
     service.controlSessionLoop(session.threadId, loop.id, {
       clientOperationId: operationId(),
       version: 1,
       action: 'cancel',
     }),
-    call('update_loop', { ...change, interval_minutes: 15, version: 1 }),
+    call('update_loop', racingUpdate),
   ]);
   expect(browser).toMatchObject({
     status: 'fulfilled',
@@ -454,8 +455,14 @@ it('shares version checks and persisted loop state with the browser and keeps th
   });
   expect(agent).toMatchObject({
     status: 'fulfilled',
-    value: { isError: true, structuredContent: { error: { code: 'LOOP_CONFLICT' } } },
+    value: {
+      isError: true,
+      structuredContent: { status: 'failed', error: { code: 'LOOP_CONFLICT' } },
+    },
   });
+  expect(await call('update_loop', racingUpdate)).toEqual(
+    agent.status === 'fulfilled' && agent.value,
+  );
   expect(codex.threads.get(session.threadId)?.turns.at(-1)?.status).toBe('running');
 
   const otherLoop = mutationReceipt(
