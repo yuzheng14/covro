@@ -170,6 +170,9 @@ test('custom profile details and unavailable modes stay readable on desktop and 
   await expect(page.getByRole('option', { name: '帮我批准', exact: true })).toBeDisabled();
   await expect(page.getByRole('listbox')).toContainText('受管要求不允许此权限 profile');
   await expect(page.getByRole('listbox')).toContainText('未启用自动审核');
+  await expect(
+    page.getByRole('option', { name: '自定义 · company-review（保留当前配置）', exact: true }),
+  ).toBeDisabled();
   await screenshot(page, 'desktop-restricted-menu');
   await page.keyboard.press('Escape');
   await expect(modeControl(page)).toBeFocused();
@@ -207,6 +210,22 @@ test('keeps a rejected mode pending and keeps the actual permissions visible', a
   await screenshot(page, 'rejected-selection');
   await page.getByRole('button', { name: '撤销修改', exact: true }).click();
   await expect(modeControl(page)).toHaveAttribute('data-value', 'read-only');
+});
+
+test('keeps the session proposal pending when the turn completes without confirming the mode', async ({
+  page,
+  request,
+}) => {
+  await controlRuntime(request, { reset: true, fixtureOptions: { ignorePermissions: true } });
+  const id = await newThread(page);
+  await choose(page, 'auto-review');
+  await send(page);
+  const actual = (await (await request.get(`/api/threads/${id}`)).json()) as ThreadView;
+  expect(actual.runtimeSettings).toMatchObject({ permissionMode: 'custom', sandbox: 'read-only' });
+  await expect(page.locator('.settings-pending')).toContainText('权限待生效：帮我批准');
+  await page.reload();
+  await expect(modeControl(page)).toHaveAttribute('data-value', 'auto-review');
+  await expect(page.locator('.settings-pending')).toContainText('当前：自定义 · :read-only');
 });
 
 test('preserves mode drafts by project and conversation and never substitutes defaults during history loading', async ({

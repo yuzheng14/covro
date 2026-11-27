@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { confirmCompatibility, controlRuntime, openSidebarSettings, testOrigin } from './helpers';
+
+const permissionName = '默认权限模式';
+const keepPermission = '保留当前 / Codex 默认';
+
 async function openDefaults(page: Page) {
   await openSidebarSettings(page, 'ai');
   const dialog = page.getByRole('region', { name: '会话默认设置', exact: true });
@@ -25,8 +29,24 @@ test('global defaults persist across reload, affect new threads, and preserve ex
   const originalId = (await created.json()).result.threadId;
   const before = (await (await request.get(`/api/threads/${originalId}`)).json()).runtimeSettings;
   let dialog = await openDefaults(page);
-  await dialog.getByRole('combobox', { name: '默认权限模式', exact: true }).click();
-  await page.getByRole('option', { name: '帮我批准', exact: true }).click();
+  const permission = dialog.getByRole('combobox', { name: permissionName, exact: true });
+  await permission.focus();
+  await permission.press('Enter');
+  const menu = page.getByRole('listbox', { name: permissionName, exact: true });
+  await expect(menu.getByRole('option')).toHaveCount(5);
+  await expect(menu.getByRole('option', { name: '只读', exact: true })).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(menu.getByRole('option', { name: keepPermission, exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(menu.getByRole('option', { name: '请求批准', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(menu.getByRole('option', { name: '帮我批准', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(permission).toBeFocused();
+  await expect(permission).toHaveAttribute('data-value', 'auto-review');
+  expect(
+    (await (await request.get('/api/settings/defaults')).json()).settings.permissionMode,
+  ).not.toBe('auto-review');
   await dialog.getByRole('combobox', { name: '默认模型', exact: true }).click();
   await page.getByRole('option', { name: 'simulated-alternative', exact: true }).click();
   await dialog.getByRole('combobox', { name: '默认推理强度', exact: true }).click();
@@ -96,9 +116,19 @@ test('unsaved defaults require confirmation before closing and model defaults ca
   page,
   request,
 }) => {
+  await controlRuntime(request, {
+    reset: true,
+    fixtureOptions: { configOverrides: { default_permissions: 'company' } },
+  });
   await page.goto('/');
   await confirmCompatibility(page);
   const dialog = await openDefaults(page);
+  const permission = dialog.getByRole('combobox', { name: permissionName, exact: true });
+  await expect(permission).toContainText(keepPermission);
+  await permission.click();
+  await page.getByRole('option', { name: '请求批准', exact: true }).click();
+  await permission.click();
+  await page.getByRole('option', { name: keepPermission, exact: true }).click();
   await dialog.getByRole('combobox', { name: '默认模型', exact: true }).click();
   await page.getByRole('option', { name: '使用 Codex 默认模型', exact: true }).click();
   await expect(dialog.getByRole('combobox', { name: '默认推理强度', exact: true })).toContainText(
@@ -110,7 +140,7 @@ test('unsaved defaults require confirmation before closing and model defaults ca
   await dialog.getByRole('button', { name: '保存默认设置', exact: true }).click();
   await expect(dialog.getByRole('status')).toContainText('默认设置已保存');
   const snapshot = await (await request.get('/api/settings/defaults')).json();
-  expect(snapshot.settings.reasoningEffort).toBe(null);
+  expect(snapshot.settings).toMatchObject({ reasoningEffort: null, permissionMode: null });
   await page.locator('.settings-heading button').click();
   await expect(dialog).not.toBeVisible();
 });
@@ -142,8 +172,9 @@ for (const status of [503, 409])
         },
       });
     });
-    await dialog.getByRole('combobox', { name: '默认模型', exact: true }).click();
-    await page.getByRole('option', { name: 'simulated-alternative', exact: true }).click();
+    const permission = dialog.getByRole('combobox', { name: permissionName, exact: true });
+    await permission.click();
+    await page.getByRole('option', { name: '帮我批准', exact: true }).click();
     await dialog.getByRole('button', { name: '保存默认设置', exact: true }).click();
     await expect(
       dialog.getByText('保存结果尚未确认，请重新读取核对后再操作。', { exact: true }),
@@ -159,9 +190,7 @@ for (const status of [503, 409])
     await expect(
       dialog.getByText('保存结果尚未确认，请重新读取核对后再操作。', { exact: true }),
     ).toHaveCount(0);
-    await expect(dialog.getByRole('combobox', { name: '默认模型', exact: true })).toContainText(
-      'simulated-alternative',
-    );
+    await expect(permission).toContainText('帮我批准');
     expect(writes).toBe(1);
     await page.locator('.settings-heading button').click();
     await expect(dialog).not.toBeVisible();
@@ -215,4 +244,51 @@ test('a definite version conflict allows reload without reporting an uncertain w
   await expect(dialog.getByRole('combobox', { name: '默认模型', exact: true })).toContainText(
     'simulated-alternative',
   );
+});
+
+test('global permission options keep inheritance available while keyboard skips restricted presets', async ({
+  page,
+  request,
+}, info) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await controlRuntime(request, {
+    reset: true,
+    fixtureOptions: {
+      guardianApproval: false,
+      requirements: { allowedPermissionProfiles: { ':workspace': true, ':read-only': true } },
+    },
+  });
+  await page.goto('/');
+  await confirmCompatibility(page);
+  const dialog = await openDefaults(page);
+  const permission = dialog.getByRole('combobox', { name: permissionName, exact: true });
+  await permission.focus();
+  await permission.press('Enter');
+  const menu = page.getByRole('listbox', { name: permissionName, exact: true });
+  await expect(menu.getByRole('option', { name: keepPermission, exact: true })).toBeEnabled();
+  for (const [name, reason] of [
+    ['帮我批准', '未启用自动审核'],
+    ['完全访问', '受管要求不允许此权限 profile'],
+  ] as const) {
+    const option = menu.getByRole('option', { name, exact: true });
+    await expect(option).toBeDisabled();
+    await expect(option).toHaveAccessibleDescription(new RegExp(reason));
+  }
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowDown');
+  const ask = menu.getByRole('option', { name: '请求批准', exact: true });
+  await expect(ask).toBeFocused();
+  const titleLines = await ask.getByText('请求批准', { exact: true }).evaluate((title) => {
+    const range = document.createRange();
+    range.selectNodeContents(title);
+    return range.getClientRects().length;
+  });
+  expect(titleLines).toBe(1);
+  await page.screenshot({ path: info.outputPath('restricted-defaults.png') });
+  await page.keyboard.press('ArrowDown');
+  await expect(menu.getByRole('option', { name: '只读', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(permission).toBeFocused();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: '保存默认设置', exact: true })).toBeDisabled();
 });

@@ -93,8 +93,12 @@ function SelectItem({
   className,
   children,
   description,
+  icon,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Item> & { description?: React.ReactNode }) {
+}: React.ComponentProps<typeof SelectPrimitive.Item> & {
+  description?: React.ReactNode;
+  icon?: React.ReactNode;
+}) {
   const descriptionId = useId();
   return (
     <SelectPrimitive.Item
@@ -103,6 +107,11 @@ function SelectItem({
       aria-describedby={description ? descriptionId : undefined}
       {...props}
     >
+      {icon && (
+        <span className="select-item-icon" aria-hidden="true">
+          {icon}
+        </span>
+      )}
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
       {description && (
         <span className="select-item-description" id={descriptionId}>

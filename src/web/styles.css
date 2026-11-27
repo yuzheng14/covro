@@ -2688,10 +2688,6 @@ html.composer-resizing * {
   max-width: 190px;
   flex-shrink: 0;
 }
-.permission-mode-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .permission-pending-dot {
   width: 5px;
   height: 5px;
@@ -2704,29 +2700,40 @@ html.composer-resizing * {
   max-height: min(440px, var(--radix-select-content-available-height));
 }
 .permission-mode-menu .select-item {
-  padding-top: 10px;
-  padding-bottom: 10px;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-.permission-mode-menu .select-item-description {
-  font-size: 11px;
-  line-height: 1.6;
-  color: light-dark(#6b7c6f, var(--dark-text-secondary));
-}
-.permission-mode-menu strong {
-  font-size: 12px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 3px;
+  padding: 9px 30px 9px 10px;
+  font-size: 13px;
   font-weight: 600;
 }
-.permission-description > span {
-  display: block;
+.permission-mode-menu .select-item-icon {
+  display: flex;
+  color: var(--accent);
+}
+.permission-mode-menu .select-item-description {
+  grid-column: 2;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: light-dark(#596b5f, var(--dark-text-secondary));
+}
+.permission-mode-menu .select-item[data-state='checked'] {
+  background: var(--accent-soft);
+}
+.permission-mode-menu .select-item[data-highlighted] {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.permission-mode-menu .select-item[data-disabled],
+.permission-mode-menu .select-item[data-disabled] .select-item-icon {
+  opacity: 1;
+  color: light-dark(#596b5f, var(--dark-text-secondary));
 }
 .permission-mode-menu .permission-unavailable {
-  color: light-dark(#85682c, var(--dark-warning));
-}
-.permission-mode-menu .select-item[data-disabled] {
-  opacity: 0.7;
+  display: block;
+  color: light-dark(#775a21, var(--dark-warning));
 }
 .settings-pending,
 .settings-defaults,
