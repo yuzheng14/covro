@@ -1629,6 +1629,16 @@ svg {
 .markdown p:last-child {
   margin-bottom: 0;
 }
+.browser-completion {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--muted);
+}
+.browser-completion > svg {
+  flex-shrink: 0;
+  margin-top: 4px;
+}
 .markdown h1,
 .markdown h2,
 .markdown h3 {

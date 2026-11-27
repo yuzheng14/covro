@@ -284,7 +284,11 @@ function Item({
               onReply={questionControls?.onReply ?? (async () => false)}
             />
           ) : (
-            <TextContent text={item.text ?? ''} streaming={streaming} />
+            <TextContent
+              text={item.text ?? ''}
+              streaming={streaming}
+              renderBrowserCompletion={item.type === 'agentMessage'}
+            />
           )}
           {item.error && <p className="inline-error">{displayMessage(item.error)}</p>}
         </div>
