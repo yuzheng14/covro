@@ -57,3 +57,14 @@ The MCP-created session was selected through its returned URL, appeared under
 Target project, displayed its exact initial prompt and completed response, and
 accepted a second message from the UI. The model replies in screenshots are
 explicit local stub output, not real model inference.
+
+## Session loop verification
+
+The same native probe now verifies the loop tools on Codex 0.172.0. It exercises
+declining and accepting a loop creation approval, listing loops from Code Mode,
+and changing a saved cadence from 60 to 90 minutes while the originating turn
+runs. The independent app-server check covers all injected tools.
+
+The integration tests also check unauthenticated access, changed MCP arguments
+and thread IDs, real-time turn ownership, duplicate receipts, version conflicts
+with browser control, and persistence across gateway restarts.

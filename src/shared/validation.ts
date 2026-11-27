@@ -283,6 +283,13 @@ export const fileSearchQuerySchema = z
   )
   .refine((value) => !(value.threadId && value.draftId), 'Choose a session or a draft');
 
+export const loopIntervalSchema = z
+  .number()
+  .int()
+  .min(LOOP_MIN_INTERVAL)
+  .max(LOOP_MAX_INTERVAL)
+  .multipleOf(LOOP_MIN_INTERVAL);
+
 const sessionLoopInputSchema = operationSchema.extend({
   prompt: z.string().trim().min(1).max(LOOP_MAX_PROMPT),
   settings: settingsSchema.optional(),
@@ -291,12 +298,7 @@ const sessionLoopInputSchema = operationSchema.extend({
 export const createSessionLoopSchema = z.union([
   sessionLoopInputSchema.extend({
     mode: z.literal('fixed').optional(),
-    intervalMs: z
-      .number()
-      .int()
-      .min(LOOP_MIN_INTERVAL)
-      .max(LOOP_MAX_INTERVAL)
-      .multipleOf(LOOP_MIN_INTERVAL),
+    intervalMs: loopIntervalSchema,
   }),
   sessionLoopInputSchema.extend({
     mode: z.literal('adaptive'),
@@ -304,7 +306,15 @@ export const createSessionLoopSchema = z.union([
   }),
 ]);
 
-export const mutateSessionLoopSchema = operationSchema.extend({
-  action: z.enum(['pause', 'resume', 'cancel']),
-  version: z.number().int().nonnegative(),
-});
+export const loopVersionSchema = z.number().int().nonnegative();
+export const mutateSessionLoopSchema = z.union([
+  operationSchema.extend({
+    action: z.enum(['pause', 'resume', 'cancel']),
+    version: loopVersionSchema,
+  }),
+  operationSchema.extend({
+    action: z.literal('set_interval'),
+    version: loopVersionSchema,
+    intervalMs: loopIntervalSchema,
+  }),
+]);

@@ -8,6 +8,13 @@ it('uses process-only CLI configuration without credentials or config writes', (
   ]);
 });
 
+it('passes only the bearer token environment variable name in app-server arguments', () => {
+  expect(managedMcpArguments('http://127.0.0.1:42123/mcp', 'covro_example', true)).toEqual([
+    '-c',
+    'mcp_servers.covro_example={url="http://127.0.0.1:42123/mcp",enabled=true,bearer_token_env_var="COVRO_MANAGED_MCP_TOKEN"}',
+  ]);
+});
+
 it.each([
   'https://127.0.0.1:1234/mcp',
   'http://example.com:1234/mcp',

@@ -33,6 +33,7 @@ let nextId = 1;
 let modelFailure: Error | undefined;
 let allowCreation = false;
 let approvals = 0;
+let loopId: string | undefined;
 const model = createServer(async (request, response) => {
   try {
     const chunks: Buffer[] = [];
@@ -56,13 +57,26 @@ const model = createServer(async (request, response) => {
           ? 'restart'
           : task.includes('covro-mcp-probe-external')
             ? 'external'
-            : '';
+            : task.includes('covro-mcp-probe-loop-denied')
+              ? 'loop-denied'
+              : task.includes('covro-mcp-probe-loop-create')
+                ? 'loop-create'
+                : task.includes('covro-mcp-probe-loop-update')
+                  ? 'loop-update'
+                  : '';
     let item: Record<string, unknown>;
     if (!title && phase && !fired.has(phase)) {
       fired.add(phase);
       const find = 'const all = ALL_TOOLS.filter(t => /^mcp__covro_[a-f0-9]{32}__/.test(t.name));';
-      const code =
-        phase === 'external'
+      const loopCode =
+        phase === 'loop-create' || phase === 'loop-denied'
+          ? "const create = all.find(t => t.name.endsWith('__create_loop')); if (!create) throw new Error('Missing Covro loop tool'); text(await tools[create.name]({prompt:'Verify project status',interval_minutes:60}));"
+          : phase === 'loop-update'
+            ? `const list = all.find(t => t.name.endsWith('__list_loops')); text(await tools[list.name]({})); const update = all.find(t => t.name.endsWith('__update_loop')); text(await tools[update.name]({loop_id:${JSON.stringify(loopId)},version:0,action:'set_interval',interval_minutes:90}));`
+            : '';
+      const code = loopCode
+        ? `${find} ${loopCode}`
+        : phase === 'external'
           ? `${find} if (all.length) throw new Error('External process unexpectedly received Covro tools'); text('external-no-covro');`
           : `${find} const list = all.find(t => t.name.endsWith('__list_projects')); if (!list) throw new Error('Missing Covro projects tool'); text(await tools[list.name]({})); ${phase === 'parent' || phase === 'denied' ? "const create = all.find(t => t.name.endsWith('__create_session')); text(await tools[create.name]({project_id:'target',prompt:'covro-mcp-probe-child'}));" : ''}`;
       item = {
@@ -231,6 +245,26 @@ try {
   );
   await gatewayTurn(childId, 'covro-mcp-probe-followup');
   checks.push('Covro continues the MCP-created conversation without writer conflict');
+  allowCreation = false;
+  const approvalsBeforeLoop = approvals;
+  await gatewayTurn(parentId, 'covro-mcp-probe-loop-denied');
+  assert.equal(approvals, approvalsBeforeLoop + 1);
+  assert.equal((await runtime.service.listSessionLoops(parentId)).length, 0);
+  checks.push('Declining the native MCP write approval creates no loop');
+  allowCreation = true;
+  await gatewayTurn(parentId, 'covro-mcp-probe-loop-create');
+  const loops = await runtime.service.listSessionLoops(parentId);
+  assert.equal(loops.length, 1, JSON.stringify(outputs));
+  assert.equal(loops[0]!.intervalMs, 60 * 60_000);
+  loopId = loops[0]!.id;
+  await gatewayTurn(parentId, 'covro-mcp-probe-loop-update');
+  assert.equal(
+    (await runtime.service.listSessionLoops(parentId))[0]?.intervalMs,
+    90 * 60_000,
+    JSON.stringify(outputs),
+  );
+  assert.equal((await runtime.service.listSessionLoops(childId)).length, 0);
+  checks.push('Native Code Mode lists, creates and updates loops in its active managed session');
   await runtime.codex.stop();
   await runtime.codex.start();
   await runtime.service.resumeThread(childId, { clientOperationId: randomUUID() });
@@ -288,6 +322,7 @@ try {
     const demoContent = demo.structuredContent as { thread_id?: unknown } | undefined;
     assert.equal(typeof demoContent?.thread_id, 'string');
     const demoId = String(demoContent!.thread_id);
+    assert.equal((await runtime.service.listSessionLoops(parentId))[0]?.intervalMs, 90 * 60_000);
     await waitFor(
       () => runtime!.service.projection.get(demoId)?.status === 'completed',
       'browser demo completion',
@@ -297,6 +332,7 @@ try {
         browserOrigin: origin,
         projectId: 'target',
         threadId: demoId,
+        loopThreadId: parentId,
         root,
         pid: process.pid,
       }),

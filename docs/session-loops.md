@@ -16,6 +16,8 @@ Use `/loop Check the current PR’s CI and stop when it passes` for an adaptive 
 
 A failed or interrupted run, or a completed run without a valid decision, pauses the loop. Resume to request a fresh run when the session is available. Pausing or cancelling during a run takes precedence over that run’s scheduling decision. After a restart or disconnect, a saved overdue check fires once as soon as the session is available. An unfinished run is reconciled with Codex history first. A run whose outcome remains uncertain stays paused pending reconciliation and manual resume.
 
+A managed Codex session can list, create, change, pause, resume, or cancel its own loops through [Covro MCP](managed-mcp.md#current-session-loops). The same changes appear in the Web loop manager and Tasks panel.
+
 ## 会话循环
 
 在已保存的 Covro 会话中输入 `/loop 5m 检查当前 PR 的 CI 状态`。单独输入 `/loop` 打开当前会话的循环管理，查看任务、间隔、上次结果和下次时间，并可新建、暂停、恢复或取消。间隔使用整数和 `m`、`h`、`d`，范围为 `1m` 到 `1d`。创建一个间隔后首次执行。循环持续运行，直到暂停或取消。
@@ -33,3 +35,5 @@ A failed or interrupted run, or a completed run without a valid decision, pauses
 输入 `/loop 检查当前 PR 的 CI，通过后告诉我并结束`。在管理窗口新建时，留空间隔字段即可使用自适应模式。首次运行在会话可用时开始。Codex 每轮报告结果，选择结束或在 60 秒至 24 小时内复查。任务面板和会话循环管理窗口会显示最近结果、调整原因和下次时间。这个范围适用于单次等待时长。
 
 轮次失败、被中断或完成后没有给出有效决策时，循环暂停。恢复后会话空闲时重新检查。运行中手动暂停或取消后，本轮的决策不会改变排程。重启或断线恢复后，已保存的过期检查会在会话可用时执行一次。未完成的轮次先核对 Codex 历史，仍待确认的循环保持暂停，核对后可手动恢复。
+
+托管的 Codex 会话可以通过 [Covro MCP](managed-mcp.md#current-session-loops) 查找、新建、调整、暂停、恢复或取消自己的循环。变更会同步显示在会话循环管理和后台任务面板。

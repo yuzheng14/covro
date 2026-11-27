@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, lt, lte, sql } from 'drizzle-orm';
 import { AppError } from '../../shared/errors.js';
 import type {
   SessionLoop,
-  SessionLoopAction,
+  SessionLoopControl,
   SessionLoopDecision,
   SessionLoopReason,
   SessionLoopResult,
@@ -76,16 +76,38 @@ export class SessionLoopStore {
     tx.insert(sessionLoops).values(row).run();
   }
 
-  control(tx: AppTransaction, row: SessionLoopRow, action: SessionLoopAction, now: number): void {
-    const status = action === 'resume' ? 'active' : action === 'pause' ? 'paused' : 'cancelled';
+  control(tx: AppTransaction, row: SessionLoopRow, input: SessionLoopControl, now: number): void {
+    const action = input.action;
+    const statusByAction = { pause: 'paused', resume: 'active', cancel: 'cancelled' } as const;
+    const patch =
+      action === 'set_interval'
+        ? {
+            intervalMs: row.mode === 'fixed' ? input.intervalMs : null,
+            nextRunAt: now + input.intervalMs,
+            lastDecision: null,
+            // Keep a capacity retry on the same logical run. Its automatic decision
+            // will yield to the explicitly scheduled next run.
+            ...(row.mode === 'adaptive' && row.runVersion === row.version
+              ? { runVersion: row.version + 1 }
+              : {}),
+          }
+        : {
+            status: statusByAction[action],
+            reason: null,
+            ...(action === 'resume'
+              ? {
+                  nextRunAt:
+                    row.intervalMs === null
+                      ? Math.max(now, (row.lastDecision ? null : row.nextRunAt) ?? now)
+                      : now + row.intervalMs,
+                }
+              : row.mode === 'adaptive'
+                ? { nextRunAt: null }
+                : {}),
+          };
     const updated = tx
       .update(sessionLoops)
-      .set({
-        status,
-        reason: null,
-        version: row.version + 1,
-        ...(action === 'resume' ? { nextRunAt: now + (row.intervalMs ?? 0) } : {}),
-      })
+      .set({ ...patch, version: row.version + 1 })
       .where(and(eq(sessionLoops.id, row.id), eq(sessionLoops.version, row.version)))
       .run();
     if (updated.changes !== 1) throw new AppError('LOOP_CONFLICT', 'The loop has changed', 409);
@@ -159,7 +181,7 @@ export class SessionLoopStore {
       inArray(sessionLoops.lastResult, ['running', 'unknown']),
     );
     const finished = { lastResult: result, lastTurnId: turnId ?? row.lastTurnId };
-    if (row.status === 'active' && row.runVersion === row.version) {
+    if (row.status === 'active' && row.runVersion === row.version && row.nextRunAt === null) {
       const status = decision?.action === 'continue' ? 'active' : decision ? 'completed' : 'paused';
       const updated = this.db
         .update(sessionLoops)
@@ -185,6 +207,7 @@ export class SessionLoopStore {
       .set({
         status: reason === 'deleted' ? 'cancelled' : 'paused',
         reason,
+        ...(row.mode === 'adaptive' ? { nextRunAt: null } : {}),
         version: row.version + 1,
       })
       .where(
@@ -200,7 +223,12 @@ export class SessionLoopStore {
   archive(threadId: string): void {
     this.db
       .update(sessionLoops)
-      .set({ status: 'paused', reason: 'archived', version: sql`${sessionLoops.version} + 1` })
+      .set({
+        status: 'paused',
+        reason: 'archived',
+        nextRunAt: sql`CASE WHEN ${sessionLoops.mode} = 'adaptive' THEN NULL ELSE ${sessionLoops.nextRunAt} END`,
+        version: sql`${sessionLoops.version} + 1`,
+      })
       .where(and(eq(sessionLoops.threadId, threadId), eq(sessionLoops.status, 'active')))
       .run();
   }

@@ -655,3 +655,42 @@ it('recovers an unfinished adaptive run from terminal history without replaying 
   });
   await restarted.shutdown();
 });
+
+it('preserves an explicit adaptive interval while the current run retries and finishes', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const ctx = await setup();
+  const loop = await ctx.createAdaptive();
+  await ctx.service.tickSessionLoops();
+  const update = await ctx.service.controlSessionLoop(ctx.id, loop.id, {
+    clientOperationId: operationId(),
+    version: 0,
+    action: 'set_interval',
+    intervalMs: 5 * LOOP_MIN_INTERVAL,
+  });
+  expect(update.result).toMatchObject({
+    status: 'active',
+    intervalMs: null,
+    nextRunAt: now + 5 * LOOP_MIN_INTERVAL,
+    version: 1,
+  });
+  const thread = ctx.codex.threads.get(ctx.id)!;
+  const turn = thread.turns.at(-1)!;
+  expect(turn.status).toBe('running');
+  Object.assign(turn, {
+    status: 'failed',
+    error: MODEL_CAPACITY_MESSAGE,
+    errorCode: 'serverOverloaded',
+  });
+  thread.status = 'failed';
+  ctx.codex.emit({ type: 'turn', threadId: ctx.id, turn: structuredClone(turn) });
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(ctx.codex.starts).toBe(3);
+  finishAdaptive(ctx, stopDecision);
+  await ctx.service.tickSessionLoops();
+  expect((await ctx.service.listSessionLoops(ctx.id))[0]).toMatchObject({
+    status: 'active',
+    lastResult: 'completed',
+    runs: 1,
+    nextRunAt: now + 5 * LOOP_MIN_INTERVAL,
+  });
+});

@@ -27,13 +27,13 @@ export const createSessionInput = z
   })
   .strict();
 
-export interface ToolResult {
+export type ToolResult = {
   content: { type: 'text'; text: string }[];
   structuredContent: Record<string, unknown>;
   isError?: boolean;
-}
+};
 
-function result(value: Record<string, unknown>, isError = false): ToolResult {
+export function toolResult(value: Record<string, unknown>, isError = false): ToolResult {
   return {
     content: [{ type: 'text', text: JSON.stringify(value) }],
     structuredContent: value,
@@ -52,8 +52,12 @@ function operationKey(meta: Record<string, unknown> | undefined): string {
       'REQUEST_KEY_REQUIRED',
       'Supply request_key when the client does not provide Codex threadId and callId metadata',
     );
+  return hashedOperationKey('covro.session.create', meta.threadId, meta.callId);
+}
+
+export function hashedOperationKey(scope: string, threadId: string, key: string): string {
   const hash = createHash('sha256')
-    .update(JSON.stringify(['covro.session.create', meta.threadId, meta.callId]))
+    .update(JSON.stringify([scope, threadId, key]))
     .digest('hex');
   // UUIDv8: a stable application-defined ID, independent of the app-server epoch.
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-8${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
@@ -79,7 +83,7 @@ function receipt(operation: Operation, origin: string): ToolResult {
     ...(saved?.turnId ? { turn_id: saved.turnId } : {}),
     ...(operation.error ? { error: operation.error } : {}),
   };
-  return result(value, operation.status === 'failed' || operation.status === 'unknown');
+  return toolResult(value, operation.status === 'failed' || operation.status === 'unknown');
 }
 
 /** Protocol-neutral handlers; every mutation goes through the gateway's business services. */
@@ -91,7 +95,7 @@ export class CovroTools {
 
   listProjects(input: unknown): ToolResult {
     listProjectsInput.parse(input);
-    return result({
+    return toolResult({
       projects: this.service.listProjects().map((project) => ({
         project_id: project.id,
         name: project.name,
@@ -126,7 +130,7 @@ export class CovroTools {
           /* Validation and shutdown failures may precede a persisted operation. */
         }
       }
-      return result(
+      return toolResult(
         {
           ...(key ? { request_key: key } : {}),
           error:

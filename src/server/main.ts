@@ -92,7 +92,7 @@ export async function startGateway(
       new CodexAdapter({
         ...config.codex,
         logger,
-        managedMcp: { name: mcp.name, url: mcp.url },
+        managedMcp: { name: mcp.name, url: mcp.url, token: mcp.token },
       });
     const service = new GatewayService({
       logger,
@@ -190,7 +190,8 @@ export async function startGateway(
       durationMs: Math.round(performance.now() - started),
       port: config.port,
     });
-    return { app, server, service, codex, close, updates, backups, mcp, preview };
+    const { token: _token, ...mcpInfo } = mcp;
+    return { app, server, service, codex, close, updates, backups, mcp: mcpInfo, preview };
   } catch (error) {
     preview?.close();
     for (const sockets of socketServers) {

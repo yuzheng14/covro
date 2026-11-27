@@ -21,7 +21,12 @@ import {
   probeCodexIdentity,
   type CodexIdentity,
 } from './identity.js';
-import { managedMcpArguments } from './managed-mcp.js';
+import {
+  MANAGED_MCP_TOKEN_ENV,
+  ManagedMcpCalls,
+  managedMcpArguments,
+  type ManagedLoopTool,
+} from './managed-mcp.js';
 import { randomUUID } from 'node:crypto';
 import { readGoal } from './thread-goals.js';
 import { GuardianDenials } from './guardian-denials.js';
@@ -225,7 +230,7 @@ export interface CodexAdapterOptions {
   /** Explicit argument override for the test simulator; production leaves this unset. */
   args?: string[];
   /** Injected by the gateway for this child only; independent clients receive no configuration. */
-  managedMcp?: { name: string; url: string };
+  managedMcp?: { name: string; url: string; token?: string };
   requestTimeoutMs?: number;
   titleTimeoutMs?: number;
   maxLineBytes?: number;
@@ -288,6 +293,7 @@ export class CodexAdapter implements CodexClient {
     string,
     Parameters<NonNullable<CodexClient['executeCommand']>>[3]
   >();
+  private readonly managedMcpCalls = new ManagedMcpCalls();
   epoch = randomUUID();
   private child?: ChildProcessWithoutNullStreams;
   private identity?: CodexIdentity;
@@ -380,6 +386,9 @@ export class CodexAdapter implements CodexClient {
     this.identity = undefined;
     try {
       const env = codexEnvironment(this.options.home);
+      const managedMcp = this.options.managedMcp;
+      if (managedMcp?.token) env[MANAGED_MCP_TOKEN_ENV] = managedMcp.token;
+      this.managedMcpCalls.clear();
       // Custom stdio transports (embedded callers/tests) may use Node rather than the CLI.
       // Managed configuration never supplies args and always requires a Codex CLI probe.
       const identity = await probeCodexIdentity(
@@ -400,8 +409,8 @@ export class CodexAdapter implements CodexClient {
         identity.resolved,
         [
           ...(this.options.args ?? ['app-server', '--listen', 'stdio://']),
-          ...(this.options.managedMcp
-            ? managedMcpArguments(this.options.managedMcp.url, this.options.managedMcp.name)
+          ...(managedMcp
+            ? managedMcpArguments(managedMcp.url, managedMcp.name, Boolean(managedMcp.token))
             : []),
         ],
         { env, stdio: ['pipe', 'pipe', 'pipe'], shell: false },
@@ -442,6 +451,7 @@ export class CodexAdapter implements CodexClient {
         if (this.child === child) this.child = undefined;
       });
       rpc.on('notification', (message: RpcNotification) => {
+        if (this.rpc !== rpc) return;
         try {
           this.notification(message);
         } catch (error) {
@@ -455,6 +465,7 @@ export class CodexAdapter implements CodexClient {
         if (this.rpc !== rpc) return;
         const wasReady = this.ready;
         this.state.ready = false;
+        this.managedMcpCalls.clear();
         this.tokenUsage.clear();
         this.totalTokenUsage.clear();
         this.denials.clear();
@@ -1608,6 +1619,10 @@ export class CodexAdapter implements CodexClient {
       );
     return entries[0]!;
   }
+  managedLoopCall(threadId: string, callId: string, tool: ManagedLoopTool, args: unknown) {
+    if (this.ready) return this.managedMcpCalls.match(threadId, callId, tool, args);
+  }
+
   async startTurn(
     id: string,
     cwd: string,
@@ -1909,6 +1924,7 @@ export class CodexAdapter implements CodexClient {
       case 'turn/started':
       case 'turn/completed': {
         const { threadId, turn } = event.params;
+        if (event.method === 'turn/completed') this.managedMcpCalls.finishTurn(threadId, turn.id);
         if (event.method === 'turn/started') {
           this.tokenUsage.started(threadId, turn.id);
           this.totalTokenUsage.started(threadId, turn.id);
@@ -1972,6 +1988,14 @@ export class CodexAdapter implements CodexClient {
         break;
       case 'item/started':
       case 'item/completed':
+        if (this.options.managedMcp?.token)
+          this.managedMcpCalls.observe(
+            this.options.managedMcp.name,
+            event.params.threadId,
+            event.params.turnId,
+            event.params.item,
+            event.method === 'item/started',
+          );
         if (event.params.item.type === 'commandExecution') {
           const item = event.params.item;
           this.emit({

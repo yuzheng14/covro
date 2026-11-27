@@ -22,6 +22,9 @@ export type SessionLoopDecision = {
 } & ({ action: 'continue'; delaySeconds: number } | { action: 'stop'; delaySeconds: null });
 
 export type SessionLoopAction = 'pause' | 'resume' | 'cancel';
+export type SessionLoopControl =
+  | { action: SessionLoopAction; version: number }
+  | { action: 'set_interval'; version: number; intervalMs: number };
 export type SessionLoopStatus = 'active' | 'paused' | 'cancelled' | 'completed';
 export type SessionLoopReason =
   'archived' | 'unavailable' | 'uncertain' | 'deleted' | 'invalid_decision' | 'run_failed';
