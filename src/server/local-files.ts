@@ -38,7 +38,7 @@ export function temporaryFileRoots(): FileRoot[] {
 }
 
 interface FilePolicy {
-  code: 'IMAGE' | 'MARKDOWN' | 'JSON' | 'TEXT';
+  code: 'IMAGE' | 'MARKDOWN' | 'JSON' | 'TEXT' | 'VISUALIZATION';
   label: string;
   maxBytes: number;
   sizeError: string;
@@ -63,13 +63,14 @@ export async function readLocalFile(
   scope: FileScope,
   policy: FilePolicy,
 ) {
+  const windowsDrivePath = process.platform === 'win32' && /^[a-z]:[\\/]/i.test(path ?? '');
   if (
     !path ||
     path.length > 4096 ||
     [...path].some(
       (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
     ) ||
-    /^[a-z][a-z\d+.-]*:/i.test(path) ||
+    (!windowsDrivePath && /^[a-z][a-z\d+.-]*:/i.test(path)) ||
     path.startsWith('//') ||
     path.startsWith('\\\\')
   )

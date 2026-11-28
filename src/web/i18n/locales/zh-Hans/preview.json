@@ -1,4 +1,6 @@
 {
+  "interactive_visualization": "交互式可视化",
+  "visualization_unavailable": "无法显示可视化。",
   "a_change_snapshot_from_codex_containing_patches_in": "Codex 提供的变更快照，仅包含此范围内的补丁，不代表工作区全部未提交变更。",
   "unable_to_load_changes": "无法读取变更",
   "loading_changes": "正在读取变更…",

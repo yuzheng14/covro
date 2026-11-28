@@ -1,4 +1,6 @@
 {
+  "interactive_visualization": "インタラクティブな可視化",
+  "visualization_unavailable": "可視化を表示できません。",
   "a_change_snapshot_from_codex_containing_patches_in": "Codex によるこの範囲の変更スナップショットです。ワークスペース全体の未コミット変更ではありません。",
   "unable_to_load_changes": "変更を読み込めません",
   "loading_changes": "変更を読み込み中…",

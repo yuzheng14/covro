@@ -1639,6 +1639,24 @@ svg {
   flex-shrink: 0;
   margin-top: 4px;
 }
+.visualization-block {
+  max-width: 736px;
+  margin-bottom: 12px;
+}
+.visualization-block:last-child {
+  margin-bottom: 0;
+}
+.visualization-block[data-wide] {
+  max-width: 100%;
+}
+.visualization-block iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+}
+.visualization-block p {
+  color: var(--muted);
+}
 .markdown h1,
 .markdown h2,
 .markdown h3 {
