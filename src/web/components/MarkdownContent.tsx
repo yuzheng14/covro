@@ -1,5 +1,6 @@
 import { t } from '../i18n';
 import { Children, createContext, isValidElement, useContext, type ReactNode } from 'react';
+import { Globe } from 'lucide-react';
 import Markdown, { defaultUrlTransform, type Components, type UrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { localPreviewPath, localPreviewUrl, relativeToFile } from '../lib/local-files';
@@ -20,6 +21,19 @@ const transformUrl: UrlTransform = (url, key) =>
 const BaseFileContext = createContext<string | undefined>(undefined);
 const ImageLinkContext = createContext(false);
 const SourceContext = createContext({ text: '', streaming: false });
+
+function browserCompletionTitle(source: string) {
+  const quotedTitle =
+    /^::browser-complete\{[ \t]*title[ \t]*=[ \t]*("(?:[^"\\\r\n]|\\.)*")[ \t]*\}$/.exec(
+      source,
+    )?.[1];
+  if (!quotedTitle) return undefined;
+  try {
+    return (JSON.parse(quotedTitle) as string).trim();
+  } catch {
+    return undefined;
+  }
+}
 
 // Stable renderer identities preserve table focus and image state while streaming.
 const markdownComponents: Components = {
@@ -129,15 +143,37 @@ const markdownComponents: Components = {
   ),
 };
 
+const assistantMarkdownComponents: Components = {
+  ...markdownComponents,
+  p: function Paragraph({ node, ...props }) {
+    const { text } = useContext(SourceContext);
+    const { start, end } = node?.position ?? {};
+    // Read the original standalone paragraph so Markdown in the title stays literal.
+    const title =
+      start?.column === 1 && start.offset !== undefined && end?.offset !== undefined
+        ? browserCompletionTitle(text.slice(start.offset, end.offset))
+        : undefined;
+    if (!title) return <p {...props} />;
+    return (
+      <p className="browser-completion">
+        <Globe size={16} strokeWidth={1.7} aria-hidden="true" />
+        <span>{title}</span>
+      </p>
+    );
+  },
+};
+
 export function MarkdownContent({
   text,
   baseFile,
   streaming = false,
+  renderBrowserCompletion = false,
   externalBaseUrl,
 }: {
   text: string;
   baseFile?: string;
   streaming?: boolean;
+  renderBrowserCompletion?: boolean;
   externalBaseUrl?: string;
 }) {
   return (
@@ -147,7 +183,7 @@ export function MarkdownContent({
           <Markdown
             skipHtml
             remarkPlugins={[remarkGfm]}
-            components={markdownComponents}
+            components={renderBrowserCompletion ? assistantMarkdownComponents : markdownComponents}
             urlTransform={
               externalBaseUrl
                 ? (url) => {

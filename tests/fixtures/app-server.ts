@@ -781,7 +781,8 @@ function imageReply(
 function markdownReply(
   thread: Thread,
   turn: Turn,
-  kind: 'table' | 'security' | 'code' | 'files' | 'json' | 'mermaid' | 'text',
+  kind:
+    'table' | 'security' | 'code' | 'files' | 'json' | 'mermaid' | 'text' | 'browser-completion',
 ): void {
   const item: Extract<ThreadItem, { type: 'agentMessage' }> = {
     id: randomUUID(),
@@ -865,6 +866,13 @@ function markdownReply(
           .join(' · '),
     ];
   if (kind === 'mermaid') chunks = mermaidChunks;
+  if (kind === 'browser-completion')
+    chunks = [
+      '::browser-complete{title="Confirmed browser ',
+      'connection unavailable"}\n\n' +
+        `::browser-complete{title=${JSON.stringify('Verified the "Settings" page')}}\n\n` +
+        '```text\n::browser-complete{title="Example only"}\n```',
+    ];
   turn.items.push(item);
   notify({
     method: 'item/started',
@@ -2947,6 +2955,8 @@ function receive(request: ClientRequest): void {
         commandOutputScenario(thread, turn, prompt.includes('[command-output-truncated]'));
       else if (prompt.includes('[code-copy]')) markdownReply(thread, turn, 'code');
       else if (prompt.includes('[mermaid]')) markdownReply(thread, turn, 'mermaid');
+      else if (prompt.includes('[browser-completion]'))
+        markdownReply(thread, turn, 'browser-completion');
       else if (prompt.includes('[markdown]') || prompt.includes('[markdown-security]'))
         markdownReply(thread, turn, prompt.includes('[markdown-security]') ? 'security' : 'table');
       else execute(thread, turn);
