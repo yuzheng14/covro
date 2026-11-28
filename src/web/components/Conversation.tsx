@@ -711,7 +711,7 @@ function ConversationContent({
             )}
             {history?.opening && !thread?.turns.length ? (
               <div className="history-opening" role={history.openingError ? 'alert' : 'status'}>
-                <p>{history.openingError ?? t('common:loading_session')}</p>
+                <p>{displayMessage(history.openingError) ?? t('common:loading_session')}</p>
                 {history.openingError ? (
                   <Button variant="secondary" onClick={history.onRetryOpen}>
                     {t('conversation:retry_reading')}

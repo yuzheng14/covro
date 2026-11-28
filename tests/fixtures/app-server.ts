@@ -94,6 +94,7 @@ export interface SimulatorOptions {
   vanishedLoadedThread?: boolean;
   historyPageSize?: number;
   historyItemSummaries?: boolean;
+  unsupportedTurnPaginationForName?: string;
   history?: { turns: number; itemsPerTurn: number; itemBytes: number };
   forkHistoryReadError?: boolean;
   malformedForkReceipt?: boolean;
@@ -2380,7 +2381,15 @@ function receive(request: ClientRequest): void {
       break;
     }
     case 'thread/turns/list': {
-      const history = threads.get(request.params.threadId)?.turns ?? [];
+      const thread = threads.get(request.params.threadId);
+      if (
+        options.unsupportedTurnPaginationForName &&
+        thread?.name === options.unsupportedTurnPaginationForName
+      ) {
+        error(request.id, 'paginated_threads is not supported yet', -32601);
+        break;
+      }
+      const history = thread?.turns ?? [];
       const turns = request.params.sortDirection === 'desc' ? history.slice().reverse() : history;
       const offset = Number(request.params.cursor ?? 0);
       const limit = Math.min(options.historyPageSize ?? 100, request.params.limit ?? 100);

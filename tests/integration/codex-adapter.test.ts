@@ -580,6 +580,74 @@ describe('verified protocol adapter with a real subprocess', () => {
       expect(calls.find((call) => call.method === 'thread/resume')?.params.excludeTurns).toBe(true);
     },
   );
+  it('falls back to full history for one thread without disabling pagination for others', async () => {
+    const { logger, records } = captureLogger();
+    const { adapter } = await fixture(
+      {
+        paginated: true,
+        history: { turns: 5, itemsPerTurn: 2, itemBytes: 10 },
+        historyPageSize: 2,
+        unsupportedTurnPaginationForName: 'Unsupported history',
+      },
+      5000,
+      { logger },
+    );
+    const first = await adapter.createThread('/tmp');
+    const second = await adapter.createThread('/tmp');
+    const recent = await adapter.readThreadPage(first.id);
+    const cursor = recent.history?.olderCursor;
+    expect(cursor).toBeTruthy();
+    await adapter.renameThread(first.id, 'Unsupported history');
+
+    await expect(adapter.readThreadPage(first.id, cursor!)).rejects.toMatchObject({
+      code: 'HISTORY_CURSOR_EXPIRED',
+    });
+    const fallback = await adapter.readThreadPage(first.id);
+    expect(fallback.turns).toHaveLength(5);
+    expect(fallback.turns.slice(-2)).toEqual(recent.turns);
+    expect(fallback.history?.olderCursor).toBeFalsy();
+    expect((await adapter.readThread(first.id)).turns).toEqual(fallback.turns);
+    expect((await adapter.readExecutionHistory(first.id, fallback.turns[0]!.id)).turns).toEqual(
+      fallback.turns,
+    );
+    expect((await adapter.resumeThread(first.id, first.cwd)).turns).toEqual(fallback.turns);
+    expect((await adapter.readThreadPage(second.id)).turns).toHaveLength(2);
+    expect(adapter.diagnostics().capabilities).toContain('thread/turns/list');
+    const unavailable = records.filter(
+      (record) => record.event === 'codex.history_pagination_unavailable',
+    );
+    expect(unavailable).toHaveLength(5);
+    for (const record of unavailable)
+      expect(record).toMatchObject({
+        threadId: first.id,
+        codexEpoch: adapter.epoch,
+        errorCode: 'PROTOCOL_INCOMPATIBLE',
+        rpcCode: -32601,
+      });
+    expect(JSON.stringify(unavailable)).not.toContain('paginated_threads is not supported yet');
+  });
+
+  it.each(['thread/turns/list', 'thread/items/list'])(
+    'keeps using the full read when the server does not implement %s',
+    async (unsupportedMethod) => {
+      const { adapter, requests } = await fixture({
+        paginated: true,
+        history: { turns: 3, itemsPerTurn: 2, itemBytes: 10 },
+        unsupportedMethod,
+      });
+      const thread = await adapter.createThread('/tmp');
+      const { turns } = await adapter.readThreadPage(thread.id);
+      expect(turns).toHaveLength(3);
+      expect(turns.every((turn) => turn.items.length >= 2)).toBe(true);
+      const paginationRequests = async () =>
+        (await requests()).filter((entry) => entry.method === unsupportedMethod);
+      const initialAttempts = (await paginationRequests()).length;
+      expect(initialAttempts).toBeGreaterThan(0);
+      expect((await adapter.readThread(thread.id)).turns).toEqual(turns);
+      expect(await paginationRequests()).toHaveLength(initialAttempts);
+    },
+  );
+
   it('retains legacy history above 8 MiB with the new bounded default', async () => {
     const { adapter } = await fixture({
       history: { turns: 1, itemsPerTurn: 1, itemBytes: 9 * 1024 * 1024 },

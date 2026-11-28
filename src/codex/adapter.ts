@@ -637,12 +637,22 @@ export class CodexAdapter implements CodexClient {
     if (!this.rpc || (!initializing && !this.ready))
       throw new CodexError('CODEX_UNAVAILABLE', 'Codex is not ready');
     if (this.disabled.has(method))
-      throw new CodexError('PROTOCOL_INCOMPATIBLE', `Codex does not support ${method}`);
+      throw new CodexError(
+        'PROTOCOL_INCOMPATIBLE',
+        `Codex does not support ${method}`,
+        false,
+        -32601,
+      );
     try {
       return await this.rpc.request<Responses[M]>(method, params, undefined, timeoutMs);
     } catch (error) {
-      // Concurrent startup calls can inherit the same error when cleanup fails the transport.
-      if (!initializing && error instanceof CodexError && error.rpcCode === -32601) {
+      // Codex also uses -32601 for unsupported operations on an individual thread store.
+      if (
+        !initializing &&
+        error instanceof CodexError &&
+        error.rpcCode === -32601 &&
+        !error.message.endsWith(' is not supported yet')
+      ) {
         this.disabled.add(method);
         this.state.capabilities = this.state.capabilities.filter((name) => name !== method);
         this.state.error = `当前 Codex 缺少 ${method} 能力`;
@@ -968,38 +978,46 @@ export class CodexAdapter implements CodexClient {
     }
     const sequence = ++this.archiveSequence;
     const header = await this.readThreadHeader(id);
-    // Legacy rollout files expose no paging protocol. Keep the compatibility path explicit.
-    if (header.historyMode !== 'paginated') {
-      if (continuation)
-        throw new AppError('HISTORY_CURSOR_EXPIRED', '历史分页已失效，请重新同步会话。', 409);
-      return this.readLegacyThread(id, sequence);
-    }
-    const seen = new Set<string>();
-    let turns: Thread['turns'];
-    do {
-      const page: ThreadTurnsListResponse = await this.call('thread/turns/list', {
-        threadId: id,
-        cursor,
-        limit: HISTORY_PAGE_SIZE,
-        sortDirection: 'desc',
-        itemsView: 'summary',
-      });
-      const anchor = beforeTurnId ? page.data.findIndex((turn) => turn.id === beforeTurnId) : -1;
-      if (anchor >= 0) beforeTurnId = undefined;
-      turns = beforeTurnId ? [] : page.data.slice(anchor + 1);
-      if (
-        page.nextCursor &&
-        (page.nextCursor === cursor || seen.has(page.nextCursor) || seen.size >= 1000)
-      )
-        throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid turn pagination');
-      cursor = page.nextCursor;
-      if (cursor) seen.add(cursor);
-    } while (cursor && !turns.length);
-    if (beforeTurnId)
-      throw new AppError('HISTORY_CURSOR_EXPIRED', '历史分页已失效，请重新同步会话。', 409);
-    const deferred = await this.hydrateTurns(id, turns, options?.deferOutput === true);
+    const page =
+      header.historyMode === 'paginated'
+        ? await this.tryReadPagedHistory(id, async () => {
+            const seen = new Set<string>();
+            let turns: Thread['turns'];
+            do {
+              const page: ThreadTurnsListResponse = await this.call('thread/turns/list', {
+                threadId: id,
+                cursor,
+                limit: HISTORY_PAGE_SIZE,
+                sortDirection: 'desc',
+                itemsView: 'summary',
+              });
+              const anchor = beforeTurnId
+                ? page.data.findIndex((turn) => turn.id === beforeTurnId)
+                : -1;
+              if (anchor >= 0) beforeTurnId = undefined;
+              turns = beforeTurnId ? [] : page.data.slice(anchor + 1);
+              if (
+                page.nextCursor &&
+                (page.nextCursor === cursor || seen.has(page.nextCursor) || seen.size >= 1000)
+              )
+                throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid turn pagination');
+              cursor = page.nextCursor;
+              if (cursor) seen.add(cursor);
+            } while (cursor && !turns.length);
+            if (beforeTurnId)
+              throw new AppError('HISTORY_CURSOR_EXPIRED', '历史分页已失效，请重新同步会话。', 409);
+            const deferred = await this.hydrateTurns(id, turns, options?.deferOutput === true);
+            return { turns, deferred };
+          })
+        : undefined;
     if (this.epoch !== epoch)
       throw new AppError('HISTORY_CURSOR_EXPIRED', '读取期间 Codex 已重启，请重新同步会话。', 409);
+    if (!page) {
+      if (continuation)
+        throw new AppError('HISTORY_CURSOR_EXPIRED', '历史分页已失效，请重新同步会话。', 409);
+      return this.readThreadWithTurns(id, sequence);
+    }
+    const { turns, deferred } = page;
     const view = await this.storedThread({ ...header, turns: turns.reverse() }, sequence);
     for (const turn of view.turns) {
       const items = deferred.get(turn.id);
@@ -1073,7 +1091,25 @@ export class CodexAdapter implements CodexClient {
     return deferred;
   }
 
-  private async readLegacyThread(id: string, sequence: number): Promise<ThreadView> {
+  private async tryReadPagedHistory<T>(
+    threadId: string,
+    read: () => Promise<T>,
+  ): Promise<T | undefined> {
+    const epoch = this.epoch;
+    try {
+      return await read();
+    } catch (error) {
+      if (!(error instanceof CodexError) || error.rpcCode !== -32601 || this.epoch !== epoch)
+        throw error;
+      this.logger.warn('codex.history_pagination_unavailable', {
+        threadId,
+        codexEpoch: epoch,
+        ...errorFields(error),
+      });
+    }
+  }
+
+  private async readThreadWithTurns(id: string, sequence: number): Promise<ThreadView> {
     return this.storedThread(
       (await this.call('thread/read', { threadId: id, includeTurns: true })).thread,
       sequence,
@@ -1100,62 +1136,70 @@ export class CodexAdapter implements CodexClient {
   async readExecutionHistory(id: string, turnId: string): Promise<ThreadView> {
     const sequence = ++this.archiveSequence;
     const thread = await this.readThreadHeader(id);
-    if (thread.historyMode !== 'paginated') return this.readLegacyThread(id, sequence);
-    let cursor: string | null = null;
-    const seen = new Set<string>();
-    let latest: Thread['turns'][number] | undefined;
-    let target: Thread['turns'][number] | undefined;
-    let active: Thread['turns'][number] | undefined;
-    do {
-      const page: ThreadTurnsListResponse = await this.call('thread/turns/list', {
-        threadId: id,
-        cursor,
-        limit: 100,
-        sortDirection: 'desc',
-        itemsView: 'notLoaded',
-      });
-      latest ??= page.data[0];
-      target ??= page.data.find((turn) => turn.id === turnId);
-      active ??= page.data.find((turn) => turn.status === 'inProgress');
-      // Finding an active turn already precludes releasing the reservation. To confirm
-      // completion, exhaust the status pages so an earlier active turn also protects it.
-      if (target && (active || thread.status.type === 'active')) break;
-      cursor = page.nextCursor;
-      if (cursor && (seen.has(cursor) || seen.size >= 1000))
-        throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid turn pagination');
-      if (cursor) seen.add(cursor);
-    } while (cursor);
-    const turns = [...new Set([target, active])].filter(
-      (turn): turn is Thread['turns'][number] => turn !== undefined && turn !== latest,
-    );
-    if (latest) turns.push(latest);
+    if (thread.historyMode !== 'paginated') return this.readThreadWithTurns(id, sequence);
+    const turns = await this.tryReadPagedHistory(id, async () => {
+      let cursor: string | null = null;
+      const seen = new Set<string>();
+      let latest: Thread['turns'][number] | undefined;
+      let target: Thread['turns'][number] | undefined;
+      let active: Thread['turns'][number] | undefined;
+      do {
+        const page: ThreadTurnsListResponse = await this.call('thread/turns/list', {
+          threadId: id,
+          cursor,
+          limit: 100,
+          sortDirection: 'desc',
+          itemsView: 'notLoaded',
+        });
+        latest ??= page.data[0];
+        target ??= page.data.find((turn) => turn.id === turnId);
+        active ??= page.data.find((turn) => turn.status === 'inProgress');
+        // Finding an active turn already precludes releasing the reservation. To confirm
+        // completion, exhaust the status pages so an earlier active turn also protects it.
+        if (target && (active || thread.status.type === 'active')) break;
+        cursor = page.nextCursor;
+        if (cursor && (seen.has(cursor) || seen.size >= 1000))
+          throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid turn pagination');
+        if (cursor) seen.add(cursor);
+      } while (cursor);
+      const turns = [...new Set([target, active])].filter(
+        (turn): turn is Thread['turns'][number] => turn !== undefined && turn !== latest,
+      );
+      if (latest) turns.push(latest);
+      return turns;
+    });
+    if (!turns) return this.readThreadWithTurns(id, sequence);
     return mapThread({ ...thread, turns });
   }
 
   async readThread(id: string): Promise<ThreadView> {
     const sequence = ++this.archiveSequence;
     const thread = await this.readThreadHeader(id);
-    if (thread.historyMode !== 'paginated') return this.readLegacyThread(id, sequence);
-    let cursor: string | null = null;
-    const seen = new Set<string>();
-    thread.turns = [];
-    do {
-      const page: ThreadTurnsListResponse = await this.call('thread/turns/list', {
-        threadId: id,
-        cursor,
-        limit: 100,
-        sortDirection: 'asc',
-        itemsView: 'summary',
-      });
-      for (const turn of page.data)
-        if (turn.itemsView !== 'full') await this.hydrateTurn(id, turn, false);
-      thread.turns.push(...page.data);
-      cursor = page.nextCursor;
-      if (cursor && (seen.has(cursor) || seen.size >= 1000))
-        throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid turn pagination');
-      if (cursor) seen.add(cursor);
-    } while (cursor);
-    return this.storedThread(thread, sequence);
+    if (thread.historyMode !== 'paginated') return this.readThreadWithTurns(id, sequence);
+    const turns = await this.tryReadPagedHistory(id, async () => {
+      let cursor: string | null = null;
+      const seen = new Set<string>();
+      const turns: Thread['turns'] = [];
+      do {
+        const page: ThreadTurnsListResponse = await this.call('thread/turns/list', {
+          threadId: id,
+          cursor,
+          limit: 100,
+          sortDirection: 'asc',
+          itemsView: 'summary',
+        });
+        for (const turn of page.data)
+          if (turn.itemsView !== 'full') await this.hydrateTurn(id, turn, false);
+        turns.push(...page.data);
+        cursor = page.nextCursor;
+        if (cursor && (seen.has(cursor) || seen.size >= 1000))
+          throw new CodexError('PROTOCOL_INCOMPATIBLE', 'Invalid turn pagination');
+        if (cursor) seen.add(cursor);
+      } while (cursor);
+      return turns;
+    });
+    if (!turns) return this.readThreadWithTurns(id, sequence);
+    return this.storedThread({ ...thread, turns }, sequence);
   }
   async createThread(cwd: string, settings?: Settings): Promise<ThreadView> {
     await this.validateSettings(
