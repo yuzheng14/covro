@@ -2,16 +2,27 @@ import { nullLogger, type Logger } from '../../logging/logger.js';
 import { errorFields } from '../../logging/fields.js';
 import { withLogContext } from '../../logging/context.js';
 import { createServer } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { GatewayService } from '../service.js';
+import {
+  SessionLoopTools,
+  createLoopInput,
+  listLoopsInput,
+  updateLoopInput,
+} from './loop-tools.js';
 import { CovroTools, createSessionInput, listProjectsInput } from './tools.js';
 
 const instructions =
   'Use list_projects to confirm the target project directory, then create_session to start a Covro conversation with its required first prompt. Use Covro for session creation instead of starting another app-server. A submitted prompt is not a completed task. Reuse request_key with identical input to inspect an existing operation; never create a new key to automatically retry an unknown outcome.';
 
-function protocolServer(service: GatewayService, origin: string): McpServer {
+function protocolServer(
+  service: GatewayService,
+  origin: string,
+  managed: boolean,
+  logger: Logger,
+): McpServer {
   const server = new McpServer({ name: 'covro', version: '1.0.0' }, { instructions });
   const tools = new CovroTools(service, origin);
   server.registerTool(
@@ -34,6 +45,39 @@ function protocolServer(service: GatewayService, origin: string): McpServer {
     },
     async (input, extra) => ({ ...(await tools.createSession(input, extra._meta)) }),
   );
+  if (managed) {
+    const loops = new SessionLoopTools(service, logger);
+    server.registerTool(
+      'list_loops',
+      {
+        description:
+          'List loops belonging to this Covro session, including versions, status and next run time.',
+        inputSchema: listLoopsInput,
+        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      },
+      (input, extra) => loops.invoke({ tool: 'list_loops', input }, extra._meta, extra.signal),
+    );
+    server.registerTool(
+      'create_loop',
+      {
+        description:
+          'Create a loop in this Covro session. Specify a fixed interval in minutes or omit it for adaptive scheduling. The first run waits for the session to be idle.',
+        inputSchema: createLoopInput,
+        annotations: { readOnlyHint: false, destructiveHint: false },
+      },
+      (input, extra) => loops.invoke({ tool: 'create_loop', input }, extra._meta, extra.signal),
+    );
+    server.registerTool(
+      'update_loop',
+      {
+        description:
+          'Pause, resume, cancel or set the interval for a loop in this session. Use the version from list_loops. A new interval changes the fixed cadence or the next check of an adaptive loop. The current turn continues.',
+        inputSchema: updateLoopInput,
+        annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+      },
+      (input, extra) => loops.invoke({ tool: 'update_loop', input }, extra._meta, extra.signal),
+    );
+  }
   return server;
 }
 
@@ -44,6 +88,8 @@ export async function startManagedMcp(options: {
   logger?: Logger;
 }) {
   const active = new Set<McpServer>();
+  const token = randomBytes(32).toString('hex');
+  const expected = Buffer.from(`Bearer ${token}`);
   let closing = false;
   let origin = '';
   const http = createServer((request, response) => {
@@ -77,7 +123,10 @@ export async function startManagedMcp(options: {
     if (active.size >= 128) return reject(503, 'Too many MCP requests');
     const service = options.service();
     if (!service) return reject(503, 'Gateway not ready');
-    const server = protocolServer(service, options.publicOrigin);
+    const authorization = Buffer.from(request.headers.authorization ?? '');
+    const managed =
+      authorization.length === expected.length && timingSafeEqual(authorization, expected);
+    const server = protocolServer(service, options.publicOrigin, managed, logger);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
@@ -113,6 +162,7 @@ export async function startManagedMcp(options: {
   return {
     name: `covro_${randomUUID().replaceAll('-', '')}`,
     url: `${origin}/mcp`,
+    token,
     close: () =>
       (closed ??= (async () => {
         closing = true;

@@ -141,6 +141,13 @@ export interface CodexClient {
     clientUserMessageId?: string,
     outputSchema?: import('./generated/serde_json/JsonValue.js').JsonValue,
   ): Promise<TurnView>;
+  /** Match a live call seen on the owned app-server connection to its MCP request. */
+  managedLoopCall?(
+    threadId: string,
+    callId: string,
+    tool: import('./managed-mcp.js').ManagedLoopTool,
+    args: unknown,
+  ): string | undefined;
   /** Native inline review scoped to this session's working directory. */
   startReview(id: string, target?: ReviewTarget): Promise<TurnView>;
   steerTurn(

@@ -1,6 +1,6 @@
 # Covro tools for managed Codex sessions
 
-Covro exposes two MCP tools to the `codex app-server` process it starts. They cover
+Covro exposes MCP tools to the `codex app-server` process it starts. They cover
 Covro business workflows that should not be performed by starting another Codex
 process. Native Codex file, shell, search, and other tools remain the normal entry
 points for their existing capabilities.
@@ -24,7 +24,33 @@ configuration, compatibility confirmation, execution markers, approvals, history
 visibility, and browser updates use the same services as the UI. The tool returns
 after submission is acknowledged; it does not wait for the new task to finish.
 
-## Retry and failure behavior
+## Current-session loops
+
+| Tool          | Input                                                                                                          | Result                                                                 |
+| ------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `list_loops`  | Empty object                                                                                                   | Loops in the current session, with versions, status and next run times |
+| `create_loop` | `prompt`, optional `interval_minutes` and UUID `request_key`                                                   | Operation receipt and created loop                                     |
+| `update_loop` | `loop_id`, `version`, and `action`; optional UUID `request_key`. Supply `interval_minutes` for `set_interval`. | Operation receipt and updated loop                                     |
+
+Call `list_loops` for the current version before updating a loop. Use `pause`,
+`resume`, `cancel`, or `set_interval`. Supply a whole number of minutes between
+1 and 1440 for a fixed cadence. Omit the interval in `create_loop` to use
+adaptive scheduling. The normal Codex policy governs tool approval.
+
+An interval edit starts a new wait from the edit. For a fixed loop, it sets the
+ongoing cadence. For an adaptive loop, it sets the next check once and subsequent
+rounds can choose their own intervals again. A late decision from a turn that
+was already running yields to the explicit schedule. Adjusting or cancelling a
+loop leaves the current turn running. Edits use the same persisted state and
+optimistic version as the Web controls. Refresh with `list_loops` after
+`LOOP_CONFLICT` before attempting a new change.
+
+Use the returned `request_key` with identical input to read the receipt from a
+new tool call in the same session. Covro generates a key from the native call
+when it is omitted. MCP mutations are stored as `loop.create.mcp` and
+`loop.control.mcp`. Logs link the receipt to the calling turn.
+
+## Session creation retry and failure behavior
 
 Codex supplies `threadId` and `callId` in MCP request metadata. Covro derives a
 stable operation key from those values when `request_key` is omitted. Other MCP
@@ -51,16 +77,22 @@ calls; it is not a route on the browser's HTTP server or a public tunnel endpoin
 
 The gateway injects a server entry through app-server `-c` arguments. Its name has
 an instance-specific `covro_` suffix to avoid merging with an existing user MCP
-entry. Tool names remain `list_projects` and `create_session`. Neither global nor
-project Codex/MCP configuration is written. Independently started CLI, IDE and
+entry. Neither global nor project Codex/MCP configuration is written. Independently started CLI, IDE and
 app-server processes do not automatically obtain this entry, including when they
 resume a conversation created in Covro.
 
-This local interface has no separate token or account authentication. Other local
-programs that know its address can connect manually. Host and Origin validation,
-body limits and the existing business checks still apply; metadata is context,
-not proof of process identity. Existing browser/API authentication, including
-Cloudflare Access, is unchanged.
+The loop tools are advertised only when the request carries the bearer credential
+injected into the managed app-server process environment. Before each operation,
+Covro matches the request's thread ID and call ID, tool name, and arguments to a
+live `item/started` notification from that app-server's stdio connection. It
+checks the active execution marker, Codex epoch, and workspace ownership before
+accessing the loop. Copying a conversation ID into a request does not grant
+access. A call without matching live context returns `MCP_SESSION_REQUIRED`.
+
+The existing project and session-creation tools retain their loopback access
+rules. Host and Origin validation and body limits apply to all tools. Local users
+with full access to Covro's processes or files remain inside the host trust
+boundary. Browser/API authentication and Cloudflare Access are unchanged.
 
 The endpoint closes with the gateway. The process-only entry is reapplied when
 the managed app-server restarts. Internal title and recap threads retain their
@@ -69,12 +101,11 @@ arbitrary upstream RPC forwarding, or remote MCP hosting is provided.
 
 ## Upstream basis
 
-The integration targets Covro's verified Codex 0.166.0
-([`6ff1e1ca`](https://github.com/openai/codex/tree/6ff1e1ca3b30fc8b914720681fcf5fe62e95f856)).
-The MCP client defaults to the 2025-06-18 lifecycle; the server uses standard
-version negotiation rather than requiring experimental MCP features. See
-[transport configuration](https://github.com/openai/codex/blob/6ff1e1ca3b30fc8b914720681fcf5fe62e95f856/codex-rs/config/src/mcp_types.rs#L652),
-[call metadata](https://github.com/openai/codex/blob/6ff1e1ca3b30fc8b914720681fcf5fe62e95f856/codex-rs/core/src/mcp_tool_call.rs#L1331),
-and [the transport specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports).
+The loop tools were verified with Codex 0.172.0. This version uses the native
+call ID for the [started item](https://github.com/openai/codex/blob/3d86e43b075adeba2193ec5c22ac92f55afd82e6/codex-rs/core/src/mcp_tool_call.rs#L1157-L1189)
+and includes it in [MCP request metadata](https://github.com/openai/codex/blob/3d86e43b075adeba2193ec5c22ac92f55afd82e6/codex-rs/core/src/mcp_tool_call.rs#L1468-L1479).
+The server uses standard
+[MCP transport negotiation](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)
+and Codex's [bearer token configuration](https://learn.chatgpt.com/docs/extend/mcp).
 
 Reproduction commands and validation boundaries are in the [verification record](managed-mcp-verification.md).
