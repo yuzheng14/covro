@@ -1,4 +1,6 @@
 {
+  "interactive_visualization": "Interactive visualization",
+  "visualization_unavailable": "Visualization unavailable.",
   "a_change_snapshot_from_codex_containing_patches_in": "A change snapshot from Codex containing patches in this scope only, not all uncommitted workspace changes.",
   "unable_to_load_changes": "Unable to load changes",
   "loading_changes": "Loading changes…",

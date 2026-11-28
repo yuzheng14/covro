@@ -11,6 +11,8 @@ import { ControlHint } from './ControlHint';
 import { MarkdownCodeBlock } from './MarkdownCodeBlock';
 import { MermaidBlock } from './MermaidBlock';
 import { isClosedCodeFence } from '../lib/markdown-fence';
+import { parseVisualizationReference } from '../../shared/visualization';
+import { VisualizationBlock } from './VisualizationBlock';
 
 // Preserve the default protocol allowlist for ordinary links and remote images.
 const transformUrl: UrlTransform = (url, key) =>
@@ -147,12 +149,23 @@ const assistantMarkdownComponents: Components = {
   ...markdownComponents,
   p: function Paragraph({ node, ...props }) {
     const { text } = useContext(SourceContext);
+    const { threadId } = useFilePreview();
     const { start, end } = node?.position ?? {};
-    // Read the original standalone paragraph so Markdown in the title stays literal.
-    const title =
+    // Read the original standalone paragraph so Markdown in reference fields stays literal.
+    const source =
       start?.column === 1 && start.offset !== undefined && end?.offset !== undefined
-        ? browserCompletionTitle(text.slice(start.offset, end.offset))
-        : undefined;
+        ? text.slice(start.offset, end.offset)
+        : '';
+    const visualization = threadId ? parseVisualizationReference(source) : undefined;
+    if (threadId && visualization)
+      return (
+        <VisualizationBlock
+          key={`${threadId}:${visualization.path}`}
+          threadId={threadId}
+          reference={visualization}
+        />
+      );
+    const title = browserCompletionTitle(source);
     if (!title) return <p {...props} />;
     return (
       <p className="browser-completion">
@@ -167,13 +180,13 @@ export function MarkdownContent({
   text,
   baseFile,
   streaming = false,
-  renderBrowserCompletion = false,
+  assistantMessage = false,
   externalBaseUrl,
 }: {
   text: string;
   baseFile?: string;
   streaming?: boolean;
-  renderBrowserCompletion?: boolean;
+  assistantMessage?: boolean;
   externalBaseUrl?: string;
 }) {
   return (
@@ -183,7 +196,7 @@ export function MarkdownContent({
           <Markdown
             skipHtml
             remarkPlugins={[remarkGfm]}
-            components={renderBrowserCompletion ? assistantMarkdownComponents : markdownComponents}
+            components={assistantMessage ? assistantMarkdownComponents : markdownComponents}
             urlTransform={
               externalBaseUrl
                 ? (url) => {

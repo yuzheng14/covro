@@ -109,6 +109,7 @@ import { temporaryFileRoots, type FileScope } from './local-files.js';
 import { readLocalMarkdown } from './markdown.js';
 import { readLocalText } from './text-files.js';
 import { readLocalJson } from './json-files.js';
+import { readLocalVisualization } from './visualization.js';
 import { sessionCreationResult } from './session-creation.js';
 import type { RestartBlocker, RestartRequest } from '../shared/service-restart.js';
 import { createSessionLoopSchema, createSessionSchema } from '../shared/validation.js';
@@ -1489,6 +1490,10 @@ export class GatewayService {
 
   getThreadJson(threadId: string, path: string | undefined) {
     return this.readThreadFile(threadId, path, readLocalJson);
+  }
+
+  getThreadVisualization(threadId: string, path: string | undefined) {
+    return this.readThreadFile(threadId, path, readLocalVisualization);
   }
 
   private async readThreadFile<T>(

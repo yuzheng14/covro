@@ -288,7 +288,7 @@ function Item({
             <TextContent
               text={item.text ?? ''}
               streaming={streaming}
-              renderBrowserCompletion={item.type === 'agentMessage'}
+              assistantMessage={item.type === 'agentMessage'}
             />
           )}
           {item.error && <p className="inline-error">{displayMessage(item.error)}</p>}

@@ -1,4 +1,6 @@
 {
+  "interactive_visualization": "인터랙티브 시각화",
+  "visualization_unavailable": "시각화를 표시할 수 없습니다.",
   "a_change_snapshot_from_codex_containing_patches_in": "Codex가 제공한 이 범위의 변경 스냅샷입니다. 작업 공간의 모든 미커밋 변경을 나타내지는 않습니다.",
   "unable_to_load_changes": "변경 내용을 불러올 수 없습니다",
   "loading_changes": "변경 내용 불러오는 중…",

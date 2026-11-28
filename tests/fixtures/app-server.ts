@@ -783,7 +783,15 @@ function markdownReply(
   thread: Thread,
   turn: Turn,
   kind:
-    'table' | 'security' | 'code' | 'files' | 'json' | 'mermaid' | 'text' | 'browser-completion',
+    | 'table'
+    | 'security'
+    | 'code'
+    | 'files'
+    | 'json'
+    | 'mermaid'
+    | 'text'
+    | 'browser-completion'
+    | 'visualization',
 ): void {
   const item: Extract<ThreadItem, { type: 'agentMessage' }> = {
     id: randomUUID(),
@@ -867,6 +875,36 @@ function markdownReply(
           .join(' · '),
     ];
   if (kind === 'mermaid') chunks = mermaidChunks;
+  if (kind === 'visualization') {
+    const path = join(thread.cwd, 'training.html');
+    writeFileSync(
+      path,
+      `<h3>训练进度</h3>
+<div class="viz-row" style="margin: 10px 0">
+  <button id="train" class="btn btn-primary" type="button">训练 5 轮</button>
+  <p id="epochs" class="tabular-nums" aria-live="polite">已训练 0 轮</p>
+</div>
+<div class="progress"><div id="progress" class="progress-bar" style="width: 0%"></div></div>
+<script>
+  let epochs = 0;
+  document.getElementById('train').addEventListener('click', () => {
+    epochs += 5;
+    document.getElementById('epochs').textContent = '已训练 ' + epochs + ' 轮';
+    document.getElementById('progress').style.width = Math.min(epochs * 10, 100) + '%';
+  });
+</script>`,
+    );
+    const marker = `\uE200visualize\uE202${JSON.stringify({ path, title: '训练进度', mode: 'wide' })}\uE201`;
+    const missing = `\uE200visualize\uE202${JSON.stringify({ path: join(thread.cwd, 'missing.html') })}\uE201`;
+    chunks = [
+      '点击按钮可以逐步更新训练进度。\n\n' + marker.slice(0, -1),
+      marker.slice(-1) +
+        '\n\n' +
+        missing +
+        '\n\n```text\n' +
+        '\uE200visualize\uE202{"path":"/example.html"}\uE201\n```',
+    ];
+  }
   if (kind === 'browser-completion')
     chunks = [
       '::browser-complete{title="Confirmed browser ',
@@ -2964,6 +3002,7 @@ function receive(request: ClientRequest): void {
         commandOutputScenario(thread, turn, prompt.includes('[command-output-truncated]'));
       else if (prompt.includes('[code-copy]')) markdownReply(thread, turn, 'code');
       else if (prompt.includes('[mermaid]')) markdownReply(thread, turn, 'mermaid');
+      else if (prompt.includes('[visualization]')) markdownReply(thread, turn, 'visualization');
       else if (prompt.includes('[browser-completion]'))
         markdownReply(thread, turn, 'browser-completion');
       else if (prompt.includes('[markdown]') || prompt.includes('[markdown-security]'))

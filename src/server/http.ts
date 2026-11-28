@@ -29,6 +29,7 @@ import { settingsSchema, updateRequestSchema } from '../updates/manager.js';
 import { createReleaseNotesLookup, releaseNotesQuery } from '../updates/release-notes.js';
 import { startShellSchema } from '../shared/shell.js';
 import type { PreviewProxy } from './preview/proxy.js';
+import { visualizationCsp, visualizationDocument } from './visualization.js';
 export interface HttpDependencies {
   logger?: Logger;
   config: AppConfig;
@@ -579,6 +580,22 @@ export function createApp({
     c.header('X-Content-Type-Options', 'nosniff');
     c.header('Cross-Origin-Resource-Policy', 'same-origin');
     return c.json(await service.getThreadJson(id(c.req.param('threadId')), c.req.query('path')));
+  });
+  app.get('/api/threads/:threadId/visualization', async (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    c.header('X-Content-Type-Options', 'nosniff');
+    c.header('Referrer-Policy', 'no-referrer');
+    c.header('Content-Security-Policy', visualizationCsp);
+    try {
+      const content = await service.getThreadVisualization(
+        id(c.req.param('threadId')),
+        c.req.query('path'),
+      );
+      return c.html(visualizationDocument(content));
+    } catch (error) {
+      if (!(error instanceof AppError)) throw error;
+      return c.html(visualizationDocument(), error.status as 400);
+    }
   });
   app.get('/api/operations/:operationId', (c) =>
     c.json(service.getOperation(id(c.req.param('operationId')))),
