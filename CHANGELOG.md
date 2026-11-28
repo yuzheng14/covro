@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.15.0](https://github.com/yuzheng14/covro/compare/v0.14.0...v0.15.0) (2026-11-28)
+
+
+### Features
+
+* **automation:** manage session loops through Covro MCP ([#418](https://github.com/yuzheng14/covro/issues/418)) ([52eacf7](https://github.com/yuzheng14/covro/commit/52eacf77d34a3c32b6c48ee77ff526f954d3b91e)), closes [#387](https://github.com/yuzheng14/covro/issues/387)
+* **conversation:** render inline Visualize artifacts ([#421](https://github.com/yuzheng14/covro/issues/421)) ([ef3aa77](https://github.com/yuzheng14/covro/commit/ef3aa77b1c9144cbca3add6b53afb3513f40060f))
+
+
+### Bug Fixes
+
+* **composer:** unify mobile send and interrupt buttons ([#415](https://github.com/yuzheng14/covro/issues/415)) ([40a850f](https://github.com/yuzheng14/covro/commit/40a850fd5ec1cceaf257f23917ffb1982df64ec0)), closes [#377](https://github.com/yuzheng14/covro/issues/377)
+* **conversation:** render browser completion summaries ([#419](https://github.com/yuzheng14/covro/issues/419)) ([9f65cc7](https://github.com/yuzheng14/covro/commit/9f65cc73207fa1218b9a84b3c5f13be2d0dc89e0))
+* **header:** theme the compact actions menu ([#413](https://github.com/yuzheng14/covro/issues/413)) ([3c8e5f0](https://github.com/yuzheng14/covro/commit/3c8e5f07c85acf7fe1411160d7b95f84631766c5)), closes [#410](https://github.com/yuzheng14/covro/issues/410)
+* **history:** query archive state by indexed thread ID ([#417](https://github.com/yuzheng14/covro/issues/417)) ([c7da738](https://github.com/yuzheng14/covro/commit/c7da738f6befac5120a53f557f0a6acf88fb300e))
+* **history:** recover when Codex pagination is unavailable ([#420](https://github.com/yuzheng14/covro/issues/420)) ([2aed7cb](https://github.com/yuzheng14/covro/commit/2aed7cbb1728c2d1f6da662751b78bde5a027022))
+* **questions:** allow consecutive optimistic skips ([#416](https://github.com/yuzheng14/covro/issues/416)) ([91578af](https://github.com/yuzheng14/covro/commit/91578af86d69fd7a8494b06bcf1439b931fbe998)), closes [#409](https://github.com/yuzheng14/covro/issues/409)
+* **questions:** defer pending history discovery until requested ([#411](https://github.com/yuzheng14/covro/issues/411)) ([4c806b1](https://github.com/yuzheng14/covro/commit/4c806b1616ce0885d45023388f5fa6882bada2ee))
+* **ui:** unify permission mode selectors ([#414](https://github.com/yuzheng14/covro/issues/414)) ([04df366](https://github.com/yuzheng14/covro/commit/04df366b3c8861372cbb11b9d0bad34dbd715aca)), closes [#396](https://github.com/yuzheng14/covro/issues/396)
+
 ## [0.14.0](https://github.com/yuzheng14/covro/compare/v0.13.0...v0.14.0) (2026-11-26)
 
 
